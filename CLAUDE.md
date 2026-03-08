@@ -50,9 +50,11 @@ agents/analyst_agent.py          — TPM-aware batch analysis (sequential, free-
 agents/synthesizer_agent.py      — final map synthesis
 agents/parser_agent.py           — tree-sitter AST extraction (py/js/ts)
 agents/visualizer_agent.py       — D3 graph builder, loads template
+agents/report_agent.py           — executive report generator (complexity-based model selection)
 templates/dependency_map.html    — D3.js visualization template ({{NODES_JSON}}, {{LINKS_JSON}})
 scripts/scan_codebase.py         — file scanner with gitignore support
 output/map_writer.py             — writes CODEBASE_MAP.md to docs/
+output/report_writer.py          — writes EXECUTIVE_REPORT.docx to docs/
 Deeper format/                   — nested test directories for self-test validation
 ```
 
@@ -94,6 +96,21 @@ Everything through Stage 2 is genuinely $0.
 ---
 
 ## Progress Log
+
+### 2026-03-09
+- **Executive Word report node (merged to dev):**
+  - New `agents/report_agent.py` — final pipeline node that consumes all outputs (codebase map, batch reports, dependency graph) and generates a professional executive report: 1-page summary (250-450 words), strengths, weaknesses, security concerns, recommended updates, basic documentation
+  - New `output/report_writer.py` — renders report as `docs/EXECUTIVE_REPORT.docx` using `python-docx` with proper Word heading styles, bullet/numbered lists, margins
+  - Added `llm_call_async_explicit()` to `config/llm_client.py` — bypasses role resolution for runtime model selection
+  - **Cost-gated model tiers in `config/settings.py`:**
+    - `EXPENSIVE_MODELS_ALLOWED=false` (default) — all roles use cheap models (safe for testing / free tier)
+    - `EXPENSIVE_MODELS_ALLOWED=true` — synthesis uses Sonnet; executive report uses Opus (large repo, ≥50k tokens) or Sonnet (small repo); traversal always stays cheap
+    - `COMPLEXITY_THRESHOLD_TOKENS` controls large/small cutoff (default 50 000)
+    - `EXECUTIVE_PROVIDER` controls which provider handles the Word report (default: anthropic)
+  - Added `python-docx>=1.1.0` to `pyproject.toml`
+  - Updated `.env.example` with all new vars: `EXECUTIVE_PROVIDER`, `EXPENSIVE_MODELS_ALLOWED`, `COMPLEXITY_THRESHOLD_TOKENS`, `EXECUTIVE_MODEL`
+  - Installed `gh` CLI and authenticated — git push now works via `gh auth setup-git`
+  - Self-tested (`uv run python main.py .`) — all three outputs generated successfully
 
 ### 2026-03-08
 - Audited full codebase, identified all bugs and design issues
