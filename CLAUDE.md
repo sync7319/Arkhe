@@ -51,10 +51,13 @@ agents/synthesizer_agent.py      — final map synthesis
 agents/parser_agent.py           — tree-sitter AST extraction (py/js/ts)
 agents/visualizer_agent.py       — D3 graph builder, loads template
 agents/report_agent.py           — executive report generator (complexity-based model selection)
+agents/refactor_agent.py         — per-file doc+style pass, thorough/fast modes, batching
 templates/dependency_map.html    — D3.js visualization template ({{NODES_JSON}}, {{LINKS_JSON}})
 scripts/scan_codebase.py         — file scanner with gitignore support
 output/map_writer.py             — writes CODEBASE_MAP.md to docs/
 output/report_writer.py          — writes EXECUTIVE_REPORT.docx to docs/
+output/clone_writer.py           — mirrors repo to <repo>_refactored/ with improved files
+config/model_router.py           — model priority chains + 10-min cooldown fallback system
 Deeper format/                   — nested test directories for self-test validation
 ```
 
@@ -96,6 +99,37 @@ Everything through Stage 2 is genuinely $0.
 ---
 
 ## Progress Log
+
+### 2026-03-09 (session 2)
+- **Dependency map visual overhaul:**
+  - Full light theme redesign (white cards on `#f1f5f9` canvas — no more navy)
+  - Professional color palette (blue, emerald, amber, violet, etc.)
+  - All dependency arrows now route through a dedicated right-side bypass lane — never overlap nodes
+  - Mutual deps drawn as two separate offset paths, each with own arrowhead
+  - Info panel redesigned: Defines (fn/class badges), Imports (local resolved + external separated), Imported By (reverse deps), all clickable to jump to that file
+  - `focusNode()` auto-expands folder when clicking linked file in panel
+
+- **Refactored clone output (`--refactor` / `REFACTOR_ENABLED`):**
+  - New `agents/refactor_agent.py` — per-file doc+style pass, no logic changes
+  - Two speed modes via `REFACTOR_SPEED` in `.env`:
+    - `thorough` — full LLM pass per file, one call each
+    - `fast` — well-documented Python files get header-only update; small files batched together; higher concurrency semaphore per provider
+  - New `output/clone_writer.py` — mirrors full repo to `<repo>_refactored/`, originals untouched
+  - `REFACTOR_ENABLED=true/false` in `.env` — controls whether refactor runs automatically
+  - Sanity check only rejects empty/near-empty outputs (no upper length bound — docs naturally make files longer)
+
+- **Model fallback router (`config/model_router.py`):**
+  - Priority chains best→worst for groq, gemini, anthropic
+  - Groq: kimi-k2 → qwen3-32b → gpt-oss-120b → llama-3.3-70b → llama-4-maverick → llama-4-scout → gpt-oss-20b → llama-3.1-8b
+  - Gemini: 2.5-pro → 2.5-flash → 2.0-flash → 2.5-flash-lite → 2.0-flash-lite
+  - Anthropic: opus-4-6 → sonnet-4-6 → haiku-4-5
+  - Rate limit → mark model cooling 10 min, auto-fallback to next
+  - Transient errors (connection/timeout) → retry same model
+  - `llm_client.py` split `_retryable_exceptions` into `_rate_limit_exceptions` + `_transient_exceptions`
+
+- **Settings additions:**
+  - `REFACTOR_ENABLED`, `REFACTOR_SPEED`, `REFACTOR_PROVIDER`, `REFACTOR_CONCURRENCY`
+  - `refactor` role added to `VALID_ROLES`, always uses cheap models
 
 ### 2026-03-09
 - **Executive Word report node (merged to dev):**

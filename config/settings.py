@@ -19,6 +19,8 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 # true            → synthesis uses Sonnet; executive report uses Opus or Sonnet by complexity
 #                   traversal always stays on cheap models regardless of this flag
 EXPENSIVE_MODELS_ALLOWED = os.getenv("EXPENSIVE_MODELS_ALLOWED", "false").lower() == "true"
+REFACTOR_ENABLED         = os.getenv("REFACTOR_ENABLED",         "false").lower() == "true"
+REFACTOR_SPEED           = os.getenv("REFACTOR_SPEED",           "thorough")  # thorough | fast
 
 # Token count at which a repo is considered "large" (affects Opus vs Sonnet for executive report)
 COMPLEXITY_THRESHOLD_TOKENS = int(os.getenv("COMPLEXITY_THRESHOLD_TOKENS", "50000"))
@@ -27,16 +29,17 @@ COMPLEXITY_THRESHOLD_TOKENS = int(os.getenv("COMPLEXITY_THRESHOLD_TOKENS", "5000
 TRAVERSAL_PROVIDER = os.getenv("TRAVERSAL_PROVIDER", "groq")
 REPORT_PROVIDER    = os.getenv("REPORT_PROVIDER",    "gemini")
 EXECUTIVE_PROVIDER = os.getenv("EXECUTIVE_PROVIDER", "anthropic")
+REFACTOR_PROVIDER  = os.getenv("REFACTOR_PROVIDER",  "groq")
 
 # ── Cheap models (used for traversal always; used for all roles when EXPENSIVE=false) ──────
 CHEAP_MODELS = {
-    "groq":      {"traversal": "openai/gpt-oss-20b",   "report": "llama-3.1-8b-instant"},
-    "gemini":    {"traversal": "gemini-2.0-flash",      "report": "gemini-2.0-flash"},
-    "anthropic": {"traversal": "claude-haiku-4-5",      "report": "claude-haiku-4-5"},
+    "groq":      {"traversal": "openai/gpt-oss-20b",  "report": "llama-3.1-8b-instant", "refactor": "llama-3.1-8b-instant"},
+    "gemini":    {"traversal": "gemini-2.0-flash",     "report": "gemini-2.0-flash",     "refactor": "gemini-2.0-flash"},
+    "anthropic": {"traversal": "claude-haiku-4-5",     "report": "claude-haiku-4-5",     "refactor": "claude-haiku-4-5"},
 }
 
 # ── Premium models (used for report synthesis when EXPENSIVE=true) ───────────────────────
-# Traversal is intentionally absent — file-level analysis never needs a heavy model
+# Traversal and refactor are intentionally absent — per-file work never needs heavy models
 PREMIUM_MODELS = {
     "groq":      {"report": "llama-3.3-70b-versatile"},
     "gemini":    {"report": "gemini-2.0-flash"},
@@ -53,7 +56,7 @@ EXECUTIVE_MODELS = {
 }
 
 VALID_PROVIDERS = {"groq", "gemini", "anthropic"}
-VALID_ROLES     = {"traversal", "report"}
+VALID_ROLES     = {"traversal", "report", "refactor"}
 
 
 def get_model(role: str) -> tuple[str, str]:
@@ -62,6 +65,7 @@ def get_model(role: str) -> tuple[str, str]:
     provider_map = {
         "traversal": TRAVERSAL_PROVIDER,
         "report":    REPORT_PROVIDER,
+        "refactor":  REFACTOR_PROVIDER,
     }
     provider = provider_map[role]
     if provider not in VALID_PROVIDERS:
@@ -71,8 +75,8 @@ def get_model(role: str) -> tuple[str, str]:
     if env_override:
         return provider, env_override
 
-    # Traversal always cheap — file-level analysis doesn't need heavy models
-    if role == "traversal" or not EXPENSIVE_MODELS_ALLOWED:
+    # Traversal and refactor always cheap — per-file work never needs heavy models
+    if role in ("traversal", "refactor") or not EXPENSIVE_MODELS_ALLOWED:
         return provider, CHEAP_MODELS[provider][role]
 
     return provider, PREMIUM_MODELS[provider][role]

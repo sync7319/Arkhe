@@ -13,14 +13,18 @@ from agents.analyst_agent     import analyze_parallel
 from agents.synthesizer_agent import synthesize
 from agents.visualizer_agent  import build_graph, visualize, write_visualizer
 from agents.report_agent      import generate_report
+from agents.refactor_agent    import refactor_all
 from output.map_writer        import write_map, write_json_map
 from output.report_writer     import write_report
+from output.clone_writer      import write_clone
 from cache.pipeline_cache     import compute_fingerprint, load_stage, save_stage
 
 console = Console()
 
 
-async def run(repo_path: str, fmt: str):
+async def run(repo_path: str, fmt: str, refactor: bool = False):
+    from config.settings import REFACTOR_ENABLED
+    refactor = refactor or REFACTOR_ENABLED
     console.rule("[bold cyan]Arkhe[/bold cyan] — Codebase Intelligence")
 
     with Progress(SpinnerColumn(), TextColumn("{task.description}"), console=console) as p:
@@ -48,6 +52,17 @@ async def run(repo_path: str, fmt: str):
             p.update(t, description=f"[green]Parsed {len(modules)} modules[/green]", completed=True)
         else:
             p.update(t, description=f"[green]Parse loaded from cache ({len(modules)} modules)[/green]", completed=True)
+
+        # ── Refactor (optional) ───────────────────────────────────────────────
+        if refactor:
+            t = p.add_task("Refactoring files (doc + style pass)...", total=None)
+            refactored = await refactor_all(modules)
+            clone_path = write_clone(repo_path, refactored)
+            p.update(
+                t,
+                description=f"[green]Refactored {len(refactored)} files → {clone_path}[/green]",
+                completed=True,
+            )
 
         # ── Analyze ───────────────────────────────────────────────────────────
         t = p.add_task("Analyzing with AI subagents...", total=None)
@@ -101,6 +116,8 @@ async def run(repo_path: str, fmt: str):
             console.print(f"  Codebase map     -> [cyan]{map_path}[/cyan]")
             console.print(f"  Dependency map   -> [cyan]{viz_path}[/cyan]")
             console.print(f"  Executive report -> [cyan]{report_path}[/cyan]")
+            if refactor:
+                console.print(f"  Refactored clone -> [cyan]{clone_path}[/cyan]")
 
 
 if __name__ == "__main__":
@@ -122,5 +139,13 @@ if __name__ == "__main__":
         help="Output format: 'default' writes CODEBASE_MAP.md + DEPENDENCY_MAP.html, "
              "'json' writes a single CODEBASE_MAP.json with all data",
     )
+    parser.add_argument(
+        "--refactor",
+        action="store_true",
+        default=False,
+        help="Generate a refactored clone of the repo with improved documentation and "
+             "idiomatic code style. Output written to <repo>_refactored/ sibling directory. "
+             "Original files are never modified.",
+    )
     args = parser.parse_args()
-    asyncio.run(run(args.repo, args.fmt))
+    asyncio.run(run(args.repo, args.fmt, args.refactor))

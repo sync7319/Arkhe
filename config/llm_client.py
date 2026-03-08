@@ -61,7 +61,7 @@ def llm_call(role: str, system: str, user_prompt: str, max_tokens: int = 4096) -
     api_key         = get_api_key(provider)
     logger.debug(f"[{role}] provider={provider} model={model}")
 
-    retryable = _retryable_exceptions(provider)
+    retryable = _rate_limit_exceptions(provider) + _transient_exceptions(provider)
 
     for attempt in range(1, MAX_RETRIES + 1):
         try:
@@ -86,32 +86,38 @@ def llm_call(role: str, system: str, user_prompt: str, max_tokens: int = 4096) -
 
 
 async def llm_call_async(role: str, system: str, user_prompt: str, max_tokens: int = 4096) -> str:
-    provider, model = get_model(role)
-    api_key         = get_api_key(provider)
-    logger.debug(f"[{role}] provider={provider} model={model}")
+    from config.model_router import get_chain, is_cooling, mark_cooling
+    provider, preferred = get_model(role)
+    api_key             = get_api_key(provider)
+    chain               = get_chain(provider, preferred)
+    rate_limit_exc      = _rate_limit_exceptions(provider)
+    transient_exc       = _transient_exceptions(provider)
 
-    retryable = _retryable_exceptions(provider)
+    for model in chain:
+        if is_cooling(model):
+            logger.debug(f"[{role}] {model} cooling — skipping")
+            continue
+        logger.debug(f"[{role}] provider={provider} model={model}")
 
-    for attempt in range(1, MAX_RETRIES + 1):
-        try:
-            if provider == "groq":
-                return await _call_groq_async(api_key, model, system, user_prompt, max_tokens)
-            elif provider == "gemini":
-                return await _call_gemini_async(api_key, model, system, user_prompt, max_tokens)
-            elif provider == "anthropic":
-                return await _call_anthropic_async(api_key, model, system, user_prompt, max_tokens)
-            else:
-                raise ValueError(f"Unknown provider: '{provider}'. Valid: groq | gemini | anthropic")
-        except retryable as e:
-            if attempt == MAX_RETRIES:
-                logger.error(f"[{role}] Failed after {MAX_RETRIES} attempts: {e}")
+        for attempt in range(1, MAX_RETRIES + 1):
+            try:
+                return await _dispatch_async(provider, model, api_key, system, user_prompt, max_tokens)
+            except rate_limit_exc as e:
+                mark_cooling(model)
+                logger.warning(f"[{role}] Rate limit on {model} — falling back")
+                break  # try next model in chain
+            except transient_exc as e:
+                if attempt == MAX_RETRIES:
+                    logger.warning(f"[{role}] {model} failed after {MAX_RETRIES} transient errors — falling back")
+                    break
+                wait = RETRY_BACKOFF * attempt
+                logger.warning(f"[{role}] Transient error attempt {attempt}: {e}. Retrying in {wait}s...")
+                await asyncio.sleep(wait)
+            except Exception as e:
+                logger.error(f"[{role}] Non-retryable error on {model}: {e}")
                 raise
-            wait = RETRY_BACKOFF * attempt
-            logger.warning(f"[{role}] Attempt {attempt} failed ({e}). Retrying in {wait}s...")
-            await asyncio.sleep(wait)
-        except Exception as e:
-            logger.error(f"[{role}] Non-retryable error: {e}")
-            raise
+
+    raise RuntimeError(f"[{role}] All models for '{provider}' are rate-limited or failed")
 
 
 # ── Sync call implementations ────────────────────────────────────────────────
@@ -240,53 +246,92 @@ async def _call_anthropic_async(api_key, model, system, prompt, max_tokens):
 async def llm_call_async_explicit(
     provider: str, model: str, system: str, user_prompt: str, max_tokens: int = 4096
 ) -> str:
-    """Like llm_call_async but accepts an explicit provider+model (used for complexity-based selection)."""
-    api_key   = get_api_key(provider)
-    logger.debug(f"[explicit] provider={provider} model={model}")
+    """Like llm_call_async but with explicit provider+model — also uses fallback chain."""
+    from config.model_router import get_chain, is_cooling, mark_cooling
+    api_key        = get_api_key(provider)
+    chain          = get_chain(provider, model)
+    rate_limit_exc = _rate_limit_exceptions(provider)
+    transient_exc  = _transient_exceptions(provider)
 
-    retryable = _retryable_exceptions(provider)
+    for m in chain:
+        if is_cooling(m):
+            logger.debug(f"[explicit] {m} cooling — skipping")
+            continue
+        logger.debug(f"[explicit] provider={provider} model={m}")
 
-    for attempt in range(1, MAX_RETRIES + 1):
-        try:
-            if provider == "groq":
-                return await _call_groq_async(api_key, model, system, user_prompt, max_tokens)
-            elif provider == "gemini":
-                return await _call_gemini_async(api_key, model, system, user_prompt, max_tokens)
-            elif provider == "anthropic":
-                return await _call_anthropic_async(api_key, model, system, user_prompt, max_tokens)
-            else:
-                raise ValueError(f"Unknown provider: '{provider}'. Valid: groq | gemini | anthropic")
-        except retryable as e:
-            if attempt == MAX_RETRIES:
-                logger.error(f"[explicit] Failed after {MAX_RETRIES} attempts: {e}")
+        for attempt in range(1, MAX_RETRIES + 1):
+            try:
+                return await _dispatch_async(provider, m, api_key, system, user_prompt, max_tokens)
+            except rate_limit_exc:
+                mark_cooling(m)
+                logger.warning(f"[explicit] Rate limit on {m} — falling back")
+                break
+            except transient_exc as e:
+                if attempt == MAX_RETRIES:
+                    break
+                await asyncio.sleep(RETRY_BACKOFF * attempt)
+            except Exception as e:
+                logger.error(f"[explicit] Non-retryable error on {m}: {e}")
                 raise
-            wait = RETRY_BACKOFF * attempt
-            logger.warning(f"[explicit] Attempt {attempt} failed ({e}). Retrying in {wait}s...")
-            await asyncio.sleep(wait)
-        except Exception as e:
-            logger.error(f"[explicit] Non-retryable error: {e}")
-            raise
+
+    raise RuntimeError(f"[explicit] All models for '{provider}' are rate-limited or failed")
 
 
-# ── Retry helpers ────────────────────────────────────────────────────────────
+# ── Dispatch helper ───────────────────────────────────────────────────────────
 
-def _retryable_exceptions(provider: str):
+async def _dispatch_async(provider, model, api_key, system, prompt, max_tokens):
+    if provider == "groq":
+        return await _call_groq_async(api_key, model, system, prompt, max_tokens)
+    elif provider == "gemini":
+        return await _call_gemini_async(api_key, model, system, prompt, max_tokens)
+    elif provider == "anthropic":
+        return await _call_anthropic_async(api_key, model, system, prompt, max_tokens)
+    raise ValueError(f"Unknown provider: '{provider}'. Valid: groq | gemini | anthropic")
+
+
+# ── Exception helpers ─────────────────────────────────────────────────────────
+
+def _rate_limit_exceptions(provider: str):
+    """Quota/rate-limit errors → trigger model fallback to next in chain."""
     if provider == "groq":
         try:
-            from groq import RateLimitError, APIConnectionError, APITimeoutError
-            return (RateLimitError, APIConnectionError, APITimeoutError)
+            from groq import RateLimitError
+            return (RateLimitError,)
         except ImportError:
             pass
     elif provider == "gemini":
         try:
-            from google.api_core.exceptions import ResourceExhausted, ServiceUnavailable, DeadlineExceeded
-            return (ResourceExhausted, ServiceUnavailable, DeadlineExceeded)
+            from google.api_core.exceptions import ResourceExhausted
+            return (ResourceExhausted,)
         except ImportError:
             pass
     elif provider == "anthropic":
         try:
-            from anthropic import RateLimitError, APIConnectionError, APITimeoutError
-            return (RateLimitError, APIConnectionError, APITimeoutError)
+            from anthropic import RateLimitError
+            return (RateLimitError,)
+        except ImportError:
+            pass
+    return (Exception,)
+
+
+def _transient_exceptions(provider: str):
+    """Connection/timeout errors → retry same model."""
+    if provider == "groq":
+        try:
+            from groq import APIConnectionError, APITimeoutError
+            return (APIConnectionError, APITimeoutError)
+        except ImportError:
+            pass
+    elif provider == "gemini":
+        try:
+            from google.api_core.exceptions import ServiceUnavailable, DeadlineExceeded
+            return (ServiceUnavailable, DeadlineExceeded)
+        except ImportError:
+            pass
+    elif provider == "anthropic":
+        try:
+            from anthropic import APIConnectionError, APITimeoutError
+            return (APIConnectionError, APITimeoutError)
         except ImportError:
             pass
     return (ConnectionError, TimeoutError)

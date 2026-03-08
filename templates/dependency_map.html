@@ -5,119 +5,205 @@
 <title>Arkhe — Architecture Map</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
 <style>
+/* ── Reset & Base ────────────────────────────────────────────────────────── */
 *{margin:0;padding:0;box-sizing:border-box}
-body{background:#080c14;color:#e6edf3;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",monospace;overflow:hidden;user-select:none}
+body{
+  background:#f1f5f9;
+  color:#0f172a;
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  overflow:hidden;
+  user-select:none
+}
 
+/* ── Header ──────────────────────────────────────────────────────────────── */
 #header{
-  position:fixed;top:0;left:0;right:0;height:50px;
-  background:rgba(8,12,20,0.97);border-bottom:1px solid #151e2e;
-  backdrop-filter:blur(16px);display:flex;align-items:center;
-  padding:0 24px;gap:20px;z-index:300
+  position:fixed;top:0;left:0;right:0;height:52px;
+  background:#ffffff;border-bottom:1px solid #e2e8f0;
+  box-shadow:0 1px 4px rgba(0,0,0,.06);
+  display:flex;align-items:center;padding:0 24px;gap:16px;z-index:300
 }
-#logo{font-size:13px;font-weight:700;letter-spacing:3px;color:#4da3ff}
-#logo-sub{font-size:9px;color:#2a3a50;letter-spacing:2px;margin-top:2px}
+#logo{font-size:13px;font-weight:800;letter-spacing:2.5px;color:#3b82f6}
+#logo-sub{font-size:8px;color:#94a3b8;letter-spacing:2px;margin-top:1px;text-transform:uppercase}
 #search{
-  flex:1;max-width:240px;padding:5px 14px;
-  background:#0a1020;border:1px solid #151e2e;border-radius:20px;
-  color:#e6edf3;font-size:12px;outline:none;transition:border .2s
+  flex:1;max-width:260px;padding:6px 16px;
+  background:#f8fafc;border:1px solid #e2e8f0;border-radius:24px;
+  color:#0f172a;font-size:12px;outline:none;transition:border .15s,box-shadow .15s
 }
-#search:focus{border-color:#4da3ff}
-#stats{margin-left:auto;font-size:10px;color:#2a3a50;letter-spacing:1px}
+#search:focus{border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,.1)}
+#search::placeholder{color:#cbd5e1}
+#stats{margin-left:auto;font-size:11px;color:#94a3b8;letter-spacing:.3px;white-space:nowrap}
 
+/* ── Legend ──────────────────────────────────────────────────────────────── */
 #legend{
   position:fixed;bottom:20px;right:20px;
-  background:rgba(8,12,20,0.95);border:1px solid #151e2e;
-  border-radius:10px;padding:14px 18px;z-index:300;min-width:190px
+  background:#ffffff;border:1px solid #e2e8f0;
+  border-radius:12px;padding:14px 18px;z-index:300;min-width:175px;
+  box-shadow:0 4px 16px rgba(0,0,0,.07)
 }
-#legend h3{font-size:9px;color:#2a3a50;letter-spacing:2px;text-transform:uppercase;margin-bottom:10px}
-.leg-row{display:flex;align-items:center;gap:9px;margin:5px 0;font-size:11px;color:#8b949e}
+#legend h3{font-size:9px;color:#94a3b8;letter-spacing:2px;text-transform:uppercase;margin-bottom:10px;font-weight:600}
+.leg-row{display:flex;align-items:center;gap:9px;margin:5px 0;font-size:11px;color:#475569}
 .leg-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
-.leg-sep{border-top:1px solid #151e2e;margin:9px 0}
-.leg-link{display:flex;align-items:center;gap:9px;margin:5px 0;font-size:11px;color:#8b949e}
+.leg-sep{border-top:1px solid #f1f5f9;margin:10px 0}
+.leg-link{display:flex;align-items:center;gap:9px;margin:5px 0;font-size:11px;color:#475569}
 
+/* ── Tooltip ─────────────────────────────────────────────────────────────── */
 #tooltip{
   position:fixed;pointer-events:none;
-  background:rgba(8,12,20,0.97);border:1px solid #151e2e;
-  border-radius:8px;padding:10px 14px;font-size:11px;
-  box-shadow:0 8px 40px rgba(0,0,0,.8);z-index:400;display:none;max-width:250px
+  background:#ffffff;border:1px solid #e2e8f0;
+  border-radius:10px;padding:10px 14px;font-size:11px;
+  box-shadow:0 8px 32px rgba(0,0,0,.12);z-index:400;display:none;max-width:240px
 }
-.tt-name{font-weight:700;color:#4da3ff;margin-bottom:5px}
-.tt-row{color:#3a5070;margin:2px 0}.tt-row span{color:#c9d1d9}
+.tt-name{font-weight:700;color:#0f172a;margin-bottom:6px;font-size:12px}
+.tt-row{color:#94a3b8;margin:3px 0}
+.tt-row span{color:#475569;font-weight:500}
 
+/* ── Info Panel ──────────────────────────────────────────────────────────── */
 #info{
-  position:fixed;top:66px;left:20px;
-  background:rgba(8,12,20,0.97);border:1px solid #151e2e;
-  border-radius:10px;padding:16px;width:270px;z-index:300;display:none
+  position:fixed;top:68px;left:20px;
+  background:#ffffff;border:1px solid #e2e8f0;
+  border-radius:14px;width:308px;z-index:300;display:none;
+  box-shadow:0 8px 32px rgba(0,0,0,.1);
+  overflow:hidden;max-height:calc(100vh - 96px);
+  display:none;flex-direction:column
 }
-.i-head{display:flex;justify-content:space-between;align-items:start;margin-bottom:12px}
-.i-title{font-size:12px;font-weight:700;color:#4da3ff;word-break:break-all;line-height:1.5}
-.i-close{color:#2a3a50;cursor:pointer;font-size:16px;padding-left:8px;flex-shrink:0}
-.i-close:hover{color:#e6edf3}
-.i-block{margin-bottom:10px}
-.i-label{font-size:9px;color:#2a3a50;letter-spacing:2px;text-transform:uppercase;margin-bottom:4px}
-.i-val{font-size:11px;color:#c9d1d9;line-height:1.6}
-.tag{display:inline-block;background:#0a1e30;border:1px solid #152840;border-radius:3px;padding:1px 6px;font-size:10px;margin:2px;color:#79c0ff;font-family:monospace}
-.mod-badge{display:inline-block;padding:2px 9px;border-radius:10px;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase}
+.i-head{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:14px 16px 12px;border-bottom:1px solid #f1f5f9;
+  background:#ffffff;flex-shrink:0
+}
+.i-crumb{font-size:10px;color:#94a3b8;margin-bottom:2px;font-family:monospace}
+.i-title{font-size:13px;font-weight:700;color:#0f172a;word-break:break-all;line-height:1.4}
+.i-close{
+  color:#cbd5e1;cursor:pointer;font-size:18px;line-height:1;
+  padding:4px 6px;border-radius:6px;flex-shrink:0;margin-left:8px;
+  transition:background .1s,color .1s
+}
+.i-close:hover{color:#0f172a;background:#f1f5f9}
+.i-scroll{overflow-y:auto;flex:1;padding:14px 16px}
 
+.i-stats{display:flex;gap:8px;margin-bottom:16px}
+.i-stat{
+  flex:1;text-align:center;padding:8px 4px;
+  background:#f8fafc;border-radius:8px;border:1px solid #f1f5f9
+}
+.i-stat-n{font-size:18px;font-weight:800;color:#0f172a;line-height:1}
+.i-stat-l{font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;margin-top:3px}
+
+.i-section{margin-bottom:14px}
+.i-label{
+  font-size:9px;color:#94a3b8;letter-spacing:2px;text-transform:uppercase;
+  font-weight:600;display:flex;align-items:center;gap:8px;margin-bottom:8px
+}
+.i-label::after{content:"";flex:1;height:1px;background:#f1f5f9}
+
+/* Symbol rows (defines fn/class) */
+.sym{
+  display:flex;align-items:center;gap:8px;
+  padding:4px 8px;border-radius:6px;margin:2px 0;
+  transition:background .1s
+}
+.sym:hover{background:#f8fafc}
+.sym-badge{
+  font-size:9px;font-weight:700;letter-spacing:.3px;
+  padding:2px 6px;border-radius:4px;flex-shrink:0;font-family:monospace
+}
+.badge-fn {background:#eff6ff;color:#3b82f6}
+.badge-cls{background:#f0fdf4;color:#16a34a}
+.sym-name{
+  font-family:monospace;font-size:11px;color:#1e293b;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1
+}
+
+/* Import rows */
+.dep-row{
+  display:flex;align-items:flex-start;gap:8px;
+  padding:5px 8px;border-radius:6px;margin:2px 0;
+  font-size:11px;font-family:monospace;color:#64748b;
+  transition:background .1s
+}
+.dep-row.clickable{cursor:pointer;color:#7c3aed}
+.dep-row.clickable:hover{background:#faf5ff}
+.dep-row.ext{color:#94a3b8}
+.dep-arrow{flex-shrink:0;font-style:normal;color:#cbd5e1;line-height:1.6}
+.dep-body{flex:1;overflow:hidden}
+.dep-file{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.5}
+.dep-syms{font-size:10px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.none-msg{font-size:11px;color:#cbd5e1;padding:4px 8px;font-style:italic}
+
+.mod-chip{
+  display:inline-flex;align-items:center;padding:3px 10px;border-radius:20px;
+  font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;margin-bottom:8px
+}
+
+/* ── SVG ─────────────────────────────────────────────────────────────────── */
 svg{cursor:grab}
 svg:active{cursor:grabbing}
-.col-divider{stroke:#151e2e;stroke-width:1;stroke-dasharray:3,10}
-.col-label{font-size:9px;fill:#1a2535;letter-spacing:2px;text-transform:uppercase;text-anchor:middle}
-.branch{stroke:#1e2e42;stroke-width:1.5;fill:none}
+.col-div{stroke:#e2e8f0;stroke-width:1;stroke-dasharray:5,10}
+.col-lbl{font-size:9px;fill:#cbd5e1;letter-spacing:2px;text-transform:uppercase;text-anchor:middle}
+.branch{stroke:#e2e8f0;stroke-width:1.5;fill:none}
 .file-node{cursor:pointer}
-.file-rect{rx:6;ry:6;stroke-width:1}
-.file-node:hover .file-rect{filter:brightness(1.5)}
-.file-node.dimmed{opacity:.07}
-.file-node.highlighted .file-rect{filter:drop-shadow(0 0 8px currentColor) brightness(1.6)}
-.file-name{font-size:10px;font-weight:600;pointer-events:none;text-anchor:middle}
-.file-meta{font-size:8px;pointer-events:none;text-anchor:middle;fill:#3a5070}
+.file-node.dimmed{opacity:.08}
+.file-rect{transition:filter .15s}
+.file-node:hover .file-rect{filter:drop-shadow(0 4px 12px rgba(0,0,0,.14))}
+.file-node.highlighted .file-rect{filter:drop-shadow(0 0 10px var(--nc)) brightness(1.04)}
+.file-label{font-size:10px;font-weight:600;pointer-events:none;text-anchor:middle;fill:#1e293b}
+.file-meta {font-size:9px; pointer-events:none;text-anchor:middle;fill:#94a3b8}
 .folder-node{cursor:pointer}
-.folder-rect{rx:8;ry:8;stroke-width:1.5}
-.folder-node:hover .folder-rect{filter:brightness(1.4)}
-.folder-name{font-size:11px;font-weight:700;pointer-events:none;text-anchor:middle;letter-spacing:1px;text-transform:uppercase}
-.folder-count{font-size:9px;pointer-events:none;text-anchor:middle}
+.folder-label{font-size:11px;font-weight:700;pointer-events:none;text-anchor:middle;letter-spacing:1px;text-transform:uppercase}
+.folder-sub  {font-size:9px; pointer-events:none;text-anchor:middle}
 .dep-link{fill:none;stroke-width:1.5;opacity:.7}
-.dep-direct{stroke:#4da3ff}
-.dep-mutual{stroke:#f0883e;stroke-width:2;opacity:.85}
-.dep-link.lit{opacity:1!important;stroke-width:2.5!important}
+.dep-direct{stroke:#3b82f6}
+.dep-mutual-a{stroke:#f59e0b;stroke-width:1.5;opacity:.75}
+.dep-mutual-b{stroke:#f59e0b;stroke-width:1.5;opacity:.75;stroke-dasharray:4,3}
+.dep-link.lit,.dep-mutual-a.lit,.dep-mutual-b.lit{opacity:1!important;stroke-width:2.5!important}
 </style>
 </head>
 <body>
 
 <div id="header">
-  <div><div id="logo">⬡ ARKHE</div><div id="logo-sub">ARCHITECTURE MAP</div></div>
+  <div>
+    <div id="logo">⬡ ARKHE</div>
+    <div id="logo-sub">Architecture Map</div>
+  </div>
   <input id="search" type="text" placeholder="Search files…"/>
   <div id="stats"></div>
 </div>
 
 <div id="legend">
-  <h3>Folders</h3>
+  <h3>Modules</h3>
   <div id="leg-folders"></div>
   <div class="leg-sep"></div>
   <h3>Dependencies</h3>
   <div class="leg-link">
-    <svg width="30" height="10">
-      <defs><marker id="ld1" markerWidth="5" markerHeight="5" refX="4" refY="2.5" orient="auto"><path d="M0,0L5,2.5L0,5" fill="#4da3ff"/></marker></defs>
-      <line x1="0" y1="5" x2="26" y2="5" stroke="#4da3ff" stroke-width="1.5" marker-end="url(#ld1)"/>
-    </svg>Direct import
+    <svg width="32" height="12">
+      <defs><marker id="ld1" markerWidth="5" markerHeight="5" refX="4" refY="2.5" orient="auto">
+        <path d="M0,0L5,2.5L0,5" fill="#3b82f6"/></marker></defs>
+      <line x1="2" y1="6" x2="27" y2="6" stroke="#3b82f6" stroke-width="1.5" marker-end="url(#ld1)"/>
+    </svg>
+    Import
   </div>
   <div class="leg-link">
-    <svg width="30" height="10">
+    <svg width="32" height="12">
       <defs>
-        <marker id="ld2" markerWidth="5" markerHeight="5" refX="4" refY="2.5" orient="auto"><path d="M0,0L5,2.5L0,5" fill="#f0883e"/></marker>
-        <marker id="ld2b" markerWidth="5" markerHeight="5" refX="1" refY="2.5" orient="auto-start-reverse"><path d="M0,0L5,2.5L0,5" fill="#f0883e"/></marker>
+        <marker id="ld2" markerWidth="5" markerHeight="5" refX="4" refY="2.5" orient="auto">
+          <path d="M0,0L5,2.5L0,5" fill="#f59e0b"/></marker>
       </defs>
-      <line x1="0" y1="5" x2="26" y2="5" stroke="#f0883e" stroke-width="2" marker-end="url(#ld2)" marker-start="url(#ld2b)"/>
-    </svg>Mutual
+      <line x1="2" y1="6" x2="27" y2="6" stroke="#f59e0b" stroke-width="2"
+            marker-end="url(#ld2)"/>
+    </svg>
+    Mutual
   </div>
 </div>
 
-<div id="info">
+<div id="info" style="display:none;flex-direction:column">
   <div class="i-head">
-    <div class="i-title" id="i-title">—</div>
+    <div style="min-width:0">
+      <div class="i-crumb" id="i-crumb"></div>
+      <div class="i-title" id="i-title">—</div>
+    </div>
     <div class="i-close" onclick="closeInfo()">✕</div>
   </div>
-  <div id="i-body"></div>
+  <div class="i-scroll" id="i-scroll"></div>
 </div>
 
 <div id="tooltip"></div>
@@ -127,186 +213,198 @@ svg:active{cursor:grabbing}
 const ALL_NODES = {{NODES_JSON}};
 const ALL_LINKS = {{LINKS_JSON}};
 
+// ── Setup ─────────────────────────────────────────────────────────────────────
 const W = window.innerWidth, H = window.innerHeight;
-const svg = d3.select("#graph").attr("width", W).attr("height", H);
+const svg  = d3.select("#graph").attr("width", W).attr("height", H);
 const defs = svg.append("defs");
 
-const mkM = (id, color) => {
-  defs.append("marker").attr("id",id).attr("viewBox","0 -4 10 8")
-    .attr("refX",9).attr("refY",0).attr("markerWidth",5).attr("markerHeight",5)
-    .attr("orient","auto").append("path").attr("d","M0,-4L10,0L0,4").attr("fill",color);
+const mkArrow = (id, color, rev) => {
+  defs.append("marker")
+    .attr("id", id).attr("viewBox","0 -4 10 8")
+    .attr("refX", rev ? 1 : 9).attr("refY", 0)
+    .attr("markerWidth", 5).attr("markerHeight", 5)
+    .attr("orient", rev ? "auto-start-reverse" : "auto")
+    .append("path").attr("d","M0,-4L10,0L0,4").attr("fill", color);
 };
-const mkMR = (id, color) => {
-  defs.append("marker").attr("id",id).attr("viewBox","0 -4 10 8")
-    .attr("refX",1).attr("refY",0).attr("markerWidth",5).attr("markerHeight",5)
-    .attr("orient","auto-start-reverse").append("path").attr("d","M0,-4L10,0L0,4").attr("fill",color);
-};
-mkM("m-direct","#4da3ff"); mkM("m-mutual","#f0883e"); mkMR("m-mutual-r","#f0883e");
+mkArrow("m-dir",   "#3b82f6", false);
+mkArrow("m-mut",   "#f59e0b", false);
+mkArrow("m-mut-r", "#f59e0b", true);
 
+// ── Color palette ─────────────────────────────────────────────────────────────
 const groups  = [...new Set(ALL_NODES.map(d => d.group))].sort();
-const palette = ["#4da3ff","#3fb950","#f0883e","#bc8cff","#ffa657","#56d364","#ff7b72","#79c0ff","#d2a8ff","#58a6ff"];
-const colorOf = d3.scaleOrdinal().domain(groups).range(palette);
+const PALETTE = [
+  "#3b82f6","#10b981","#f59e0b","#8b5cf6",
+  "#ef4444","#06b6d4","#ec4899","#6366f1","#14b8a6","#f97316"
+];
+const colorOf = d3.scaleOrdinal().domain(groups).range(PALETTE);
 
 document.getElementById("leg-folders").innerHTML = groups.map(g =>
   `<div class="leg-row"><div class="leg-dot" style="background:${colorOf(g)}"></div><span>${g}</span></div>`
 ).join("");
-document.getElementById("stats").textContent = `${ALL_NODES.length} FILES  ·  ${ALL_LINKS.length} EDGES`;
+document.getElementById("stats").textContent = `${ALL_NODES.length} files · ${ALL_LINKS.length} edges`;
 
-// ── Layout constants ────────────────────────────────────────────
+// ── Layout constants ──────────────────────────────────────────────────────────
 const COL0_X  = 80;
 const COL1_X  = 280;
-const COL2_X  = 520;
+const COL2_X  = 510;
 const TOP_PAD = 68;
-
-// Node dimensions
-const ROOT_W = 120, ROOT_H = 44;
-const FOLD_W = 170, FOLD_H = 48;
-const FILE_W = 160, FILE_H = 38;
+const ROOT_W  = 120,  ROOT_H = 44;
+const FOLD_W  = 170,  FOLD_H = 48;
+const FILE_W  = 168,  FILE_H = 44;
 const FILE_GAP = 10;
 const FOLD_GAP = 14;
+// Dependency routing lane — all arrows arc through this X to avoid overlapping nodes
+const LANE_X  = COL2_X + FILE_W + 68;
 
-// State
+// ── State ─────────────────────────────────────────────────────────────────────
 const folderState = {};
 groups.forEach(g => { folderState[g] = false; });
 
-const gMain = svg.append("g");
-svg.call(d3.zoom().scaleExtent([0.08,5]).on("zoom", e => gMain.attr("transform", e.transform)));
-
+const gMain     = svg.append("g");
 const gBranches = gMain.append("g");
 const gLinks    = gMain.append("g");
 const gNodes    = gMain.append("g");
 
-// ── Core layout computation ─────────────────────────────────────
+svg.call(d3.zoom().scaleExtent([0.05, 6]).on("zoom", e => gMain.attr("transform", e.transform)));
+
+// ── Layout helpers ────────────────────────────────────────────────────────────
 function folderHeight(g) {
   if (!folderState[g]) return FOLD_H;
-  const count = ALL_NODES.filter(n => n.group === g).length;
-  return Math.max(FOLD_H, count * (FILE_H + FILE_GAP) - FILE_GAP);
+  return Math.max(FOLD_H, ALL_NODES.filter(n => n.group === g).length * (FILE_H + FILE_GAP) - FILE_GAP);
 }
-
-function totalLayoutHeight() {
-  return groups.reduce((acc, g) => acc + folderHeight(g) + FOLD_GAP, -FOLD_GAP);
+function totalH() {
+  return groups.reduce((a, g) => a + folderHeight(g) + FOLD_GAP, -FOLD_GAP);
 }
-
-function folderCenterY(g) {
-  const totalH = totalLayoutHeight();
-  const startY = TOP_PAD + H/2 - totalH/2;
-  let y = startY;
+function folderCY(g) {
+  let y = TOP_PAD + H/2 - totalH()/2;
   for (const gr of groups) {
     const h = folderHeight(gr);
     if (gr === g) return y + h/2;
     y += h + FOLD_GAP;
   }
-  return y;
+}
+function bez(x1, y1, x2, y2) {
+  const mx = (x1+x2)/2;
+  return `M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`;
 }
 
-// ── Render ──────────────────────────────────────────────────────
+// ── Render tree ───────────────────────────────────────────────────────────────
 function render() {
   gBranches.selectAll("*").remove();
   gNodes.selectAll("*").remove();
+  const pos = {};
 
-  const positions = {};
-
-  const rootCY = H / 2;
+  // Root node
+  const rootCY = H/2;
   const rootX  = COL0_X, rootY = rootCY - ROOT_H/2;
-  positions["root"] = { cx: rootX + ROOT_W/2, cy: rootCY, w: ROOT_W, h: ROOT_H };
+  pos["root"] = { cx: rootX + ROOT_W/2, cy: rootCY, w: ROOT_W, h: ROOT_H };
 
-  const rootG = gNodes.append("g").attr("transform", `translate(${rootX},${rootY})`);
-  rootG.append("rect").attr("width",ROOT_W).attr("height",ROOT_H).attr("rx",10)
-    .attr("fill","#4da3ff").attr("fill-opacity",.12)
-    .attr("stroke","#4da3ff").attr("stroke-opacity",.5).attr("stroke-width",2);
-  rootG.append("text").attr("x",ROOT_W/2).attr("y",18).attr("text-anchor","middle")
-    .attr("font-size","12px").attr("font-weight","700").attr("fill","#4da3ff").attr("letter-spacing","2px").text("ARKHE");
-  rootG.append("text").attr("x",ROOT_W/2).attr("y",32).attr("text-anchor","middle")
-    .attr("font-size","9px").attr("fill","#2a3a50").text("project root");
+  const rg = gNodes.append("g").attr("transform", `translate(${rootX},${rootY})`);
+  rg.append("rect")
+    .attr("width", ROOT_W).attr("height", ROOT_H).attr("rx", 10)
+    .attr("fill","#eff6ff").attr("stroke","#bfdbfe").attr("stroke-width", 1.5)
+    .style("filter","drop-shadow(0 2px 6px rgba(59,130,246,.12))");
+  rg.append("text").attr("x",ROOT_W/2).attr("y",19).attr("text-anchor","middle")
+    .attr("font-size","11px").attr("font-weight","800").attr("fill","#3b82f6")
+    .attr("letter-spacing","2px").text("PROJECT");
+  rg.append("text").attr("x",ROOT_W/2).attr("y",32).attr("text-anchor","middle")
+    .attr("font-size","9px").attr("fill","#94a3b8").text("root");
 
+  // Folders + files
   groups.forEach(g => {
-    const cx   = colorOf(g);
-    const fcy  = folderCenterY(g);
-    const fy   = fcy - FOLD_H/2;
-    const fx   = COL1_X;
+    const color    = colorOf(g);
+    const fcy      = folderCY(g);
+    const fy       = fcy - FOLD_H/2;
+    const fx       = COL1_X;
     const expanded = folderState[g];
+    pos["f_"+g]    = { cx: fx + FOLD_W/2, cy: fcy, w: FOLD_W, h: FOLD_H };
 
-    positions["folder_"+g] = { cx: fx + FOLD_W/2, cy: fcy, w: FOLD_W, h: FOLD_H };
-
-    const rp = positions["root"];
+    // Branch: root → folder
     gBranches.append("path").attr("class","branch")
-      .attr("d", bezier(rp.cx + rp.w/2, rp.cy, fx, fcy));
+      .attr("d", bez(pos["root"].cx + ROOT_W/2, pos["root"].cy, fx, fcy));
 
+    // Folder card
     const fg = gNodes.append("g").attr("class","folder-node")
-      .attr("transform", `translate(${fx},${fy})`)
+      .attr("transform",`translate(${fx},${fy})`)
       .on("click", () => { folderState[g] = !folderState[g]; render(); drawLinks(); });
 
-    fg.append("rect").attr("class","folder-rect")
-      .attr("width",FOLD_W).attr("height",FOLD_H)
-      .attr("fill",cx).attr("fill-opacity",.1)
-      .attr("stroke",cx).attr("stroke-opacity",.45).attr("stroke-width",1.5);
-    fg.append("rect").attr("width",3).attr("height",FOLD_H)
-      .attr("fill",cx).attr("fill-opacity",.9).attr("rx",2);
-    fg.append("text").attr("class","folder-name")
-      .attr("x",FOLD_W/2).attr("y",20).attr("fill",cx).text(`/ ${g}`);
-    fg.append("text").attr("class","folder-count")
-      .attr("x",FOLD_W/2).attr("y",35).attr("fill",cx).attr("fill-opacity",.45)
+    fg.append("rect")
+      .attr("width",FOLD_W).attr("height",FOLD_H).attr("rx",10)
+      .attr("fill",color).attr("fill-opacity",.07)
+      .attr("stroke",color).attr("stroke-opacity",.3).attr("stroke-width",1.5)
+      .style("filter","drop-shadow(0 2px 8px rgba(0,0,0,.05))");
+    fg.append("rect")
+      .attr("width",4).attr("height",FOLD_H-4).attr("x",0).attr("y",2).attr("rx",2)
+      .attr("fill",color);
+    fg.append("text").attr("class","folder-label")
+      .attr("x",FOLD_W/2+3).attr("y",21).attr("fill",color).text(g);
+    fg.append("text").attr("class","folder-sub")
+      .attr("x",FOLD_W/2+3).attr("y",35).attr("fill",color).attr("fill-opacity",.45)
       .text(`${ALL_NODES.filter(n=>n.group===g).length} files  ${expanded?"▾":"▸"}`);
 
     if (expanded) {
-      const files   = ALL_NODES.filter(n => n.group === g);
+      const files  = ALL_NODES.filter(n => n.group === g);
       const totalFH = files.length * (FILE_H + FILE_GAP) - FILE_GAP;
       const startY  = fcy - totalFH/2;
 
       files.forEach((file, idx) => {
-        const fiy  = startY + idx * (FILE_H + FILE_GAP);
+        const fiy  = startY + idx*(FILE_H+FILE_GAP);
         const ficy = fiy + FILE_H/2;
         const fix  = COL2_X;
-        positions[file.id] = { cx: fix + FILE_W/2, cy: ficy, w: FILE_W, h: FILE_H };
+        pos[file.id] = { cx: fix + FILE_W/2, cy: ficy, w: FILE_W, h: FILE_H };
 
-        const fp = positions["folder_"+g];
+        // Branch: folder → file
         gBranches.append("path").attr("class","branch")
-          .attr("d", bezier(fp.cx + fp.w/2, fp.cy, fix, ficy));
+          .attr("d", bez(pos["f_"+g].cx + FOLD_W/2, fcy, fix, ficy));
+
+        const fnC  = (file.functions||[]).length;
+        const clsC = (file.classes||[]).length;
+        const meta = [fnC?`${fnC} fn`:"", clsC?`${clsC} class`:""].filter(Boolean).join("  ·  ") || "—";
 
         const ng = gNodes.append("g").attr("class","file-node")
           .attr("data-id", file.id)
-          .attr("transform", `translate(${fix},${fiy})`)
+          .attr("transform",`translate(${fix},${fiy})`)
+          .style("--nc", color)
           .on("click",     () => showInfo(file))
-          .on("mouseover", (e) => showTip(e,file))
+          .on("mouseover", (e) => showTip(e, file))
           .on("mousemove", moveTip)
           .on("mouseout",  hideTip);
 
         ng.append("rect").attr("class","file-rect")
-          .attr("width",FILE_W).attr("height",FILE_H)
-          .attr("fill",cx).attr("fill-opacity",.08)
-          .attr("stroke",cx).attr("stroke-opacity",.3).attr("stroke-width",1);
-        ng.append("rect").attr("width",2.5).attr("height",FILE_H)
-          .attr("fill",cx).attr("fill-opacity",.8).attr("rx",1);
-        ng.append("text").attr("class","file-name")
-          .attr("x",FILE_W/2).attr("y",15).attr("fill",cx)
-          .text(file.name.length > 20 ? file.name.slice(0,18)+"…" : file.name);
-
-        const fns = file.functions.length, cls = file.classes.length;
-        const meta = [fns?`${fns} fn`:"", cls?`${cls} cls`:""].filter(Boolean).join(" · ") || "—";
-        ng.append("text").attr("class","file-meta").attr("x",FILE_W/2).attr("y",28).text(meta);
+          .attr("width",FILE_W).attr("height",FILE_H).attr("rx",8)
+          .attr("fill","#ffffff")
+          .attr("stroke",color).attr("stroke-opacity",.2).attr("stroke-width",1)
+          .style("filter","drop-shadow(0 1px 4px rgba(0,0,0,.07))");
+        ng.append("rect")
+          .attr("width",3.5).attr("height",FILE_H-4).attr("x",0).attr("y",2).attr("rx",2)
+          .attr("fill",color);
+        ng.append("text").attr("class","file-label")
+          .attr("x",FILE_W/2+2).attr("y",18)
+          .text(file.name.length>22 ? file.name.slice(0,20)+"…" : file.name);
+        ng.append("text").attr("class","file-meta")
+          .attr("x",FILE_W/2+2).attr("y",32).text(meta);
       });
     }
   });
 
-  [[COL1_X - 18, "FOLDERS"],[COL2_X - 18, "FILES"]].forEach(([x, label]) => {
-    gBranches.append("line").attr("class","col-divider")
-      .attr("x1",x).attr("y1",TOP_PAD-20).attr("x2",x).attr("y2",TOP_PAD + totalLayoutHeight() + 60);
-    gBranches.append("text").attr("class","col-label")
-      .attr("x",x + 90).attr("y",TOP_PAD-26).text(label);
+  // Column guides
+  [[COL1_X-18,"Modules"],[COL2_X-18,"Files"]].forEach(([x,lbl]) => {
+    gBranches.append("line").attr("class","col-div")
+      .attr("x1",x).attr("y1",TOP_PAD-24).attr("x2",x).attr("y2",TOP_PAD+totalH()+60);
+    gBranches.append("text").attr("class","col-lbl")
+      .attr("x",x+90).attr("y",TOP_PAD-32).text(lbl);
   });
 
-  window._positions = positions;
+  window._pos = pos;
 }
 
-function bezier(x1, y1, x2, y2) {
-  const mx = (x1 + x2) / 2;
-  return `M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`;
-}
-
-// ── Dependency arrows ────────────────────────────────────────────
+// ── Dependency arrows — all routed through LANE_X bypass to the right ─────────
+// This keeps arrows out of the node column entirely.
+// Direct:  source-right-edge → LANE_X curve → target-right-edge (arrowhead enters from right)
+// Mutual:  two separate paths with 5px vertical offset, each with its own arrowhead
 function drawLinks() {
   gLinks.selectAll("*").remove();
-  const pos = window._positions;
+  const pos = window._pos;
   if (!pos) return;
 
   ALL_LINKS.forEach(link => {
@@ -316,91 +414,228 @@ function drawLinks() {
     if (!sp || !tp) return;
 
     const mutual = link.bidirectional;
-    const x1 = sp.cx + sp.w/2, y1 = sp.cy;
-    const x2 = tp.cx - tp.w/2, y2 = tp.cy;
-    const mx = (x1+x2)/2;
-    const curvature = (y2 - y1) * 0.4;
+    // Right edges of source and target nodes
+    const sx = sp.cx + sp.w/2, sy = sp.cy;
+    const tx = tp.cx + tp.w/2, ty = tp.cy;
 
-    gLinks.append("path")
-      .attr("class", `dep-link ${mutual?"dep-mutual":"dep-direct"}`)
-      .attr("data-src", sid).attr("data-tgt", tid)
-      .attr("d", `M${x1},${y1} C${mx},${y1-curvature} ${mx},${y2+curvature} ${x2},${y2}`)
-      .attr("marker-end",   mutual ? "url(#m-mutual)"   : "url(#m-direct)")
-      .attr("marker-start", mutual ? "url(#m-mutual-r)" : null);
+    if (mutual) {
+      // Forward path: offset -5px
+      gLinks.append("path")
+        .attr("class","dep-mutual-a")
+        .attr("data-src",sid).attr("data-tgt",tid)
+        .attr("d",`M${sx},${sy-5} C${LANE_X+10},${sy-5} ${LANE_X+10},${ty-5} ${tx},${ty-5}`)
+        .attr("marker-end","url(#m-mut)");
+      // Reverse path: offset +5px, dashed to distinguish
+      gLinks.append("path")
+        .attr("class","dep-mutual-b")
+        .attr("data-src",tid).attr("data-tgt",sid)
+        .attr("d",`M${tx},${ty+5} C${LANE_X+10},${ty+5} ${LANE_X+10},${sy+5} ${sx},${sy+5}`)
+        .attr("marker-end","url(#m-mut-r)");
+    } else {
+      gLinks.append("path")
+        .attr("class","dep-link dep-direct")
+        .attr("data-src",sid).attr("data-tgt",tid)
+        .attr("d",`M${sx},${sy} C${LANE_X},${sy} ${LANE_X},${ty} ${tx},${ty}`)
+        .attr("marker-end","url(#m-dir)");
+    }
   });
 }
 
+// ── Initial render + auto-fit ─────────────────────────────────────────────────
 render();
 drawLinks();
 
-const bbox = gMain.node().getBBox();
-if (bbox.width > 0) {
-  const scale = Math.min((W-40)/bbox.width, (H-80)/bbox.height, 1);
-  const tx = (W - bbox.width * scale) / 2 - bbox.x * scale;
-  const ty = (H - bbox.height * scale) / 2 - bbox.y * scale + 25;
+(function autoFit() {
+  const bb = gMain.node().getBBox();
+  if (!bb.width) return;
+  const scale = Math.min((W-40)/bb.width, (H-80)/bb.height, 1);
+  const tx = (W - bb.width*scale)/2 - bb.x*scale;
+  const ty = (H - bb.height*scale)/2 - bb.y*scale + 26;
   gMain.attr("transform", `translate(${tx},${ty}) scale(${scale})`);
-}
+})();
 
-// ── Tooltip ──────────────────────────────────────────────────────
+// ── Tooltip ───────────────────────────────────────────────────────────────────
 function showTip(e, d) {
   const t = document.getElementById("tooltip");
   t.style.display = "block";
-  t.innerHTML = `<div class="tt-name">${d.name}</div>
-    <div class="tt-row">Path: <span>${d.path}</span></div>
-    <div class="tt-row">Tokens: <span>${(d.tokens||0).toLocaleString()}</span></div>
-    <div class="tt-row">Functions: <span>${d.functions?.length}</span></div>
-    <div class="tt-row">Classes: <span>${d.classes?.length}</span></div>`;
+  t.innerHTML = `
+    <div class="tt-name">${h(d.name)}</div>
+    <div class="tt-row">Path: <span>${h(d.path)}</span></div>
+    <div class="tt-row">Tokens: <span>${(d.tokens||0).toLocaleString()}</span>
+      &nbsp;·&nbsp; Functions: <span>${(d.functions||[]).length}</span>
+      &nbsp;·&nbsp; Classes: <span>${(d.classes||[]).length}</span></div>`;
 }
 function moveTip(e) {
   const t = document.getElementById("tooltip");
-  t.style.left=(e.clientX+16)+"px"; t.style.top=(e.clientY+16)+"px";
+  t.style.left = (e.clientX+16)+"px"; t.style.top = (e.clientY+16)+"px";
 }
 function hideTip() { document.getElementById("tooltip").style.display="none"; }
 
-// ── Info panel ────────────────────────────────────────────────────
-function showInfo(d) {
-  document.getElementById("i-title").textContent = d.path;
-  const fns  = (d.functions||[]).slice(0,10).map(f=>`<span class="tag">${f}()</span>`).join("")||"—";
-  const cls  = (d.classes||[]).slice(0,6).map(c=>`<span class="tag">${c}</span>`).join("")||"—";
-  const imps = (d.imports||[]).slice(0,6).map(i=>`<span class="tag">${i.slice(0,34)}</span>`).join("")||"—";
-  const cx   = colorOf(d.group);
-  document.getElementById("i-body").innerHTML = `
-    <div class="i-block"><div class="i-label">Module</div>
-      <div class="i-val"><span class="mod-badge" style="background:${cx}22;color:${cx};border:1px solid ${cx}44">${d.group}</span></div></div>
-    <div class="i-block"><div class="i-label">Tokens</div><div class="i-val">${(d.tokens||0).toLocaleString()}</div></div>
-    <div class="i-block"><div class="i-label">Functions</div><div class="i-val">${fns}</div></div>
-    <div class="i-block"><div class="i-label">Classes</div><div class="i-val">${cls}</div></div>
-    <div class="i-block"><div class="i-label">Imports</div><div class="i-val">${imps}</div></div>`;
-  document.getElementById("info").style.display = "block";
+// ── Import parser ─────────────────────────────────────────────────────────────
+function parseImp(raw) {
+  let m = raw.match(/^from\s+([\w.]+)\s+import\s+(.+)$/);
+  if (m) return { mod: m[1], syms: m[2].split(",").map(s=>s.trim()).filter(Boolean) };
+  m = raw.match(/^import\s+([\w.]+)/);
+  if (m) return { mod: m[1], syms: [] };
+  return { mod: raw, syms: [] };
+}
 
+function resolveFile(mod) {
+  const base = mod.replace(/\./g, "/");
+  return ALL_NODES.find(n => n.path===base+".py" || n.path===base+"/__init__.py"
+    || n.path.endsWith("/"+base+".py") || n.path.endsWith("/"+base+"/__init__.py")) || null;
+}
+
+// ── Info panel ────────────────────────────────────────────────────────────────
+function showInfo(d) {
+  const color = colorOf(d.group);
+  const parts = d.path.split("/");
+  const fname = parts.pop();
+  document.getElementById("i-crumb").textContent = parts.join("/") + (parts.length ? "/" : "");
+  document.getElementById("i-title").textContent = fname;
+
+  // Reverse deps
+  const importedBy = ALL_NODES.filter(n => n.id!==d.id && ALL_LINKS.some(l => {
+    const s = l.source?.id??l.source, t = l.target?.id??l.target;
+    return (t===d.id&&s===n.id)||(l.bidirectional&&s===d.id&&t===n.id);
+  }));
+
+  // Parse imports
+  const parsed   = (d.imports||[]).map(raw => ({ raw, ...parseImp(raw), file: null }));
+  parsed.forEach(p => { p.file = resolveFile(p.mod); });
+  const localImp = parsed.filter(p => p.file);
+  const extImp   = parsed.filter(p => !p.file);
+
+  const fns = d.functions||[], cls = d.classes||[];
+
+  // Defines section
+  const fnRows = fns.length
+    ? fns.map(f=>`<div class="sym"><span class="sym-badge badge-fn">fn</span><span class="sym-name">${h(f)}()</span></div>`).join("")
+    : `<div class="none-msg">No functions defined</div>`;
+
+  const clsRows = cls.length
+    ? cls.map(c=>`<div class="sym"><span class="sym-badge badge-cls">class</span><span class="sym-name">${h(c)}</span></div>`).join("")
+    : `<div class="none-msg">No classes defined</div>`;
+
+  // Local imports (resolved to files in this repo)
+  const localRows = localImp.length
+    ? localImp.map(p=>`
+        <div class="dep-row clickable" onclick="focusNode(${p.file.id})">
+          <em class="dep-arrow">→</em>
+          <div class="dep-body">
+            <div class="dep-file">${h(p.file.path)}</div>
+            ${p.syms.length?`<div class="dep-syms">${h(p.syms.slice(0,4).join(", "))}${p.syms.length>4?` +${p.syms.length-4} more`:""}</div>`:""}
+          </div>
+        </div>`).join("")
+    : `<div class="none-msg">No local imports</div>`;
+
+  // External / stdlib imports
+  const extRows = extImp.length
+    ? extImp.map(p=>`
+        <div class="dep-row ext">
+          <em class="dep-arrow">→</em>
+          <div class="dep-body">
+            <div class="dep-file">${h(p.mod)}${p.syms.length?` · ${h(p.syms.slice(0,3).join(", "))}`:""}</div>
+          </div>
+        </div>`).join("")
+    : "";
+
+  // Imported by
+  const revRows = importedBy.length
+    ? importedBy.map(n=>`
+        <div class="dep-row clickable" onclick="focusNode(${n.id})">
+          <em class="dep-arrow">←</em>
+          <div class="dep-body"><div class="dep-file">${h(n.path)}</div></div>
+        </div>`).join("")
+    : `<div class="none-msg">No files import this module</div>`;
+
+  document.getElementById("i-scroll").innerHTML = `
+    <div class="i-stats">
+      <div class="i-stat"><div class="i-stat-n">${(d.tokens||0).toLocaleString()}</div><div class="i-stat-l">Tokens</div></div>
+      <div class="i-stat"><div class="i-stat-n">${fns.length}</div><div class="i-stat-l">Functions</div></div>
+      <div class="i-stat"><div class="i-stat-n">${cls.length}</div><div class="i-stat-l">Classes</div></div>
+    </div>
+
+    <div class="i-section">
+      <div class="i-label">Module</div>
+      <span class="mod-chip" style="background:${color}15;color:${color};border:1px solid ${color}30">${h(d.group)}</span>
+    </div>
+
+    <div class="i-section">
+      <div class="i-label">Defines — Functions</div>
+      ${fnRows}
+    </div>
+
+    <div class="i-section">
+      <div class="i-label">Defines — Classes</div>
+      ${clsRows}
+    </div>
+
+    <div class="i-section">
+      <div class="i-label">Imports — Local files (${localImp.length})</div>
+      ${localRows}
+    </div>
+
+    ${extRows ? `<div class="i-section">
+      <div class="i-label">Imports — External / stdlib</div>
+      ${extRows}
+    </div>` : ""}
+
+    <div class="i-section">
+      <div class="i-label">Imported by (${importedBy.length})</div>
+      ${revRows}
+    </div>`;
+
+  const panel = document.getElementById("info");
+  panel.style.display = "flex";
+
+  // Highlight connected nodes
   const conn = new Set([d.id]);
   ALL_LINKS.forEach(l => {
     const s = l.source?.id??l.source, t = l.target?.id??l.target;
-    if(s===d.id) conn.add(t); if(t===d.id) conn.add(s);
+    if (s===d.id) conn.add(t);
+    if (t===d.id) conn.add(s);
   });
   d3.selectAll(".file-node").classed("dimmed", function() {
     return !conn.has(+d3.select(this).attr("data-id"));
   });
-  gLinks.selectAll(".dep-link").classed("lit", function() {
+  gLinks.selectAll(".dep-link,.dep-mutual-a,.dep-mutual-b").classed("lit", function() {
     const s = +d3.select(this).attr("data-src"), t = +d3.select(this).attr("data-tgt");
-    return s===d.id||t===d.id;
+    return s===d.id || t===d.id;
   });
-}
-function closeInfo() {
-  document.getElementById("info").style.display="none";
-  d3.selectAll(".file-node").classed("dimmed",false);
-  gLinks.selectAll(".dep-link").classed("lit",false);
 }
 
-// ── Search ────────────────────────────────────────────────────────
+function focusNode(id) {
+  const node = ALL_NODES.find(n => n.id===id);
+  if (!node) return;
+  if (!folderState[node.group]) {
+    folderState[node.group] = true;
+    render();
+    drawLinks();
+  }
+  showInfo(node);
+}
+
+function closeInfo() {
+  document.getElementById("info").style.display = "none";
+  d3.selectAll(".file-node").classed("dimmed", false);
+  gLinks.selectAll(".dep-link,.dep-mutual-a,.dep-mutual-b").classed("lit", false);
+}
+
+// ── Search ────────────────────────────────────────────────────────────────────
 document.getElementById("search").addEventListener("input", function() {
   const q = this.value.toLowerCase();
-  if(!q) { d3.selectAll(".file-node").classed("dimmed",false); return; }
+  if (!q) { d3.selectAll(".file-node").classed("dimmed", false); return; }
   d3.selectAll(".file-node").classed("dimmed", function() {
-    const node = ALL_NODES.find(n => n.id===+d3.select(this).attr("data-id"));
-    return !node?.path.toLowerCase().includes(q);
+    const n = ALL_NODES.find(n => n.id===+d3.select(this).attr("data-id"));
+    return !n?.path.toLowerCase().includes(q);
   });
 });
+
+// ── HTML escape ───────────────────────────────────────────────────────────────
+function h(s){
+  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
 </script>
 </body>
 </html>
