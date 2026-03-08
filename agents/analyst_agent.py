@@ -1,7 +1,7 @@
 """
 Analyst agent — documents each file batch using the traversal model.
-Optimized for free tier limits: small batches, trimmed prompts, sequential
-processing with a brief pause between batches to avoid TPM bursts.
+Batches run concurrently up to MAX_CONCURRENT_BATCHES, bounded by a semaphore.
+TPM-aware batch sizing keeps each individual batch within free-tier limits.
 """
 import asyncio
 from config.llm_client import llm_call_async
@@ -25,6 +25,9 @@ DEFAULT_SAFE_TPM = 5000
 
 # Max content chars per file in prompt (controls token usage)
 MAX_FILE_CHARS = 800
+
+# Max batches running concurrently — keeps total TPM within free-tier budget
+MAX_CONCURRENT_BATCHES = 3
 
 
 def _safe_budget(model: str) -> int:
@@ -72,9 +75,10 @@ def _group_batches(files: list[dict], model: str) -> list[list[dict]]:
     return batches
 
 
-async def _analyze_batch(batch: list[dict], batch_id: int) -> dict:
-    prompt = _build_prompt(batch)
-    result = await llm_call_async("traversal", SYSTEM, prompt, max_tokens=1024)
+async def _analyze_batch(batch: list[dict], batch_id: int, sem: asyncio.Semaphore) -> dict:
+    async with sem:
+        prompt = _build_prompt(batch)
+        result = await llm_call_async("traversal", SYSTEM, prompt, max_tokens=1024)
     return {
         "batch_id": batch_id,
         "files":    [f["path"] for f in batch],
@@ -82,19 +86,18 @@ async def _analyze_batch(batch: list[dict], batch_id: int) -> dict:
     }
 
 
-async def analyze_sequential(files: list[dict]) -> list[dict]:
+async def analyze_parallel(files: list[dict]) -> list[dict]:
     from config.settings import get_model
     _, model = get_model("traversal")
 
     batches = _group_batches(files, model)
     print(f"  -> {len(batches)} batch(es) for model [{model}]  "
-          f"(safe budget: {_safe_budget(model):,} TPM)")
+          f"(safe budget: {_safe_budget(model):,} TPM, "
+          f"concurrency: {min(MAX_CONCURRENT_BATCHES, len(batches))})")
 
-    results = []
-    for i, batch in enumerate(batches):
-        result = await _analyze_batch(batch, i)
-        results.append(result)
-        if i < len(batches) - 1:
-            await asyncio.sleep(1.5)  # brief pause to avoid TPM burst on free tier
+    sem     = asyncio.Semaphore(MAX_CONCURRENT_BATCHES)
+    tasks   = [_analyze_batch(batch, i, sem) for i, batch in enumerate(batches)]
+    results = await asyncio.gather(*tasks)
 
-    return results
+    # Return in batch_id order (gather preserves task order, but be explicit)
+    return sorted(results, key=lambda r: r["batch_id"])
