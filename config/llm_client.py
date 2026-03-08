@@ -16,11 +16,37 @@ logger = logging.getLogger("arkhe.llm")
 MAX_RETRIES   = 3
 RETRY_BACKOFF = 2
 
+# Cached clients — instantiated once per provider, reused across all calls
+_clients: dict = {}
+
+
+def _get_groq_client(api_key: str):
+    if "groq" not in _clients:
+        from groq import Groq
+        _clients["groq"] = Groq(api_key=api_key)
+    return _clients["groq"]
+
+
+def _get_gemini_client(api_key: str):
+    if "gemini" not in _clients:
+        from google import genai
+        _clients["gemini"] = genai.Client(api_key=api_key)
+    return _clients["gemini"]
+
+
+def _get_anthropic_client(api_key: str):
+    if "anthropic" not in _clients:
+        import anthropic
+        _clients["anthropic"] = anthropic.Anthropic(api_key=api_key)
+    return _clients["anthropic"]
+
 
 def llm_call(role: str, system: str, user_prompt: str, max_tokens: int = 4096) -> str:
     provider, model = get_model(role)
     api_key         = get_api_key(provider)
     logger.debug(f"[{role}] provider={provider} model={model}")
+
+    retryable = _retryable_exceptions(provider)
 
     for attempt in range(1, MAX_RETRIES + 1):
         try:
@@ -32,7 +58,7 @@ def llm_call(role: str, system: str, user_prompt: str, max_tokens: int = 4096) -
                 return _call_anthropic(api_key, model, system, user_prompt, max_tokens)
             else:
                 raise ValueError(f"Unknown provider: '{provider}'. Valid: groq | gemini | anthropic")
-        except _retryable_exceptions(provider) as e:
+        except retryable as e:
             if attempt == MAX_RETRIES:
                 logger.error(f"[{role}] Failed after {MAX_RETRIES} attempts: {e}")
                 raise
@@ -45,7 +71,7 @@ def llm_call(role: str, system: str, user_prompt: str, max_tokens: int = 4096) -
 
 
 async def llm_call_async(role: str, system: str, user_prompt: str, max_tokens: int = 4096) -> str:
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     return await loop.run_in_executor(
         None,
         lambda: llm_call(role, system, user_prompt, max_tokens),
@@ -53,8 +79,7 @@ async def llm_call_async(role: str, system: str, user_prompt: str, max_tokens: i
 
 
 def _call_groq(api_key, model, system, prompt, max_tokens):
-    from groq import Groq
-    client   = Groq(api_key=api_key)
+    client   = _get_groq_client(api_key)
     response = client.chat.completions.create(
         model=model,
         max_tokens=max_tokens,
@@ -70,10 +95,8 @@ def _call_groq(api_key, model, system, prompt, max_tokens):
 
 
 def _call_gemini(api_key, model, system, prompt, max_tokens):
-    from google import genai
     from google.genai import types
-
-    client = genai.Client(api_key=api_key)
+    client   = _get_gemini_client(api_key)
     response = client.models.generate_content(
         model=model,
         contents=prompt,
@@ -99,8 +122,7 @@ def _call_gemini(api_key, model, system, prompt, max_tokens):
 
 
 def _call_anthropic(api_key, model, system, prompt, max_tokens):
-    import anthropic
-    client   = anthropic.Anthropic(api_key=api_key)
+    client   = _get_anthropic_client(api_key)
     response = client.messages.create(
         model=model,
         max_tokens=max_tokens,

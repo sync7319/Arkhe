@@ -16,36 +16,38 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
 # ── Provider selection per role ───────────────────────────────
 TRAVERSAL_PROVIDER = os.getenv("TRAVERSAL_PROVIDER", "groq")
-MAPPING_PROVIDER   = os.getenv("MAPPING_PROVIDER",   "gemini")
 REPORT_PROVIDER    = os.getenv("REPORT_PROVIDER",    "gemini")
 
 # ── Default models per provider ───────────────────────────────
 DEFAULT_MODELS = {
     "groq": {
         "traversal": "openai/gpt-oss-20b",
-        "mapping":   "openai/gpt-oss-120b",
         "report":    "llama-3.3-70b-versatile",
     },
     "gemini": {
         "traversal": "gemini-2.0-flash",
-        "mapping":   "gemini-2.0-flash",
         "report":    "gemini-2.0-flash",
     },
     "anthropic": {
         "traversal": "claude-haiku-4-5",
-        "mapping":   "claude-sonnet-4-5",
         "report":    "claude-sonnet-4-5",
     },
 }
 
+VALID_PROVIDERS = {"groq", "gemini", "anthropic"}
+VALID_ROLES     = {"traversal", "report"}
+
 
 def get_model(role: str) -> tuple:
+    if role not in VALID_ROLES:
+        raise ValueError(f"Unknown role: '{role}'. Valid: {VALID_ROLES}")
     provider_map = {
         "traversal": TRAVERSAL_PROVIDER,
-        "mapping":   MAPPING_PROVIDER,
         "report":    REPORT_PROVIDER,
     }
     provider = provider_map[role]
+    if provider not in VALID_PROVIDERS:
+        raise ValueError(f"Unknown provider: '{provider}'. Valid: {VALID_PROVIDERS}")
     env_override_key = f"{role.upper()}_MODEL"
     model = os.getenv(env_override_key) or DEFAULT_MODELS[provider][role]
     return provider, model
@@ -68,7 +70,6 @@ def get_api_key(provider: str) -> str:
 
 # ── Scanner settings ──────────────────────────────────────────
 OUTPUT_DIR           = os.getenv("OUTPUT_DIR", "docs")
-MAX_TOKENS_PER_BATCH = 500_000
 MAX_FILE_SIZE_BYTES  = 1_000_000
 MAX_FILE_TOKENS      = 50_000
 

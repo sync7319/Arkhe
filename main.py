@@ -9,7 +9,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from scripts.scan_codebase    import scan
 from agents.parser_agent      import parse_modules
-from agents.analyst_agent     import analyze_parallel
+from agents.analyst_agent     import analyze_sequential
 from agents.synthesizer_agent import synthesize
 from agents.visualizer_agent  import visualize
 from output.map_writer        import write_map
@@ -31,11 +31,11 @@ async def run(repo_path: str):
         p.update(t, description=f"[green]Parsed {len(modules)} modules[/green]", completed=True)
 
         t = p.add_task("Analyzing with AI subagents...", total=None)
-        reports = await analyze_parallel(modules)
+        reports = await analyze_sequential(modules)
         p.update(t, description=f"[green]{len(reports)} agent report(s) complete[/green]", completed=True)
 
         t = p.add_task("Synthesizing final map...", total=None)
-        codebase_map = synthesize(reports, files)
+        codebase_map = await synthesize(reports, files)
         p.update(t, description="[green]Map synthesized[/green]", completed=True)
 
         t = p.add_task("Generating dependency visualization...", total=None)
@@ -48,8 +48,8 @@ async def run(repo_path: str):
 
     console.rule()
     console.print(f"[bold green]Arkhe complete.[/bold green]")
-    console.print(f"  📄 Codebase map  → [cyan]{map_path}[/cyan]")
-    console.print(f"  🗺️  Dependency map → [cyan]{viz_path}[/cyan]")
+    console.print(f"  Codebase map  -> [cyan]{map_path}[/cyan]")
+    console.print(f"  Dependency map -> [cyan]{viz_path}[/cyan]")
 
 
 if __name__ == "__main__":
