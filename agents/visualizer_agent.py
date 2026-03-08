@@ -5,16 +5,90 @@ Graph data is injected at render time via {{NODES_JSON}} / {{LINKS_JSON}} placeh
 """
 import json
 import os
+import re
 
+
+# ── Import resolution ────────────────────────────────────────────────────────
+
+def _extract_module(imp_str: str) -> str | None:
+    """
+    Parse a Python import statement and return the dotted module name.
+
+      from config.llm_client import llm_call_async  ->  "config.llm_client"
+      from .utils import helper                      ->  ".utils"
+      from ..agents import parser                    ->  "..agents"
+      import asyncio                                 ->  "asyncio"
+      import os.path                                 ->  "os.path"
+    """
+    # from X import Y [as Z]
+    m = re.match(r"^from\s+(\.+(?:\w+(?:\.\w+)*)?|\w+(?:\.\w+)*)\s+import", imp_str)
+    if m:
+        return m.group(1)
+    # import X [as Y] [, ...]
+    m = re.match(r"^import\s+(\w+(?:\.\w+)*)", imp_str)
+    if m:
+        return m.group(1)
+    return None
+
+
+def _resolve_relative(module: str, src_path: str) -> str | None:
+    """
+    Resolve a relative import to an absolute dotted module path.
+
+      module=".utils",    src="agents/analyst.py"  ->  "agents.utils"
+      module="..config",  src="agents/analyst.py"  ->  "config"
+      module=".",         src="agents/analyst.py"  ->  "agents"
+    """
+    dots  = len(module) - len(module.lstrip("."))
+    rest  = module[dots:]
+    parts = src_path.replace("\\", "/").split("/")[:-1]  # package components
+
+    for _ in range(dots - 1):
+        if not parts:
+            return None
+        parts.pop()
+
+    if rest:
+        return (".".join(parts) + "." + rest) if parts else rest
+    return ".".join(parts) if parts else None
+
+
+def _module_to_path(module: str, known_paths: set) -> str | None:
+    """
+    Convert a dotted module name to a repo-relative file path.
+    Tries <module>.py first, then <module>/__init__.py (package import).
+    Returns None if the module doesn't map to any known file (stdlib, third-party).
+    """
+    base = module.replace(".", "/")
+    for candidate in (base + ".py", base + "/__init__.py"):
+        if candidate in known_paths:
+            return candidate
+    return None
+
+
+def _resolve_import(imp_str: str, src_path: str, known_paths: set) -> str | None:
+    """Full pipeline: parse → resolve relative → map to path."""
+    module = _extract_module(imp_str)
+    if not module:
+        return None
+    if module.startswith("."):
+        module = _resolve_relative(module, src_path)
+    if not module:
+        return None
+    return _module_to_path(module, known_paths)
+
+
+# ── Graph builder ────────────────────────────────────────────────────────────
 
 def build_graph(modules: list[dict]) -> dict:
-    path_to_id = {}
+    path_to_id: dict[str, int] = {}
     nodes = []
+
     for i, module in enumerate(modules):
         path = module["path"].replace("\\", "/")
         path_to_id[path] = i
-        parts = path.split("/")
-        group = parts[0] if len(parts) > 1 else "root"
+        parts     = path.split("/")
+        group     = parts[0] if len(parts) > 1 else "root"
         structure = module.get("structure", {})
         nodes.append({
             "id":        i,
@@ -28,25 +102,28 @@ def build_graph(modules: list[dict]) -> dict:
             "imports":   structure.get("imports", []),
         })
 
-    raw_links = {}
+    known_paths = set(path_to_id.keys())
+    raw_links: dict[tuple, dict] = {}
+
     for module in modules:
         src_path = module["path"].replace("\\", "/")
         src_id   = path_to_id.get(src_path)
         if src_id is None:
             continue
+
         for imp in module.get("structure", {}).get("imports", []):
-            for target_path, target_id in path_to_id.items():
-                if target_id == src_id:
-                    continue
-                target_mod = target_path.replace("/", ".").replace(".py", "")
-                imp_clean  = imp.replace("from ", "").replace("import ", "").split(" ")[0].strip()
-                if imp_clean and (imp_clean in target_mod or target_mod.endswith(imp_clean)):
-                    key = (min(src_id, target_id), max(src_id, target_id))
-                    if key in raw_links:
-                        raw_links[key]["bidirectional"] = True
-                    else:
-                        raw_links[key] = {"source": src_id, "target": target_id, "bidirectional": False}
-                    break
+            target_path = _resolve_import(imp, src_path, known_paths)
+            if target_path is None:
+                continue
+            target_id = path_to_id.get(target_path)
+            if target_id is None or target_id == src_id:
+                continue
+
+            key = (min(src_id, target_id), max(src_id, target_id))
+            if key in raw_links:
+                raw_links[key]["bidirectional"] = True
+            else:
+                raw_links[key] = {"source": src_id, "target": target_id, "bidirectional": False}
 
     links = [
         {"source": m["source"], "target": m["target"], "bidirectional": m["bidirectional"]}
@@ -55,6 +132,8 @@ def build_graph(modules: list[dict]) -> dict:
 
     return {"nodes": nodes, "links": links}
 
+
+# ── HTML generation ──────────────────────────────────────────────────────────
 
 def generate_html(graph: dict) -> str:
     template_path = os.path.join(
