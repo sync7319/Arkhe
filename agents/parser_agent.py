@@ -29,19 +29,30 @@ def _get_parser(ext: str):
         return None
 
 
-def _walk(node, collected: dict):
-    if node.type == "function_definition":
-        name_node = node.child_by_field_name("name")
-        if name_node:
-            collected["functions"].append(name_node.text.decode())
-    elif node.type == "class_definition":
-        name_node = node.child_by_field_name("name")
-        if name_node:
-            collected["classes"].append(name_node.text.decode())
-    elif node.type in ("import_statement", "import_from_statement"):
-        collected["imports"].append(node.text.decode().strip())
-    for child in node.children:
-        _walk(child, collected)
+def _walk(root_node) -> dict:
+    """
+    Iterative tree walk — avoids Python recursion limit on deep ASTs.
+    """
+    collected = {"functions": [], "classes": [], "imports": []}
+    stack = [root_node]
+
+    while stack:
+        node = stack.pop()
+
+        if node.type == "function_definition":
+            name_node = node.child_by_field_name("name")
+            if name_node:
+                collected["functions"].append(name_node.text.decode())
+        elif node.type == "class_definition":
+            name_node = node.child_by_field_name("name")
+            if name_node:
+                collected["classes"].append(name_node.text.decode())
+        elif node.type in ("import_statement", "import_from_statement"):
+            collected["imports"].append(node.text.decode().strip())
+
+        stack.extend(reversed(node.children))
+
+    return collected
 
 
 def parse_file(file: dict) -> dict:
@@ -50,7 +61,7 @@ def parse_file(file: dict) -> dict:
     if parser:
         try:
             tree = parser.parse(bytes(file["content"], "utf-8"))
-            _walk(tree.root_node, structure)
+            structure = _walk(tree.root_node)
         except Exception:
             pass
     return {**file, "structure": structure}

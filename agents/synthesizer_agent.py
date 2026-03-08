@@ -1,8 +1,8 @@
 """
-Master Writer agent — synthesizes all subagent reports into CODEBASE_MAP.md.
+Synthesizer agent — combines all batch reports into CODEBASE_MAP.md.
 Provider + model controlled entirely from .env via llm_client.
 """
-from config.llm_client import llm_call
+from config.llm_client import llm_call_async
 
 SYSTEM = """You are a senior software architect. You have received analysis reports
 from multiple agents, each covering a different module of the same codebase.
@@ -22,7 +22,7 @@ Synthesize them into a single, comprehensive CODEBASE_MAP.md with these sections
 Be thorough but scannable. Use tables where appropriate."""
 
 
-def synthesize(reports: list[dict], file_tree: list[dict]) -> str:
+async def synthesize(reports: list[dict], file_tree: list[dict]) -> str:
     combined = "\n\n---\n\n".join(
         f"## Batch {r['batch_id']} — Files: {', '.join(r['files'])}\n\n{r['analysis']}"
         for r in reports
@@ -34,4 +34,4 @@ def synthesize(reports: list[dict], file_tree: list[dict]) -> str:
         f"Full file list ({len(file_tree)} files):\n{file_list}\n\n"
         f"Agent reports:\n\n{combined}"
     )
-    return llm_call("report", SYSTEM, prompt, max_tokens=8192)
+    return await llm_call_async("report", SYSTEM, prompt, max_tokens=8192)
