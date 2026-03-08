@@ -12,7 +12,9 @@ from agents.parser_agent      import parse_modules
 from agents.analyst_agent     import analyze_parallel
 from agents.synthesizer_agent import synthesize
 from agents.visualizer_agent  import build_graph, visualize, write_visualizer
+from agents.report_agent      import generate_report
 from output.map_writer        import write_map, write_json_map
+from output.report_writer     import write_report
 from cache.pipeline_cache     import compute_fingerprint, load_stage, save_stage
 
 console = Console()
@@ -83,10 +85,22 @@ async def run(repo_path: str, fmt: str):
             map_path = write_map(codebase_map, repo_path)
             p.update(t, description=f"[green]Written to {map_path}[/green]", completed=True)
 
+            t = p.add_task("Generating executive report...", total=None)
+            report_text, rp, rm = await generate_report(
+                codebase_map, files, reports, graph, repo_path
+            )
+            report_path = write_report(report_text, repo_path)
+            p.update(
+                t,
+                description=f"[green]Report written ({rp}/{rm})[/green]",
+                completed=True,
+            )
+
             console.rule()
             console.print(f"[bold green]Arkhe complete.[/bold green]")
-            console.print(f"  Codebase map   -> [cyan]{map_path}[/cyan]")
-            console.print(f"  Dependency map -> [cyan]{viz_path}[/cyan]")
+            console.print(f"  Codebase map     -> [cyan]{map_path}[/cyan]")
+            console.print(f"  Dependency map   -> [cyan]{viz_path}[/cyan]")
+            console.print(f"  Executive report -> [cyan]{report_path}[/cyan]")
 
 
 if __name__ == "__main__":

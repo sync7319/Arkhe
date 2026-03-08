@@ -237,6 +237,37 @@ async def _call_anthropic_async(api_key, model, system, prompt, max_tokens):
     return content
 
 
+async def llm_call_async_explicit(
+    provider: str, model: str, system: str, user_prompt: str, max_tokens: int = 4096
+) -> str:
+    """Like llm_call_async but accepts an explicit provider+model (used for complexity-based selection)."""
+    api_key   = get_api_key(provider)
+    logger.debug(f"[explicit] provider={provider} model={model}")
+
+    retryable = _retryable_exceptions(provider)
+
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            if provider == "groq":
+                return await _call_groq_async(api_key, model, system, user_prompt, max_tokens)
+            elif provider == "gemini":
+                return await _call_gemini_async(api_key, model, system, user_prompt, max_tokens)
+            elif provider == "anthropic":
+                return await _call_anthropic_async(api_key, model, system, user_prompt, max_tokens)
+            else:
+                raise ValueError(f"Unknown provider: '{provider}'. Valid: groq | gemini | anthropic")
+        except retryable as e:
+            if attempt == MAX_RETRIES:
+                logger.error(f"[explicit] Failed after {MAX_RETRIES} attempts: {e}")
+                raise
+            wait = RETRY_BACKOFF * attempt
+            logger.warning(f"[explicit] Attempt {attempt} failed ({e}). Retrying in {wait}s...")
+            await asyncio.sleep(wait)
+        except Exception as e:
+            logger.error(f"[explicit] Non-retryable error: {e}")
+            raise
+
+
 # ── Retry helpers ────────────────────────────────────────────────────────────
 
 def _retryable_exceptions(provider: str):
