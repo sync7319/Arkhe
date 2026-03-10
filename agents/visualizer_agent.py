@@ -80,6 +80,22 @@ def _resolve_import(imp_str: str, src_path: str, known_paths: set) -> str | None
 
 # ── Graph builder ────────────────────────────────────────────────────────────
 
+def _complexity_score(module: dict) -> int:
+    """
+    Heuristic complexity score for a file.
+    Higher = more complex / higher risk. Used for the heatmap overlay.
+      tokens      — raw size
+      imports×10  — coupling (each dependency adds risk)
+      functions×5 — responsibility (more functions = harder to reason about)
+    """
+    structure = module.get("structure", {})
+    return (
+        module.get("tokens", 0)
+        + len(structure.get("imports",   [])) * 10
+        + len(structure.get("functions", [])) * 5
+    )
+
+
 def build_graph(modules: list[dict]) -> dict:
     path_to_id: dict[str, int] = {}
     nodes = []
@@ -91,15 +107,16 @@ def build_graph(modules: list[dict]) -> dict:
         group     = parts[0] if len(parts) > 1 else "root"
         structure = module.get("structure", {})
         nodes.append({
-            "id":        i,
-            "path":      path,
-            "name":      parts[-1],
-            "group":     group,
-            "depth":     len(parts) - 1,
-            "tokens":    module.get("tokens", 0),
-            "functions": structure.get("functions", []),
-            "classes":   structure.get("classes", []),
-            "imports":   structure.get("imports", []),
+            "id":         i,
+            "path":       path,
+            "name":       parts[-1],
+            "group":      group,
+            "depth":      len(parts) - 1,
+            "tokens":     module.get("tokens", 0),
+            "functions":  structure.get("functions", []),
+            "classes":    structure.get("classes", []),
+            "imports":    structure.get("imports", []),
+            "complexity": _complexity_score(module),
         })
 
     known_paths = set(path_to_id.keys())
@@ -135,7 +152,43 @@ def build_graph(modules: list[dict]) -> dict:
 
 # ── HTML generation ──────────────────────────────────────────────────────────
 
-def generate_html(graph: dict) -> str:
+_HEATMAP_SCRIPT = """
+<script>
+(function(){
+  const nodes = ALL_NODES;
+  if (!nodes.length) return;
+  const maxC = Math.max(...nodes.map(n => n.complexity || 0), 1);
+  // Green (safe) → Yellow → Red (complex) using HSL
+  function heatColor(score) {
+    const t   = Math.min(score / maxC, 1);        // 0 = simple, 1 = complex
+    const hue = Math.round((1 - t) * 120);        // 120 = green, 0 = red
+    return `hsl(${hue},70%,52%)`;
+  }
+  // Re-color every file-rect using its node's complexity score
+  document.querySelectorAll('.file-node').forEach(el => {
+    const d = el.__data__;
+    if (d && d.complexity != null) {
+      const rect = el.querySelector('.file-rect');
+      if (rect) rect.setAttribute('fill', heatColor(d.complexity));
+    }
+  });
+  // Patch the legend to show heatmap key instead of folder colors
+  const leg = document.getElementById('leg-folders');
+  if (leg) {
+    leg.innerHTML = [
+      ['Low complexity',    'hsl(120,70%,52%)'],
+      ['Medium complexity', 'hsl(60,70%,52%)'],
+      ['High complexity',   'hsl(0,70%,52%)'],
+    ].map(([label, color]) =>
+      `<div class="leg-row"><div class="leg-dot" style="background:${color}"></div><span>${label}</span></div>`
+    ).join('');
+  }
+})();
+</script>
+"""
+
+
+def generate_html(graph: dict, heatmap: bool = False) -> str:
     template_path = os.path.join(
         os.path.dirname(os.path.dirname(__file__)),
         "templates", "dependency_map.html"
@@ -143,15 +196,20 @@ def generate_html(graph: dict) -> str:
     with open(template_path, encoding="utf-8") as f:
         template = f.read()
 
-    return (
+    html = (
         template
         .replace("{{NODES_JSON}}", json.dumps(graph["nodes"], indent=2))
         .replace("{{LINKS_JSON}}", json.dumps(graph["links"], indent=2))
     )
 
+    if heatmap:
+        html = html.replace("</body>", _HEATMAP_SCRIPT + "\n</body>")
 
-def write_visualizer(graph: dict, repo_path: str) -> str:
-    html    = generate_html(graph)
+    return html
+
+
+def write_visualizer(graph: dict, repo_path: str, heatmap: bool = False) -> str:
+    html    = generate_html(graph, heatmap=heatmap)
     out_dir = os.path.join(repo_path, "docs")
     os.makedirs(out_dir, exist_ok=True)
     out_path = os.path.join(out_dir, "DEPENDENCY_MAP.html")

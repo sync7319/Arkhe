@@ -7,12 +7,25 @@ Never touch agent code to swap models.
 import os
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv()                        # .env — API keys + provider selection
+load_dotenv("options.env", override=False)  # options.env — feature checklist
 
 # ── API Keys ──────────────────────────────────────────────────
 GROQ_API_KEY      = os.getenv("GROQ_API_KEY", "")
 GEMINI_API_KEY    = os.getenv("GEMINI_API_KEY", "")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+
+# ── Feature flags (from options.env) ──────────────────────────
+CODEBASE_MAP_ENABLED        = os.getenv("CODEBASE_MAP_ENABLED",        "true").lower()  == "true"
+DEPENDENCY_MAP_ENABLED      = os.getenv("DEPENDENCY_MAP_ENABLED",      "true").lower()  == "true"
+EXECUTIVE_REPORT_ENABLED    = os.getenv("EXECUTIVE_REPORT_ENABLED",    "true").lower()  == "true"
+PR_ANALYSIS_ENABLED         = os.getenv("PR_ANALYSIS_ENABLED",         "false").lower() == "true"
+PR_BASE_BRANCH              = os.getenv("PR_BASE_BRANCH",              "main")
+SECURITY_AUDIT_ENABLED      = os.getenv("SECURITY_AUDIT_ENABLED",      "false").lower() == "true"
+DEAD_CODE_DETECTION_ENABLED = os.getenv("DEAD_CODE_DETECTION_ENABLED", "false").lower() == "true"
+TEST_GAP_ANALYSIS_ENABLED   = os.getenv("TEST_GAP_ANALYSIS_ENABLED",   "false").lower() == "true"
+TEST_SCAFFOLDING_ENABLED    = os.getenv("TEST_SCAFFOLDING_ENABLED",    "false").lower() == "true"
+COMPLEXITY_HEATMAP_ENABLED  = os.getenv("COMPLEXITY_HEATMAP_ENABLED",  "false").lower() == "true"
 
 # ── Cost gate ─────────────────────────────────────────────────
 # false (default) → all roles use cheap models — safe for testing / free-tier runs
@@ -23,7 +36,10 @@ REFACTOR_ENABLED         = os.getenv("REFACTOR_ENABLED",         "false").lower(
 REFACTOR_SPEED           = os.getenv("REFACTOR_SPEED",           "thorough")  # thorough | fast
 
 # Token count at which a repo is considered "large" (affects Opus vs Sonnet for executive report)
-COMPLEXITY_THRESHOLD_TOKENS = int(os.getenv("COMPLEXITY_THRESHOLD_TOKENS", "50000"))
+try:
+    COMPLEXITY_THRESHOLD_TOKENS = int(os.getenv("COMPLEXITY_THRESHOLD_TOKENS", "50000"))
+except (ValueError, TypeError):
+    COMPLEXITY_THRESHOLD_TOKENS = 50000
 
 # ── Provider selection per role ───────────────────────────────
 TRAVERSAL_PROVIDER = os.getenv("TRAVERSAL_PROVIDER", "groq")
@@ -127,4 +143,5 @@ IGNORE_EXTENSIONS = {
     ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico",
     ".woff", ".woff2", ".ttf", ".eot", ".mp4", ".mp3",
     ".zip", ".tar", ".gz", ".lock", ".bin", ".exe", ".pyc",
+    ".docx", ".xlsx", ".pdf", ".env",
 }

@@ -207,7 +207,10 @@ async def _refactor_one(module: dict, sem: asyncio.Semaphore) -> tuple[str, str 
 
 async def _refactor_all_thorough(modules: list[dict]) -> dict[str, str]:
     provider, _ = get_model("refactor")
-    concurrency = int(os.getenv("REFACTOR_CONCURRENCY", str(THOROUGH_CONCURRENCY.get(provider, 1))))
+    try:
+        concurrency = int(os.getenv("REFACTOR_CONCURRENCY", str(THOROUGH_CONCURRENCY.get(provider, 1))))
+    except (ValueError, TypeError):
+        concurrency = THOROUGH_CONCURRENCY.get(provider, 1)
     sem   = asyncio.Semaphore(concurrency)
     tasks = [_refactor_one(m, sem) for m in _eligible(modules)]
     return _collect(await asyncio.gather(*tasks, return_exceptions=True))
@@ -304,7 +307,10 @@ async def _refactor_batch(batch: list[dict], sem: asyncio.Semaphore) -> dict[str
 
 async def _refactor_all_fast(modules: list[dict]) -> dict[str, str]:
     provider, _ = get_model("refactor")
-    concurrency = int(os.getenv("REFACTOR_CONCURRENCY", str(FAST_CONCURRENCY.get(provider, 2))))
+    try:
+        concurrency = int(os.getenv("REFACTOR_CONCURRENCY", str(FAST_CONCURRENCY.get(provider, 2))))
+    except (ValueError, TypeError):
+        concurrency = FAST_CONCURRENCY.get(provider, 2)
     batch_limit = BATCH_MAX_TOKENS.get(provider, 2000)
     sem         = asyncio.Semaphore(concurrency)
 

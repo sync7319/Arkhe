@@ -5,7 +5,10 @@ Falls back gracefully for unsupported file types.
 Supported languages: Python, JavaScript, TypeScript, Go, Rust, Java, Ruby.
 Extend _LANG_NODE_TYPES and _get_parser() to add new languages.
 """
+import logging
 from tree_sitter import Language, Parser
+
+logger = logging.getLogger("arkhe.parser")
 
 _PARSERS: dict = {}
 
@@ -141,16 +144,27 @@ def _walk(root_node, ext: str) -> dict:
 
 
 def parse_file(file: dict) -> dict:
-    ext    = file["ext"]
-    parser = _get_parser(ext)
+    from cache.db import get_db
+    db           = get_db()
+    content_hash = db.content_hash(file["content"])
+
+    cached = db.get_file(file["path"], content_hash)
+    if cached and cached["structure"] is not None:
+        logger.debug(f"[parse] cache hit: {file['path']}")
+        return {**file, "content_hash": content_hash, "structure": cached["structure"]}
+
+    ext       = file["ext"]
+    parser    = _get_parser(ext)
     structure = {"functions": [], "classes": [], "imports": []}
     if parser:
         try:
             tree      = parser.parse(bytes(file["content"], "utf-8"))
             structure = _walk(tree.root_node, ext)
-        except Exception:
-            pass
-    return {**file, "structure": structure}
+        except Exception as e:
+            logger.warning(f"[parse] AST parse failed for {file['path']}: {e}")
+
+    db.save_structure(file["path"], content_hash, file["tokens"], structure)
+    return {**file, "content_hash": content_hash, "structure": structure}
 
 
 def parse_modules(files: list[dict]) -> list[dict]:

@@ -291,30 +291,32 @@ async def _dispatch_async(provider, model, api_key, system, prompt, max_tokens):
 
 # ── Exception helpers ─────────────────────────────────────────────────────────
 
-def _rate_limit_exceptions(provider: str):
-    """Quota/rate-limit errors → trigger model fallback to next in chain."""
+def _rate_limit_exceptions(provider: str) -> tuple:
+    """Quota/rate-limit errors → trigger model fallback to next in chain.
+    Returns empty tuple on import failure — unknown exceptions are never silently
+    treated as rate limits, which would mask bugs and retry API key errors."""
     if provider == "groq":
         try:
             from groq import RateLimitError
             return (RateLimitError,)
         except ImportError:
-            pass
+            logger.error("groq package not importable — rate-limit detection disabled")
     elif provider == "gemini":
         try:
-            from google.api_core.exceptions import ResourceExhausted
-            return (ResourceExhausted,)
+            from google.genai.errors import ClientError
+            return (ClientError,)
         except ImportError:
-            pass
+            logger.error("google-genai not importable — rate-limit detection disabled")
     elif provider == "anthropic":
         try:
             from anthropic import RateLimitError
             return (RateLimitError,)
         except ImportError:
-            pass
-    return (Exception,)
+            logger.error("anthropic package not importable — rate-limit detection disabled")
+    return ()
 
 
-def _transient_exceptions(provider: str):
+def _transient_exceptions(provider: str) -> tuple:
     """Connection/timeout errors → retry same model."""
     if provider == "groq":
         try:
@@ -324,8 +326,8 @@ def _transient_exceptions(provider: str):
             pass
     elif provider == "gemini":
         try:
-            from google.api_core.exceptions import ServiceUnavailable, DeadlineExceeded
-            return (ServiceUnavailable, DeadlineExceeded)
+            from google.genai.errors import ServerError
+            return (ServerError,)
         except ImportError:
             pass
     elif provider == "anthropic":
