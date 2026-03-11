@@ -31,3 +31,18 @@ jobs:
 
       - name: Run tests
         run: uv run pytest tests/ -v --tb=short
+
+  mirror:
+    name: Mirror to GitLab
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Push to GitLab
+        run: |
+          git remote add gitlab https://nshreeyut1:${{ secrets.GITLAB_TOKEN }}@gitlab.com/nshreeyut1/Arkhe.git
+          git push gitlab --mirror
