@@ -104,10 +104,33 @@ main  ← stable releases only
 **Stage 2 — CLI Product: COMPLETE**
 
 See `ROADMAP.md` for the full 6-stage plan. Full cost breakdown is in there too.
-The first unavoidable cost is ~$7/mo at Stage 3 (always-on webhook server).
+Stage 3 hosting is Google Cloud Run (free tier covers demo traffic — chosen to qualify for the "Most Impactful on GitLab & Google" $10,000 hackathon category prize, on top of the Anthropic prize already covered by the existing Anthropic provider integration).
 Everything through Stage 2 is genuinely $0.
 
-## Known limitations
+## GitLab Duo Agent Platform Hackathon — Rules Summary
+
+- **Deadline:** March 25, 2026 at 2:00 PM ET
+- **Judging:** March 30 – April 17, 2026. Winners announced ~April 22.
+- **Requirement:** Must be a working AI agent/flow built on the GitLab Duo Agent Platform that helps with the SDLC. Must perform a specific action or workflow automation (not just chat).
+- **Must run on** the GitLab Duo Agent Platform and be published in `gitlab.com/gitlab-ai-hackathon` group.
+- **Existing projects allowed** if significantly updated during the submission period — judges expect explanation of what changed.
+- **Demo video:** <3 min, must clearly show a trigger → action, must be public on YouTube/Vimeo.
+- **Live demo URL required** — judges must be able to access and test the project free of charge through the judging period.
+- **License:** MIT License required for all original work. YAML config files must be original.
+- **Judging criteria (equally weighted):** Technological implementation, Design (ease of use), Potential Impact, Quality of Idea.
+
+### Prize strategy
+| Prize | Amount | Requirement |
+|---|---|---|
+| Grand Prize | $15,000 | Best overall |
+| Most Impactful on GitLab & Google | $10,000 | Uses GitLab + Google Cloud |
+| Most Impactful on GitLab & Anthropic | $10,000 | Uses GitLab + Anthropic |
+
+- A project can win **one Grand Prize + one Category Prize** maximum.
+- Arkhe qualifies for **both** category prizes: Google Cloud Run (hosting decision) + Anthropic (already integrated as a provider).
+- Being eligible for two category prizes doubles the chance of winning one.
+
+## Known limitations 
 
 - Dead code / test gap detection uses simple regex name matching — dynamic dispatch and `__all__` exports cause false positives.
 
@@ -117,7 +140,7 @@ Everything through Stage 2 is genuinely $0.
 
 ### 2026-03-10 (session — Shreeyut)
 - **Stage 2 completed in full:**
-
+123
 - **CI/CD:**
   - `.github/workflows/ci.yml` — GitHub Actions: installs uv, runs `uv sync --dev`, runs `pytest tests/ -v` on every push/PR to `dev` and `main`
   - `.gitlab-ci.yml` — GitLab CI: identical pipeline, required for GitLab Hackathon eligibility
@@ -170,6 +193,39 @@ Everything through Stage 2 is genuinely $0.
 
 - **`config/model_router.py` — cooldowns now persisted to DB** (via `cache/db.py`)
 - **`main.py` — pipeline expanded** to orchestrate all new agents in correct order; `--format json` exit preserved; rich progress spinner for every step
+
+### 2026-03-11 (session — Shreeyut)
+- **GitLab Duo Agent Platform Hackathon — registration in progress:**
+  - Deadline: March 25, 2026 at 2:00 PM ET (~14 days away)
+  - Both Shreeyut (nshreeyut) and Om (sync7319) have created Devpost accounts and joined as a team
+  - Both have submitted the GitLab access request form (https://forms.gle/EeCH2WWUewK3eGmVA) — awaiting response
+  - Access to `gitlab.com/gitlab-ai-hackathon` group is pending — repo must be published there for submission
+  - GitLab Duo Agent Platform docs not yet obtained — needed for `.gitlab/duo/flows/arkhe.yaml` YAML schema
+
+- **Files created:**
+  - `LICENSE` — MIT license, 2026, Shreeyut Neupane and Om Arvadia
+  - `AGENTS.md` — GitLab Duo agent context file: what Arkhe produces, triggers, pipeline, providers, feature toggles, key files
+
+- **Hackathon integration plan (pending platform docs):**
+  - All existing agents and pipeline logic are unchanged — they are complete
+  - Only an integration layer needs to be added:
+    1. `.gitlab/duo/flows/arkhe.yaml` — registers Arkhe as a GitLab Duo external agent (blocked on schema docs)
+    2. Update `.gitlab-ci.yml` — add agent-triggered job (blocked on CI variable names from docs)
+  - `AGENTS.md` is already written and ready
+  - `LICENSE` is already written and ready
+  - Target prizes: "Most Impactful on GitLab & Anthropic" ($10,000) + "Most Impactful on GitLab & Google" ($10,000) + Grand Prize ($15,000)
+  - Hosting on Google Cloud Run qualifies for the Google category prize; Anthropic provider already in codebase qualifies for the Anthropic category prize
+  - A project can win one Grand Prize + one Category Prize — eligible for two category prizes doubles the chances
+
+- **Next steps (in order):**
+  1. Wait for GitLab hackathon group access confirmation
+  2. Get GitLab Duo Agent Platform docs from the group
+  3. Fork/import repo into `gitlab.com/gitlab-ai-hackathon`
+  4. Write `.gitlab/duo/flows/arkhe.yaml` using the official schema
+  5. Update `.gitlab-ci.yml` with the agent-triggered job
+  6. Push `LICENSE` + `AGENTS.md` to GitHub (auto-mirrors to GitLab)
+  7. Record demo video (<3 min): trigger → analysis runs → output produced
+  8. Submit on Devpost before March 25
 
 ### 2026-03-09 (session 2)
 - **Dependency map visual overhaul:**

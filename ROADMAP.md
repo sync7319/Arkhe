@@ -85,9 +85,9 @@ Publish `arkhe-action` to GitHub Marketplace for 3-line YAML integration.
 ```
 User pastes GitHub or GitLab URL
         ↓
-FastAPI → detect platform → Redis/ARQ job queue
+FastAPI (Google Cloud Run) → detect platform → Cloud Tasks job queue
         ↓
-Worker: git clone → main.run() → upload docs/ to R2 → cleanup
+Worker: git clone → main.run() → upload docs/ to GCS → cleanup
         ↓
 User gets shareable results link
 
@@ -95,17 +95,21 @@ GitHub webhook  ┐
 GitLab webhook  ┘→ same worker pool → post PR/MR comment
 ```
 
+**Hosting: Google Cloud Run** — chosen for hackathon eligibility (qualifies for "Most Impactful on GitLab & Google" $10,000 category prize on top of the Anthropic prize already covered by the existing Anthropic provider integration).
+
 **Tasks:**
 
 *Core infrastructure (platform-agnostic):*
 - [ ] `scripts/clone_repo.py` — clone from GitHub or GitLab URL to temp dir, clean up after
 - [ ] FastAPI server — accept URL, detect platform, enqueue job, return results link
-- [ ] Redis + ARQ job queue
+- [ ] Google Cloud Tasks job queue (replaces Redis/ARQ)
 - [ ] Per-request API key injection — server keys passed at runtime, not from `.env`
 - [ ] Rate limiting + abuse protection — per-IP and per-user limits by tier
-- [ ] Cloudflare R2 output storage — upload `docs/`, serve via URL
+- [ ] Google Cloud Storage (GCS) output storage — upload `docs/`, serve via URL
 - [ ] Landing page — hero, demo, install command, works for both platforms
 - [ ] Analytics — Plausible or Umami
+- [ ] `Dockerfile` — containerize FastAPI app for Cloud Run deployment
+- [ ] Warm-up endpoint — keep Cloud Run instance warm to avoid cold starts during demos
 
 *GitHub:*
 - [ ] GitHub App — webhook receiver, PR comment poster
@@ -120,8 +124,9 @@ GitLab webhook  ┘→ same worker pool → post PR/MR comment
 ### Cost
 | Item | Cost |
 |------|------|
-| Fly.io (always-on server) | $7–14/mo |
-| Cloudflare R2 | Free up to 10GB |
+| Google Cloud Run | Free tier: 2M requests/mo, ~$0 for demo traffic |
+| Google Cloud Storage | Free tier: 5GB |
+| Google Cloud Tasks | Free tier: 1M tasks/mo |
 | GitHub App, Marketplace | Free |
 | GitLab webhooks, CI templates | Free |
 | Sentry error tracking | Free tier |
