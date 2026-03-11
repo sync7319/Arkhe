@@ -1,0 +1,20 @@
+image: python:3.11-slim
+
+stages:
+  - test
+
+variables:
+  UV_VERSION: "latest"
+
+before_script:
+  - pip install uv --quiet
+  - uv sync --dev
+
+test:
+  stage: test
+  script:
+    - uv run pytest tests/ -v --tb=short
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == "dev"'
+    - if: '$CI_COMMIT_BRANCH == "main"'

@@ -27,6 +27,7 @@ from output.report_writer     import write_report
 from output.clone_writer      import write_clone
 from cache.db                 import init_db
 from config.model_router      import restore_from_db
+from commands.diff            import save_snapshot
 
 console = Console()
 
@@ -203,8 +204,33 @@ async def run(repo_path: str, fmt: str, refactor: bool = False):
     if impact_path:
         console.print(f"  PR impact report  -> [cyan]{impact_path}[/cyan]")
 
+    # ── Save snapshot for `arkhe diff` ────────────────────────────────────────
+    save_snapshot(graph, files, repo_path)
 
-if __name__ == "__main__":
+
+def cli():
+    """Entry point for `arkhe` CLI command (installed via pip)."""
+    _main()
+
+
+def _main():
+    import sys
+
+    # ── Subcommand dispatch ───────────────────────────────────────────────────
+    if len(sys.argv) > 1 and sys.argv[1] in ("diff", "watch"):
+        subcmd = sys.argv[1]
+        sub_args = sys.argv[2:]
+        repo = sub_args[0] if sub_args else "."
+
+        if subcmd == "diff":
+            from commands.diff import run_diff
+            run_diff(repo)
+        elif subcmd == "watch":
+            from commands.watch import run_watch
+            run_watch(repo)
+        return
+
+    # ── Default: analyze ──────────────────────────────────────────────────────
     parser = argparse.ArgumentParser(
         prog="arkhe",
         description="Autonomous codebase intelligence — AI-generated maps and dependency graphs.",
@@ -233,3 +259,7 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
     asyncio.run(run(args.repo, args.fmt, args.refactor))
+
+
+if __name__ == "__main__":
+    _main()

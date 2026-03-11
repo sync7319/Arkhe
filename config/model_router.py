@@ -49,6 +49,13 @@ CHAINS: dict[str, list[str]] = {
         "claude-sonnet-4-6",       # balanced
         "claude-haiku-4-5",        # fastest / cheapest
     ],
+    "openai": [
+        "o3",                      # most capable reasoning
+        "gpt-4.5-preview",         # largest GPT
+        "gpt-4o",                  # flagship multimodal
+        "gpt-4o-mini",             # fast + cheap
+        "o1-mini",                 # lightweight reasoning
+    ],
 }
 
 # ── In-memory cooldown state (populated from DB on startup) ──────────────────

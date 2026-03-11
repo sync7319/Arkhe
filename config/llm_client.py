@@ -56,6 +56,20 @@ def _get_anthropic_async_client(api_key: str):
     return _async_clients["anthropic_async"]
 
 
+def _get_openai_client(api_key: str):
+    if "openai" not in _clients:
+        from openai import OpenAI
+        _clients["openai"] = OpenAI(api_key=api_key)
+    return _clients["openai"]
+
+
+def _get_openai_async_client(api_key: str):
+    if "openai_async" not in _async_clients:
+        from openai import AsyncOpenAI
+        _async_clients["openai_async"] = AsyncOpenAI(api_key=api_key)
+    return _async_clients["openai_async"]
+
+
 def llm_call(role: str, system: str, user_prompt: str, max_tokens: int = 4096) -> str:
     provider, model = get_model(role)
     api_key         = get_api_key(provider)
@@ -71,8 +85,10 @@ def llm_call(role: str, system: str, user_prompt: str, max_tokens: int = 4096) -
                 return _call_gemini(api_key, model, system, user_prompt, max_tokens)
             elif provider == "anthropic":
                 return _call_anthropic(api_key, model, system, user_prompt, max_tokens)
+            elif provider == "openai":
+                return _call_openai(api_key, model, system, user_prompt, max_tokens)
             else:
-                raise ValueError(f"Unknown provider: '{provider}'. Valid: groq | gemini | anthropic")
+                raise ValueError(f"Unknown provider: '{provider}'. Valid: groq | gemini | anthropic | openai")
         except retryable as e:
             if attempt == MAX_RETRIES:
                 logger.error(f"[{role}] Failed after {MAX_RETRIES} attempts: {e}")
@@ -86,7 +102,15 @@ def llm_call(role: str, system: str, user_prompt: str, max_tokens: int = 4096) -
 
 
 async def llm_call_async(role: str, system: str, user_prompt: str, max_tokens: int = 4096) -> str:
+    from config.settings import get_user_chain
     from config.model_router import get_chain, is_cooling, mark_cooling
+
+    user_chain = get_user_chain()
+    if user_chain:
+        # BYOK mode — user defined their own (provider, model, api_key) priority list
+        return await _call_user_chain(user_chain, system, user_prompt, max_tokens, role)
+
+    # Server / default mode — Arkhe manages model selection via hardcoded chains
     provider, preferred = get_model(role)
     api_key             = get_api_key(provider)
     chain               = get_chain(provider, preferred)
@@ -118,6 +142,46 @@ async def llm_call_async(role: str, system: str, user_prompt: str, max_tokens: i
                 raise
 
     raise RuntimeError(f"[{role}] All models for '{provider}' are rate-limited or failed")
+
+
+async def _call_user_chain(
+    chain: list[tuple[str, str, str]],
+    system: str,
+    user_prompt: str,
+    max_tokens: int,
+    role: str,
+) -> str:
+    """BYOK mode — iterate user-defined (provider, model, api_key) list with cooldown fallback."""
+    from config.model_router import is_cooling, mark_cooling
+
+    for provider, model, api_key in chain:
+        if is_cooling(model):
+            logger.debug(f"[{role}] {model} cooling — skipping")
+            continue
+        logger.debug(f"[{role}] user-chain: provider={provider} model={model}")
+
+        rate_limit_exc = _rate_limit_exceptions(provider)
+        transient_exc  = _transient_exceptions(provider)
+
+        for attempt in range(1, MAX_RETRIES + 1):
+            try:
+                return await _dispatch_async(provider, model, api_key, system, user_prompt, max_tokens)
+            except rate_limit_exc:
+                mark_cooling(model)
+                logger.warning(f"[{role}] Rate limit on {model} — trying next in ARKHE_CHAIN")
+                break
+            except transient_exc as e:
+                if attempt == MAX_RETRIES:
+                    logger.warning(f"[{role}] {model} failed after {MAX_RETRIES} transient errors — trying next")
+                    break
+                wait = RETRY_BACKOFF * attempt
+                logger.warning(f"[{role}] Transient error attempt {attempt}: {e}. Retrying in {wait}s...")
+                await asyncio.sleep(wait)
+            except Exception as e:
+                logger.error(f"[{role}] Non-retryable error on {model}: {e}")
+                raise
+
+    raise RuntimeError(f"[{role}] All models in ARKHE_CHAIN are rate-limited or failed")
 
 
 # ── Sync call implementations ────────────────────────────────────────────────
@@ -181,6 +245,24 @@ def _call_anthropic(api_key, model, system, prompt, max_tokens):
     return content
 
 
+def _call_openai(api_key, model, system, prompt, max_tokens):
+    client   = _get_openai_client(api_key)
+    response = client.chat.completions.create(
+        model=model,
+        max_tokens=max_tokens,
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user",   "content": prompt},
+        ],
+    )
+    if response.choices[0].finish_reason not in ("stop", "length"):
+        raise ValueError(f"OpenAI finish reason: {response.choices[0].finish_reason}")
+    content = response.choices[0].message.content
+    if not content or not content.strip():
+        raise ValueError("OpenAI returned empty content.")
+    return content
+
+
 # ── Async call implementations ───────────────────────────────────────────────
 
 async def _call_groq_async(api_key, model, system, prompt, max_tokens):
@@ -225,6 +307,24 @@ async def _call_gemini_async(api_key, model, system, prompt, max_tokens):
     if not text or not text.strip():
         raise ValueError("Gemini returned empty text.")
     return text
+
+
+async def _call_openai_async(api_key, model, system, prompt, max_tokens):
+    client   = _get_openai_async_client(api_key)
+    response = await client.chat.completions.create(
+        model=model,
+        max_tokens=max_tokens,
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user",   "content": prompt},
+        ],
+    )
+    if response.choices[0].finish_reason not in ("stop", "length"):
+        raise ValueError(f"OpenAI finish reason: {response.choices[0].finish_reason}")
+    content = response.choices[0].message.content
+    if not content or not content.strip():
+        raise ValueError("OpenAI returned empty content.")
+    return content
 
 
 async def _call_anthropic_async(api_key, model, system, prompt, max_tokens):
@@ -286,7 +386,9 @@ async def _dispatch_async(provider, model, api_key, system, prompt, max_tokens):
         return await _call_gemini_async(api_key, model, system, prompt, max_tokens)
     elif provider == "anthropic":
         return await _call_anthropic_async(api_key, model, system, prompt, max_tokens)
-    raise ValueError(f"Unknown provider: '{provider}'. Valid: groq | gemini | anthropic")
+    elif provider == "openai":
+        return await _call_openai_async(api_key, model, system, prompt, max_tokens)
+    raise ValueError(f"Unknown provider: '{provider}'. Valid: groq | gemini | anthropic | openai")
 
 
 # ── Exception helpers ─────────────────────────────────────────────────────────
@@ -313,6 +415,12 @@ def _rate_limit_exceptions(provider: str) -> tuple:
             return (RateLimitError,)
         except ImportError:
             logger.error("anthropic package not importable — rate-limit detection disabled")
+    elif provider == "openai":
+        try:
+            from openai import RateLimitError
+            return (RateLimitError,)
+        except ImportError:
+            logger.error("openai package not importable — rate-limit detection disabled")
     return ()
 
 
@@ -333,6 +441,12 @@ def _transient_exceptions(provider: str) -> tuple:
     elif provider == "anthropic":
         try:
             from anthropic import APIConnectionError, APITimeoutError
+            return (APIConnectionError, APITimeoutError)
+        except ImportError:
+            pass
+    elif provider == "openai":
+        try:
+            from openai import APIConnectionError, APITimeoutError
             return (APIConnectionError, APITimeoutError)
         except ImportError:
             pass

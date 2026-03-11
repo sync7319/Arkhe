@@ -14,11 +14,12 @@ load_dotenv("options.env", override=False)  # options.env — feature checklist
 GROQ_API_KEY      = os.getenv("GROQ_API_KEY", "")
 GEMINI_API_KEY    = os.getenv("GEMINI_API_KEY", "")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+OPENAI_API_KEY    = os.getenv("OPENAI_API_KEY", "")
 
 # ── Feature flags (from options.env) ──────────────────────────
 CODEBASE_MAP_ENABLED        = os.getenv("CODEBASE_MAP_ENABLED",        "true").lower()  == "true"
 DEPENDENCY_MAP_ENABLED      = os.getenv("DEPENDENCY_MAP_ENABLED",      "true").lower()  == "true"
-EXECUTIVE_REPORT_ENABLED    = os.getenv("EXECUTIVE_REPORT_ENABLED",    "true").lower()  == "true"
+EXECUTIVE_REPORT_ENABLED    = os.getenv("EXECUTIVE_REPORT_ENABLED",    "false").lower() == "true"
 PR_ANALYSIS_ENABLED         = os.getenv("PR_ANALYSIS_ENABLED",         "false").lower() == "true"
 PR_BASE_BRANCH              = os.getenv("PR_BASE_BRANCH",              "main")
 SECURITY_AUDIT_ENABLED      = os.getenv("SECURITY_AUDIT_ENABLED",      "false").lower() == "true"
@@ -71,7 +72,7 @@ EXECUTIVE_MODELS = {
     "gemini":    {"large": "gemini-2.0-flash",         "small": "gemini-2.0-flash"},
 }
 
-VALID_PROVIDERS = {"groq", "gemini", "anthropic"}
+VALID_PROVIDERS = {"groq", "gemini", "anthropic", "openai"}
 VALID_ROLES     = {"traversal", "report", "refactor"}
 
 
@@ -115,11 +116,53 @@ def get_executive_model(total_tokens: int) -> tuple[str, str]:
     return provider, EXECUTIVE_MODELS[provider][size]
 
 
+_user_chain_cache: "list[tuple[str, str, str]] | None | bool" = False  # False = unparsed
+
+
+def get_user_chain() -> "list[tuple[str, str, str]] | None":
+    """
+    BYOK fallback chain — user-defined priority list of (provider, model, api_key).
+
+    Set ARKHE_CHAIN in .env:
+        ARKHE_CHAIN=groq:moonshotai/kimi-k2-instruct:gsk_xxx,gemini:gemini-2.5-pro:AIza_yyy
+
+    Each entry is  provider:model:api_key  separated by commas.
+    When set, ALL roles use this chain — Arkhe's hardcoded chains are ignored.
+    When not set (default / server mode), Arkhe manages model selection itself.
+
+    Returns a list of (provider, model, api_key) tuples, or None if not configured.
+    """
+    global _user_chain_cache
+    if _user_chain_cache is not False:
+        return _user_chain_cache  # type: ignore[return-value]
+
+    raw = os.getenv("ARKHE_CHAIN", "").strip()
+    if not raw:
+        _user_chain_cache = None
+        return None
+
+    entries: list[tuple[str, str, str]] = []
+    for part in raw.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        pieces = part.split(":", 2)
+        if len(pieces) != 3:
+            continue
+        provider, model, key = (p.strip() for p in pieces)
+        if provider in VALID_PROVIDERS and model and key:
+            entries.append((provider, model, key))
+
+    _user_chain_cache = entries if entries else None
+    return _user_chain_cache
+
+
 def get_api_key(provider: str) -> str:
     keys = {
         "groq":      GROQ_API_KEY,
         "gemini":    GEMINI_API_KEY,
         "anthropic": ANTHROPIC_API_KEY,
+        "openai":    OPENAI_API_KEY,
     }
     key = keys.get(provider, "")
     if not key:

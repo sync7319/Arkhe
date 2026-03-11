@@ -2,9 +2,15 @@
 
 ## What this project is
 
-Arkhe is an autonomous codebase intelligence tool. Point it at any repository and it produces two outputs:
+Arkhe is an autonomous codebase intelligence tool. Point it at any repository and it produces:
 - `docs/CODEBASE_MAP.md` — AI-generated narrative documentation (architecture, data flows, module guide, gotchas)
 - `docs/DEPENDENCY_MAP.html` — interactive D3.js visualization of files and their dependencies
+- `docs/EXECUTIVE_REPORT.docx` — Word report for stakeholders (optional)
+- `docs/SECURITY_REPORT.md` — OWASP Top 10 vulnerability scan (optional)
+- `docs/DEAD_CODE_REPORT.md` — static dead symbol detection (optional)
+- `docs/TEST_GAP_REPORT.md` — uncovered public function report (optional)
+- `docs/PR_IMPACT.md` — blast radius of changed files vs base branch (optional)
+- `tests_generated/` — pytest scaffold files for uncovered functions (optional)
 
 **Run it:** `uv run python main.py [repo_path]`
 **Self-test:** `uv run python main.py .` (Arkhe maps itself)
@@ -34,30 +40,43 @@ scan → parse → analyze → synthesize → visualize → write
 
 ## LLM system
 
-- **Providers:** Groq, Gemini, Anthropic — swappable per role via `.env`, never in code
-- **Roles:** `traversal` (file analysis batches), `report` (final synthesis)
+- **Providers:** Groq, Gemini, Anthropic, OpenAI — swappable per role via `.env`, never in code
+- **BYOK chain:** `ARKHE_CHAIN=provider:model:key,...` in `.env` — user-defined priority list, overrides all role-based routing
+- **Roles:** `traversal` (file analysis batches), `report` (final synthesis), `refactor`, `executive`
 - **Client:** `config/llm_client.py` — unified wrapper, clients cached as singletons, retry with backoff
-- **Config:** `config/settings.py` — provider selection, model defaults, file filters
-- **Free tiers:** Groq and Gemini both have free tiers. Anthropic does not.
+- **Config:** `config/settings.py` — provider selection, model defaults, file filters, `get_user_chain()`
+- **Free tiers:** Groq and Gemini both have free tiers. Anthropic and OpenAI do not.
 
 ## Key files
 
 ```
-main.py                          — entry point, async pipeline orchestration
-config/settings.py               — all config: providers, models, ignore rules
-config/llm_client.py             — unified LLM wrapper (groq/gemini/anthropic)
+main.py                          — entry point, async pipeline orchestration + subcommand dispatch
+options.env                      — feature toggles (what runs); read by settings.py
+config/settings.py               — all config: providers, models, ignore rules, BYOK chain parsing
+config/llm_client.py             — unified LLM wrapper (groq/gemini/anthropic/openai)
+config/model_router.py           — model priority chains + cooldown fallback; persists to DB
 agents/analyst_agent.py          — TPM-aware batch analysis (sequential, free-tier safe)
 agents/synthesizer_agent.py      — final map synthesis
-agents/parser_agent.py           — tree-sitter AST extraction (py/js/ts)
-agents/visualizer_agent.py       — D3 graph builder, loads template
+agents/parser_agent.py           — tree-sitter AST extraction (py/js/ts/go/rust/java/ruby)
+agents/visualizer_agent.py       — D3 graph builder, loads template, complexity heatmap
 agents/report_agent.py           — executive report generator (complexity-based model selection)
 agents/refactor_agent.py         — per-file doc+style pass, thorough/fast modes, batching
+agents/security_agent.py         — OWASP Top 10 LLM scan, concurrent batches (traversal model)
+agents/dead_code_agent.py        — static dead symbol detection, zero LLM cost
+agents/test_gap_agent.py         — test coverage gap analysis + pytest scaffold generation
+agents/impact_agent.py           — PR blast radius: git diff → reverse dep walk → LLM summary
 templates/dependency_map.html    — D3.js visualization template ({{NODES_JSON}}, {{LINKS_JSON}})
-scripts/scan_codebase.py         — file scanner with gitignore support
+scripts/scan_codebase.py         — file scanner with gitignore support, Windows path normalization
 output/map_writer.py             — writes CODEBASE_MAP.md to docs/
 output/report_writer.py          — writes EXECUTIVE_REPORT.docx to docs/
 output/clone_writer.py           — mirrors repo to <repo>_refactored/ with improved files
-config/model_router.py           — model priority chains + 10-min cooldown fallback system
+cache/db.py                      — SQLite-backed per-file cache (ArkheDB); stores AST + analysis keyed by content hash
+commands/diff.py                 — `arkhe diff`: scan+parse current state vs SNAPSHOT.json, show file/dep changes
+commands/watch.py                — `arkhe watch`: watchdog-based live reload, 3s debounce, re-runs full pipeline
+tests/test_settings.py           — unit tests for BYOK chain parsing and model selection logic
+tests/test_model_router.py       — unit tests for cooldown tracking and chain navigation
+.github/workflows/ci.yml         — GitHub Actions CI: runs pytest on every push/PR to dev and main
+.gitlab-ci.yml                   — GitLab CI: same tests, runs on MRs and dev/main pushes
 Deeper format/                   — nested test directories for self-test validation
 ```
 
@@ -82,23 +101,75 @@ main  ← stable releases only
 
 ## Current stage and what's done
 
-**Stage 0 — Foundation: COMPLETE**
+**Stage 2 — CLI Product: COMPLETE**
 
-See `ROADMAP.md` for the full 5-stage plan. Full cost breakdown is in there too.
+See `ROADMAP.md` for the full 6-stage plan. Full cost breakdown is in there too.
 The first unavoidable cost is ~$7/mo at Stage 3 (always-on webhook server).
 Everything through Stage 2 is genuinely $0.
 
-## Known limitations (next to fix in Stage 1)
+## Known limitations
 
-- `llm_call_async` still uses `run_in_executor` (thread pool) — not true async. Native async clients exist for all providers.
-- Dependency graph matching in `visualizer_agent.py` is naive string matching — false positives, misses relative imports.
-- No caching of intermediate results — pipeline failure means full restart.
-- `analyze_sequential` processes batches one at a time — parallelism with a semaphore is possible.
-- Only Python/JS/TS supported — Go, Rust, Java are Stage 1 additions.
+- Dead code / test gap detection uses simple regex name matching — dynamic dispatch and `__all__` exports cause false positives.
 
 ---
 
 ## Progress Log
+
+### 2026-03-10 (session — Shreeyut)
+- **Stage 2 completed in full:**
+
+- **CI/CD:**
+  - `.github/workflows/ci.yml` — GitHub Actions: installs uv, runs `uv sync --dev`, runs `pytest tests/ -v` on every push/PR to `dev` and `main`
+  - `.gitlab-ci.yml` — GitLab CI: identical pipeline, required for GitLab Hackathon eligibility
+  - Both are machine-agnostic — fresh environment built from `uv.lock` each run, no local venv or API keys needed
+
+- **Unit tests (`tests/`):**
+  - `tests/test_settings.py` — 14 tests covering `get_user_chain()` parsing (valid chains, malformed entries, unknown providers, cache behavior) and `get_model()` role resolution
+  - `tests/test_model_router.py` — 10 tests covering cooldown tracking (`mark_cooling`, `is_cooling`, `cooling_remaining`, expired timestamps), `get_chain()` logic (known vs custom models), and chain completeness
+  - 24 tests total, all pass, no API keys required
+  - `pythonpath = ["."]` and `asyncio_mode = "auto"` added to `[tool.pytest.ini_options]` in `pyproject.toml`
+
+- **`arkhe diff` subcommand (`commands/diff.py`):**
+  - After every successful `arkhe` run, saves `docs/SNAPSHOT.json` (file list + dependency edge pairs)
+  - `arkhe diff <repo>` re-scans + re-parses (no LLM), compares to snapshot, prints rich tables of added/removed files and dependency edges
+  - `save_snapshot()` called at the end of `run()` in `main.py`
+
+- **`arkhe watch` subcommand (`commands/watch.py`):**
+  - Uses `watchdog` (added to `pyproject.toml`) to watch for source file changes
+  - 3-second debounce — ignores rapid saves from auto-formatters
+  - Ignores `docs/` and `tests_generated/` output dirs to avoid re-triggering on own output
+  - Re-runs full `arkhe` pipeline on change
+
+- **`main.py` subcommand dispatch:**
+  - Checks `sys.argv[1]` for `diff` or `watch` before argparse — routes to `commands/diff.py` or `commands/watch.py`
+  - Existing `arkhe <repo>` behavior fully preserved
+
+- **`pyproject.toml`:** added `watchdog>=4.0.0` to dependencies
+
+- **`README.md`:** added `arkhe diff` and `arkhe watch` to the Run section
+
+- **`ROADMAP.md`:** Stage 2 marked ✅ Complete; cost summary updated
+
+### 2026-03-10 (partner — sync7319)
+- **New optional analysis agents (all toggled via `options.env`):**
+  - `agents/security_agent.py` — OWASP Top 10 LLM scan (hardcoded secrets, injection, weak crypto, etc.), concurrent batches using traversal model. Output: `docs/SECURITY_REPORT.md`
+  - `agents/dead_code_agent.py` — pure static analysis, zero LLM cost. Finds functions/classes defined but never referenced outside their own file. Skips dunders, framework magic, test files. Output: `docs/DEAD_CODE_REPORT.md`
+  - `agents/test_gap_agent.py` — two phases: (1) static gap report of uncovered public functions → `docs/TEST_GAP_REPORT.md`; (2) optional LLM pytest scaffold generation → `tests_generated/`
+  - `agents/impact_agent.py` — git diff vs base branch → reverse dep walk → LLM plain-English blast radius summary. Output: `docs/PR_IMPACT.md`
+
+- **SQLite cache (`cache/db.py`, replaces `cache/pipeline_cache.py`):**
+  - `ArkheDB` singleton — stores AST structure and LLM analysis keyed by `(file_path, SHA-1 content_hash)`
+  - 1-file change in 200-file repo → 1 LLM call, not 200
+  - Also persists model cooldowns across process restarts (daily auto-reset on first run each day)
+  - DB lives at `<repo>/.arkhe_cache/arkhe.db` — no server, zero cost
+
+- **`options.env` — new feature checklist file:**
+  - Separates WHAT runs (`options.env`) from HOW it runs (`.env` / API keys)
+  - Flags: `CODEBASE_MAP_ENABLED`, `DEPENDENCY_MAP_ENABLED`, `EXECUTIVE_REPORT_ENABLED`, `ANALYSIS_SPEED`, `REFACTOR_ENABLED`, `REFACTOR_SPEED`, `PR_ANALYSIS_ENABLED`, `PR_BASE_BRANCH`, `SECURITY_AUDIT_ENABLED`, `DEAD_CODE_DETECTION_ENABLED`, `TEST_GAP_ANALYSIS_ENABLED`, `TEST_SCAFFOLDING_ENABLED`, `COMPLEXITY_HEATMAP_ENABLED`
+  - Future GUI will read this file directly as its checklist state
+
+- **`config/model_router.py` — cooldowns now persisted to DB** (via `cache/db.py`)
+- **`main.py` — pipeline expanded** to orchestrate all new agents in correct order; `--format json` exit preserved; rich progress spinner for every step
 
 ### 2026-03-09 (session 2)
 - **Dependency map visual overhaul:**

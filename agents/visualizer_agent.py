@@ -6,6 +6,7 @@ Graph data is injected at render time via {{NODES_JSON}} / {{LINKS_JSON}} placeh
 import json
 import os
 import re
+from importlib.resources import files
 
 
 # ── Import resolution ────────────────────────────────────────────────────────
@@ -189,12 +190,7 @@ _HEATMAP_SCRIPT = """
 
 
 def generate_html(graph: dict, heatmap: bool = False) -> str:
-    template_path = os.path.join(
-        os.path.dirname(os.path.dirname(__file__)),
-        "templates", "dependency_map.html"
-    )
-    with open(template_path, encoding="utf-8") as f:
-        template = f.read()
+    template = files("templates").joinpath("dependency_map.html").read_text(encoding="utf-8")
 
     html = (
         template

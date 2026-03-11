@@ -46,7 +46,7 @@ def scan(repo_path: str) -> list:
 
         for filename in filenames:
             abs_path = os.path.join(dirpath, filename)
-            rel_path = os.path.relpath(abs_path, repo_path)
+            rel_path = os.path.relpath(abs_path, repo_path).replace("\\", "/")
             ext      = pathlib.Path(filename).suffix.lower()
 
             if ext in IGNORE_EXTENSIONS:

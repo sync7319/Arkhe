@@ -1,256 +1,266 @@
 # Arkhe — Product Roadmap
 
-> **Core premise:** Developers spend hours onboarding to unfamiliar codebases.
-> Arkhe eliminates that. Point it at any repo, get a living, AI-generated map of
-> the entire codebase — automatically kept current on every PR.
->
-> **Business model:** Bring Your Own Key (BYOK). Users supply their own LLM API
-> keys. Arkhe never touches their tokens or pays their inference costs. We provide
-> the intelligence layer; they provide the keys.
+> Point it at any repo — GitHub or GitLab — get a living AI-generated map of the entire codebase, automatically kept current on every PR.
+
+## Business Model
+
+**CLI (`pip install arkhe`) — BYOK, unlimited.**
+Users bring their own API keys. Groq and Gemini are free tiers, so most CLI users pay $0. We never pay their inference costs.
+
+**Website — our keys, rate-limited by tier.**
+Users paste a repo URL and get results instantly. No install, no API keys. Free tier is capped; paid tiers remove limits. The model fallback router handles rate limits automatically on the backend.
+
+**The CLI is the acquisition channel. The website is the conversion funnel.**
+Both run the same pipeline — the web server is a thin job wrapper that calls `main.run()`. Never fork the logic.
 
 ---
 
-## Stage 0 — Foundation (Now)
-*Get the project to a professional standard before building on top of it.*
-
-### Tasks
-- [ ] Set up `pyproject.toml` + UV venv (replace `requirements.txt`)
-- [ ] Add `.gitignore` (protect `.env`, `__pycache__`, `.venv`, `docs/` outputs)
-- [ ] Establish Git branch strategy: `main` → `dev` → `feature/name/description`
-- [ ] Fix critical bugs (see `docs/CODEBASE_MAP.md` issue log)
-  - [ ] Rename `analyze_parallel` → `analyze_sequential` (it is not parallel)
-  - [ ] Cache LLM clients instead of reinstantiating on every call
-  - [ ] Fix `asyncio.get_event_loop()` → `asyncio.get_running_loop()`
-  - [ ] Move `_retryable_exceptions()` call outside retry loop
-  - [ ] Make `synthesize()` use async LLM call (currently blocks event loop)
-- [ ] Move inline D3 HTML out of Python string → `templates/dependency_map.html`
-- [ ] Remove dead code (`MAPPING_PROVIDER`, unused `MAX_TOKENS_PER_BATCH` import)
-
-### Cost
-| Item | Free | Paid |
-|------|------|------|
-| UV, Python, all libraries | ✅ Free | — |
-| GitHub (private repo) | ✅ Free | — |
-| LLM APIs for development | ✅ Groq + Gemini free tiers | — |
-
-**Stage 0 total: $0**
+## Stage 0 — Foundation ✅
+- [x] `pyproject.toml` + UV venv
+- [x] `.gitignore`, git branch strategy (`main` → `dev` → `feature/name/task`)
+- [x] Bug fixes: async fixes, LLM client caching, iterative AST walk, D3 template extraction, dead code removal
 
 ---
 
-## Stage 1 — Robust Core (Weeks 1–3)
-*Make the pipeline production-grade before anyone depends on it.*
-
-### Tasks
-- [ ] **Resumable pipeline** — save scan/parse/analyze results to `.arkhe_cache/`
-  so reruns after failures skip already-completed work
-- [ ] **Real async** — replace `run_in_executor` thread-pool hack with native async
-  clients (Groq, Gemini, Anthropic all have async SDKs)
-- [ ] **Actual parallel batching** — use `asyncio.Semaphore` to run multiple
-  batches concurrently up to the model's TPM limit
-- [ ] **Fix dependency graph** — replace naive string matching with proper
-  import resolution (handle relative imports, `__init__.py`, aliased imports)
-- [ ] **Expand language support** — add Go, Rust, Java, Ruby via tree-sitter grammars
-- [ ] **Replace recursive AST walk** with iterative stack to avoid recursion limit
-- [ ] **Structured output** — add `--format json` flag so maps can be consumed
-  programmatically by other tools
-
-### Cost
-| Item | Free | Paid | Paid benefit |
-|------|------|------|--------------|
-| All development | ✅ Free | — | — |
-| Groq / Gemini API (testing) | ✅ Free tiers | — | — |
-| Anthropic API (testing) | ❌ No free tier | ~$5–10/mo at low volume | Adds Claude support |
-
-**Stage 1 total: $0–$10/mo**
+## Stage 1 — Robust Core ✅
+- [x] SQLite cache — keyed by content hash; only changed files hit the LLM on reruns
+- [x] Native async clients — Groq, Gemini, Anthropic, OpenAI
+- [x] Parallel batching — `asyncio.Semaphore` + `asyncio.gather`
+- [x] Dependency graph — proper import resolution (relative, `__init__.py`, dotted module paths)
+- [x] Language support — Python, JavaScript, TypeScript, Go, Rust, Java, Ruby
+- [x] `--format json` structured output
+- [x] Model fallback router — priority chains + 10-min cooldown, persisted across restarts
+- [x] Security audit agent — OWASP Top 10 LLM scan
+- [x] Dead code detection — static analysis, zero LLM cost
+- [x] Test gap analysis — coverage gaps + pytest scaffold generation
+- [x] PR impact analysis — git diff → reverse dep walk → LLM summary
+- [x] Feature toggle system — `options.env` controls which agents run
 
 ---
 
-## Stage 2 — CLI Product (Weeks 3–6)
-*Something a developer installs in 30 seconds and uses daily.*
+## Stage 2 — CLI Product ✅
+*A developer installs it in 30 seconds and uses it daily.*
 
-### What it looks like
 ```bash
 pip install arkhe
-
-arkhe map ./my-project            # generate docs/
-arkhe map ./my-project --open     # generate + open HTML in browser
-arkhe map ./my-project --format json   # machine-readable output
-arkhe diff HEAD~1                 # re-map and highlight what changed
-arkhe watch ./my-project          # live-update map as files change
+arkhe ./my-project
+arkhe ./my-project --refactor
+arkhe ./my-project --format json
+arkhe diff ./my-project
+arkhe watch ./my-project
 ```
 
-### Tasks
-- [ ] Add `[project.scripts]` entry point in `pyproject.toml` → `arkhe` CLI command
-- [ ] Implement `arkhe diff` — compare two maps, surface architectural changes
-- [ ] Implement `arkhe watch` — use `watchdog` library for file-change detection
-- [ ] Write a proper `README.md` with GIF demo (critical for PyPI / GitHub traction)
-- [ ] Publish to PyPI via `uv publish`
-- [ ] Set up GitHub Actions CI — run tests on every push
+**Tasks:**
+- [x] `[project.scripts]` entry point + `py-modules` — `arkhe` command works after pip install
+- [x] Windows path normalization — forward-slash everywhere
+- [x] Template packaged via `importlib.resources`
+- [x] OpenAI added as fourth provider
+- [x] BYOK fallback chain — `ARKHE_CHAIN=openai:gpt-4o:sk-xxx,gemini:gemini-2.5-pro:AIza_yyy`
+- [x] `README.md` — install, setup, BYOK chain, optional features
+- [x] GitHub Actions CI — `.github/workflows/ci.yml` — tests on every push to `dev`
+- [x] GitLab CI — `.gitlab-ci.yml` — same tests, runs on GitLab pipelines (needed for hackathon)
+- [x] `arkhe diff` — compare current state vs snapshot, surface added/removed files and deps
+- [x] `arkhe watch` — live-reload map as files change (via `watchdog`)
 
 ### Cost
-| Item | Free | Paid | Paid benefit |
-|------|------|------|--------------|
-| PyPI publishing | ✅ Free | — | — |
-| GitHub Actions CI (public repo) | ✅ Free | — | — |
-| GitHub Actions CI (private repo) | 2000 min/mo free | $4/mo for more minutes | More CI runs |
-| `arkhe.dev` domain | ❌ | ~$12/year (~$1/mo) | Professional presence |
-
-**Stage 2 total: $0–$13/mo**
+| Item | Cost |
+|------|------|
+| PyPI publishing | Free |
+| GitHub Actions CI | Free (public repo) |
+| `arkhe.dev` domain | ~$1/mo |
 
 ---
 
-## Stage 3 — GitHub App + Actions (Weeks 6–12)
-*This is the pain-point killer. Arkhe runs automatically on every PR.*
+## Stage 3 — Website + Platform Integrations
+*The website converts. The platform integrations retain.*
 
-### What it looks like
-- Install the Arkhe GitHub App on your repo (one click)
-- Every PR gets an automatic comment:
-  ```
-  🗺️ Arkhe Map Updated
+**Website:** User pastes a GitHub or GitLab URL → Arkhe clones, runs pipeline, serves results.
+Free tier capped; paid tiers unlock larger repos and more outputs.
 
-  +2 new dependencies detected (auth → billing, user → cache)
-  3 files changed architectural role
+**GitHub App:** Install on any repo → every PR gets an automatic architectural diff comment.
+Publish `arkhe-action` to GitHub Marketplace for 3-line YAML integration.
 
-  [View full map] [View diff]
-  ```
-- Publish `arkhe-action` to the GitHub Marketplace so teams can add it to
-  their own CI pipeline in 3 lines of YAML
+**GitLab Integration:** Same behaviour for merge requests. GitLab CI template users can drop into any `.gitlab-ci.yml` in 3 lines. Also enables GitLab Hackathon submission.
 
-### Tasks
-- [ ] Build GitHub App (webhook receiver, PR comment poster)
-- [ ] Build `arkhe diff` into the App — show what changed architecturally per PR
-- [ ] Publish `arkhe-action` to GitHub Marketplace
-- [ ] Build a minimal landing page (can be GitHub Pages — free)
-- [ ] Set up basic analytics (Plausible or Umami — both self-hostable for free)
-
-### Architecture
 ```
-GitHub webhook → Arkhe server → clone repo → run pipeline → post PR comment
+User pastes GitHub or GitLab URL
+        ↓
+FastAPI → detect platform → Redis/ARQ job queue
+        ↓
+Worker: git clone → main.run() → upload docs/ to R2 → cleanup
+        ↓
+User gets shareable results link
+
+GitHub webhook  ┐
+GitLab webhook  ┘→ same worker pool → post PR/MR comment
 ```
-The server needs to be always-on (no sleeping). This is the first real hosting cost.
+
+**Tasks:**
+
+*Core infrastructure (platform-agnostic):*
+- [ ] `scripts/clone_repo.py` — clone from GitHub or GitLab URL to temp dir, clean up after
+- [ ] FastAPI server — accept URL, detect platform, enqueue job, return results link
+- [ ] Redis + ARQ job queue
+- [ ] Per-request API key injection — server keys passed at runtime, not from `.env`
+- [ ] Rate limiting + abuse protection — per-IP and per-user limits by tier
+- [ ] Cloudflare R2 output storage — upload `docs/`, serve via URL
+- [ ] Landing page — hero, demo, install command, works for both platforms
+- [ ] Analytics — Plausible or Umami
+
+*GitHub:*
+- [ ] GitHub App — webhook receiver, PR comment poster
+- [ ] `arkhe-action` — GitHub Marketplace listing
+- [ ] Parse `X-GitHub-Event` webhook payload format
+
+*GitLab:*
+- [ ] GitLab webhook receiver — parse `X-Gitlab-Event` MR payload (different format to GitHub)
+- [ ] GitLab CI template — `arkhe` job snippet users drop into `.gitlab-ci.yml`
+- [ ] Post MR comments via GitLab Notes API
 
 ### Cost
-| Item | Free | Paid | Paid benefit |
-|------|------|------|--------------|
-| GitHub App (creating) | ✅ Free | — | — |
-| GitHub Marketplace listing | ✅ Free | — | — |
-| GitHub Pages (landing page) | ✅ Free | — | — |
-| **Hosting the webhook server** | Fly.io free tier (limited) | **$7–14/mo** (Fly.io hobby) | Always-on, no cold starts |
-| Plausible analytics | Self-host free | $9/mo cloud | Easier managed option |
-| Sentry (error tracking) | ✅ Free tier (5k errors/mo) | $26/mo | Higher volume |
-
-> **Note on hosting:** Fly.io free tier spins down after inactivity — fine for
-> development, bad for a GitHub webhook receiver (GitHub will time out).
-> The $7/mo paid tier keeps it always on. This is the first unavoidable cost.
-
-**Stage 3 total: $0 dev / $7–23/mo production**
+| Item | Cost |
+|------|------|
+| Fly.io (always-on server) | $7–14/mo |
+| Cloudflare R2 | Free up to 10GB |
+| GitHub App, Marketplace | Free |
+| GitLab webhooks, CI templates | Free |
+| Sentry error tracking | Free tier |
 
 ---
 
-## Stage 4 — Web Dashboard (Months 3–6)
+## Stage 4 — Web Dashboard
 *Persistent, team-facing UI. This is where Arkhe becomes a SaaS product.*
 
-### What it looks like
-- Sign in with GitHub (OAuth)
-- See all your repos with live Arkhe maps
-- Interactive dependency graph (the D3 visualization, properly hosted)
-- History timeline — see how your architecture evolved over time
-- Share links to specific modules or files
-- Team annotations — leave notes on the map
+- Sign in with GitHub **or GitLab** OAuth
+- All your repos from either platform with live Arkhe maps
+- History timeline — see how architecture evolved
+- Shareable links to specific files or modules
+- Team annotations on the map
+- Auto-update on every PR (GitHub) or MR (GitLab)
 
 ### Stack
-| Layer | Technology | Cost |
-|-------|-----------|------|
-| Frontend | React + your existing D3 viz | Free |
-| Backend | FastAPI (Python — consistent with existing codebase) | Free |
-| Database | PostgreSQL | Free tier → paid |
-| Job queue | Redis + ARQ (async job queue) | Free tier → paid |
-| Auth | GitHub OAuth (via Authlib) | Free |
-| File storage | Cloudflare R2 (store map outputs) | Free up to 10GB |
+| Layer | Technology |
+|-------|-----------|
+| Frontend | React + existing D3 visualization |
+| Backend | FastAPI |
+| Database | PostgreSQL (Supabase) |
+| Job queue | Redis + ARQ (Upstash) |
+| Auth | GitHub OAuth + GitLab OAuth (Authlib supports both) |
+| Storage | Cloudflare R2 |
 
-### Hosting options
-| Option | Free Tier | Paid | Notes |
-|--------|-----------|------|-------|
-| **Fly.io** (backend) | 3 shared VMs | $7–14/mo | Best free tier for FastAPI |
-| **Supabase** (Postgres) | 500MB, 2 projects | $25/mo | Easiest managed Postgres |
-| **Vercel** (frontend) | ✅ Generous free | $20/mo pro | Best for React |
-| **Upstash** (Redis) | 10k commands/day free | $10/mo | Serverless Redis, easy |
-| **Cloudflare R2** (storage) | 10GB free | $0.015/GB | Cheapest object storage |
+### Dual-platform auth design (decide in Stage 3, build in Stage 4)
+One user account, multiple connected platform identities. Designed this way from day one to avoid identity collisions and billing splits when a user has both GitHub and GitLab accounts.
 
-### Realistic monthly cost at early stage (< 100 users)
 ```
-Fly.io (backend, always-on):   $7/mo
-Supabase (free tier):          $0/mo
-Vercel (free tier):            $0/mo
-Upstash (free tier):           $0/mo
-Cloudflare R2 (free tier):     $0/mo
-Domain:                        $1/mo (amortized)
-─────────────────────────────────────
-Total:                         ~$8/mo
+users
+  id, email, created_at
+
+connected_accounts
+  user_id, platform (github|gitlab), platform_user_id, username, access_token
+
+repos
+  id, user_id, platform, platform_repo_id, full_name
+  e.g. platform=github, full_name=sync7319/Arkhe
+
+analyses
+  id, repo_id, run_at, status, outputs_r2_path
 ```
 
-### Realistic monthly cost at growth stage (1000+ users)
-```
-Fly.io (2x instances):        $28/mo
-Supabase (pro):               $25/mo
-Vercel (pro):                 $20/mo
-Upstash (pay-as-you-go):      ~$10/mo
-Cloudflare R2:                ~$5/mo
-─────────────────────────────────────
-Total:                        ~$88/mo
-```
-At 1000 users on a $15/mo Pro plan: **$15,000 MRR vs $88 infra = 99.4% margin.**
+- First login creates the user account
+- Subsequent logins from either platform link to the same account via `connected_accounts`
+- Every repo is keyed by `(platform, platform_repo_id)` — no namespace collisions
+- Webhooks are routed by `(platform, repo_id)` — no ambiguity
+- Billing is per user, not per connected account
 
-**Stage 4 total: $8/mo early / ~$88/mo at scale**
+**This schema must be established in Stage 3** before any auth code is written. Migrating away from a simple one-OAuth-one-account model after real users exist is painful.
+
+### Cost
+| Users | Monthly |
+|-------|---------|
+| Early stage (<100) | ~$8/mo |
+| Growth (1,000+) | ~$88/mo |
+
+At 1,000 users on $15/mo Pro: **$15,000 MRR vs $88 infra.**
 
 ---
 
-## Stage 5 — Monetization (Month 6+)
+## Stage 5 — Go-to-Market Launch
+*The full product is live — CLI, website, dashboard, GitHub App, GitLab integration. One launch, one narrative, maximum impact.*
 
-### Pricing tiers
-| Tier | Price | Features |
-|------|-------|---------|
-| **Free** | $0 | CLI tool, public repos, BYOK, community support |
-| **Pro** | $15/mo | Private repos, web dashboard, PR comments, map history |
-| **Team** | $49/mo per team | Everything in Pro + org dashboard, Slack alerts, 10 seats |
-| **Enterprise** | Custom | Self-hosted, SSO/SAML, SOC2, SLA, custom model support |
+### Pre-launch
+- [ ] Demo GIF — `arkhe .` in terminal + dependency map pan. 15–30s. Into `assets/demo.gif` + README.
+- [ ] Clean install test — Windows VM + Mac: `pip install arkhe`, fresh `.env`, real repo
+- [ ] `git tag v0.1.0` + GitHub Release with changelog
+- [ ] `uv build` — install the `.whl` locally and run it end-to-end
+- [ ] Website + dashboard tested — 3 different repos, all outputs verified
+- [ ] `arkhe.dev` domain live, pointing to landing page
+- [ ] All launch content written in advance
 
-> The free CLI tier is permanent and intentional — it drives adoption and
-> word-of-mouth. The GitHub App PR comments are the upgrade trigger.
+### Launch Day
+- [ ] `uv publish` to PyPI
+- [ ] GitHub repo made public + mirrored to GitLab
+- [ ] ProductHunt — submit at 12:01am PST for full-day visibility
+- [ ] Hacker News — *"Show HN: Arkhe – AI-generated architecture docs for any repo"*
+- [ ] Reddit — r/Python, r/programming, r/devtools
+- [ ] Twitter/X — demo GIF in first tweet, thread on the problem + solution
+- [ ] LinkedIn
+- [ ] Dev.to / Hashnode — technical article on how it was built
+- [ ] GitLab community forums + GitLab Hackathon submission (if open)
 
-### What to prioritize for early revenue
-1. **Pro tier first** — lowest friction, individual developers pay themselves
-2. **GitHub Marketplace** — discovery channel, no sales required
-3. **Enterprise waitlist** — collect interest early, even before the product is ready
+### Post-launch (first 72 hours)
+- [ ] Respond to every GitHub issue, HN comment, Reddit reply within hours
+- [ ] Same-day hotfixes — `hotfix/` branch on standby
+- [ ] Screenshot positive feedback for website testimonials
+- [ ] Track: PyPI downloads, GitHub stars, ProductHunt votes, website visitors
+
+### Week-1 Targets
+| Metric | Target |
+|--------|--------|
+| PyPI downloads | 500+ |
+| GitHub stars | 200+ |
+| ProductHunt upvotes | 100+ |
+| Website visitors | 1,000+ |
+
+---
+
+## Stage 6 — Monetization
+*Already in market. Now convert.*
+
+| Tier | Price | CLI | Website |
+|------|-------|-----|---------|
+| **Free** | $0 | Unlimited, BYOK | Rate-limited |
+| **Pro** | $15/mo | Unlimited, BYOK | Larger repos, all outputs, faster queue |
+| **Team** | $49/mo | Unlimited, BYOK | Org dashboard, Slack alerts, 10 seats |
+| **Enterprise** | Custom | Self-hosted option | SSO/SAML, SOC2, SLA |
+
+Revenue priorities: Pro tier first → GitHub Marketplace discovery → GitLab CI template adoption → Enterprise waitlist.
 
 ---
 
 ## Competitive Landscape
 
-| Tool | Status | Gap Arkhe fills |
-|------|--------|----------------|
-| CodeSee | Acquired + shut down | Left a vacuum — their users need something |
-| Sourcegraph | Expensive, complex | Arkhe is lightweight and LLM-native |
-| GitHub Copilot workspace | Code gen focused | Arkhe is documentation + architecture focused |
-| Swimlane / Mermaid | Static diagrams | Arkhe is auto-generated and always current |
+| Tool | Gap Arkhe fills |
+|------|----------------|
+| CodeSee (shut down) | Left a vacuum — their users need something |
+| Sourcegraph | Too expensive and complex for most teams |
+| GitHub Copilot | Code generation focused, not architecture/docs |
+| Mermaid / Swimlane | Static diagrams — Arkhe is auto-generated and always current |
+| GitLab native docs | Manual, no AI narrative, no dependency graph |
 
-**The key differentiator:** Arkhe generates *narrative* documentation — not just
-a graph, but prose that explains *why* the architecture is shaped the way it is.
-No other tool does this automatically.
+**Key differentiator:** Arkhe generates *narrative* documentation — prose that explains *why* the architecture is shaped the way it is, not just a graph of what exists.
 
 ---
 
-## Total Cost Summary
+## Cost Summary
 
-| Stage | Timeline | Monthly Cost |
-|-------|----------|-------------|
-| Stage 0 — Foundation | Now | $0 |
-| Stage 1 — Robust Core | Weeks 1–3 | $0–10 |
-| Stage 2 — CLI + PyPI | Weeks 3–6 | $0–13 |
-| Stage 3 — GitHub App | Weeks 6–12 | $7–23 |
-| Stage 4 — Web Dashboard | Months 3–6 | $8–88 |
-| Stage 5 — Monetization | Month 6+ | Self-funding from revenue |
+| Stage | Status | Monthly Cost |
+|-------|--------|-------------|
+| 0 — Foundation | ✅ Complete | $0 |
+| 1 — Robust Core | ✅ Complete | $0 |
+| 2 — CLI Product | ✅ Complete | $0–1 |
+| 3 — Website + Platform Integrations | Upcoming | $7–23 |
+| 4 — Web Dashboard | Upcoming | $8–88 |
+| 5 — Launch | Upcoming | $0 |
+| 6 — Monetization | Future | Self-funded |
 
-**To get to a deployed, monetizable product: under $25/month total.**
-The first unavoidable cost is always-on hosting at Stage 3 (~$7/mo).
-Everything before that is genuinely free.
+First unavoidable cost: always-on hosting at Stage 3 (~$7/mo). Everything before that is $0.
