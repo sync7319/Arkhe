@@ -45,4 +45,5 @@ jobs:
       - name: Push to GitLab
         run: |
           git remote add gitlab https://nshreeyut1:${{ secrets.GITLAB_TOKEN }}@gitlab.com/nshreeyut1/Arkhe.git
-          git push gitlab --mirror
+          git push gitlab --all
+          git push gitlab --tags
