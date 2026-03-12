@@ -10,39 +10,228 @@ full chain (best → worst) is available fresh at the start of every day.
 
 Priority chains are ranked best → worst by capability + context window.
 Add new models to the top of the relevant chain to try them first.
+
+Gemma throttle: proactive RPM/TPM/TPD tracking keeps usage under 2/3 of each
+limit. When a window is full the call is held until it clears. When the daily
+token budget is exhausted the model is marked cooling for the rest of the day.
 """
+import asyncio
 import time
 import logging
 from datetime import date
 
 logger = logging.getLogger("arkhe.router")
 
-COOLDOWN_SECONDS = 600  # 10 minutes
+# Per-provider cooldowns:
+# Groq   → 90s  (per-minute limits reset in 60s; 90s gives a safe buffer)
+# Gemini → 24h  (Gemma free tier has strict daily quotas)
+COOLDOWN_SECONDS: dict[str, int] = {
+    "groq":      90,
+    "gemini":    86400,
+    "anthropic": 300,
+    "openai":    300,
+}
+_DEFAULT_COOLDOWN = 300
+
+# ── Per-model rate limits (RPM / TPM / optional RPD / optional TPD) ──────────
+# Source: provider dashboards, free tier as of 2026-03
+MODEL_LIMITS: dict[str, dict[str, int]] = {
+    # Groq
+    "moonshotai/kimi-k2-instruct":          {"rpm": 60,  "tpm": 10_000, "rpd": 1_000},
+    "moonshotai/kimi-k2-instruct-0905":     {"rpm": 60,  "tpm": 10_000, "rpd": 1_000},
+    "openai/gpt-oss-120b":                  {"rpm": 30,  "tpm":  8_000, "rpd": 1_000},
+    "llama-3.3-70b-versatile":              {"rpm": 30,  "tpm": 12_000, "rpd": 1_000},
+    "qwen/qwen3-32b":                       {"rpm": 60,  "tpm":  6_000, "rpd": 1_000},
+    "openai/gpt-oss-20b":                   {"rpm": 30,  "tpm":  8_000, "rpd": 1_000},
+    "llama-3.1-8b-instant":                 {"rpm": 30,  "tpm":  6_000, "rpd": 14_400},
+    # Gemini Flash (executive report only)
+    "gemini-2.5-flash":                     {"rpm":  5,  "tpm": 250_000, "rpd": 20},
+    "gemini-2.5-flash-lite":                {"rpm": 10,  "tpm": 250_000, "rpd": 20},
+    # Gemma (Google AI Studio free tier)
+    "gemma-3-27b-it":                       {"rpm": 30,  "tpm": 15_000, "tpd": 14_400},
+    "gemma-3-12b-it":                       {"rpm": 30,  "tpm": 15_000, "tpd": 14_400},
+    "gemma-3-4b-it":                        {"rpm": 30,  "tpm": 15_000, "tpd": 14_400},
+}
+
+# Pause when usage hits this fraction of any limit, then recheck
+_THROTTLE_THRESHOLD = 0.90
+_THROTTLE_PAUSE     = 25  # seconds to wait before rechecking
+
+# ── Per-model usage state (in-memory sliding windows) ────────────────────────
+_usage: dict[str, dict] = {}
+
+
+def _get_usage(model: str) -> dict:
+    if model not in _usage:
+        _usage[model] = {
+            "requests":     [],   # list of float timestamps (last 60 s)
+            "tokens":       [],   # list of (timestamp, token_count) (last 60 s)
+            "daily_reqs":   0,
+            "daily_tokens": 0,
+            "daily_date":   date.today(),
+        }
+    u = _usage[model]
+    if u["daily_date"] != date.today():
+        u["daily_reqs"]   = 0
+        u["daily_tokens"] = 0
+        u["daily_date"]   = date.today()
+    return u
+
+
+def _prune_window(u: dict, now: float) -> None:
+    cutoff = now - 60.0
+    u["requests"] = [t for t in u["requests"] if t > cutoff]
+    u["tokens"]   = [(t, n) for t, n in u["tokens"] if t > cutoff]
+
+
+def _provider_for(model: str) -> str:
+    if model.startswith("gemma-"):
+        return "gemini"
+    return "groq"
+
+
+async def acquire_slot(model: str, estimated_tokens: int = 0) -> None:
+    """
+    Pause at 90% of RPM, TPM, RPD, or TPD — then recheck every 25 seconds
+    until bandwidth is available. If the daily limit is fully exhausted,
+    marks the model cooling for the rest of the day and raises RuntimeError
+    so the caller falls back to the next model.
+    """
+    limits = MODEL_LIMITS.get(model)
+    if limits is None:
+        return  # unknown model — no proactive throttle
+
+    rpm_cap = int(limits["rpm"] * _THROTTLE_THRESHOLD)
+    tpm_cap = int(limits["tpm"] * _THROTTLE_THRESHOLD)
+    rpd_cap = int(limits["rpd"] * _THROTTLE_THRESHOLD) if "rpd" in limits else None
+    tpd_cap = int(limits["tpd"] * _THROTTLE_THRESHOLD) if "tpd" in limits else None
+    provider = _provider_for(model)
+
+    while True:
+        now = time.time()
+        u   = _get_usage(model)
+        _prune_window(u, now)
+
+        current_rpm = len(u["requests"])
+        current_tpm = sum(n for _, n in u["tokens"])
+
+        # Daily hard limits — mark cooling and bail if fully exhausted
+        if rpd_cap is not None and u["daily_reqs"] >= rpd_cap:
+            logger.warning(f"[throttle] {model} daily request limit reached — blocking")
+            mark_cooling(model, provider)
+            raise RuntimeError(f"{model} daily request limit exhausted")
+        if tpd_cap is not None and u["daily_tokens"] >= tpd_cap:
+            logger.warning(f"[throttle] {model} daily token limit reached — blocking")
+            mark_cooling(model, provider)
+            raise RuntimeError(f"{model} daily token limit exhausted")
+
+        # RPM — pause and recheck
+        if current_rpm >= rpm_cap:
+            logger.info(f"[throttle] {model} RPM at {current_rpm}/{limits['rpm']} (90%) — pausing {_THROTTLE_PAUSE}s")
+            await asyncio.sleep(_THROTTLE_PAUSE)
+            continue
+
+        # TPM — pause and recheck (only if we have recorded usage to compare against)
+        if u["tokens"] and current_tpm + estimated_tokens >= tpm_cap:
+            logger.info(f"[throttle] {model} TPM at {current_tpm}/{limits['tpm']} (90%) — pausing {_THROTTLE_PAUSE}s")
+            await asyncio.sleep(_THROTTLE_PAUSE)
+            continue
+
+        # Under 90% — claim the request slot and proceed
+        u["requests"].append(now)
+        u["daily_reqs"] += 1
+        break
+
+
+def record_usage(model: str, tokens: int) -> None:
+    """Record actual token count after a successful call."""
+    if model not in MODEL_LIMITS:
+        return
+    u = _get_usage(model)
+    now = time.time()
+    u["tokens"].append((now, tokens))
+    u["daily_tokens"] += tokens
+
+
+# ── Groq multi-model groups ───────────────────────────────────────────────────
+# Large files / synthesis: rotate between both kimi-k2 variants to spread RPM
+GROQ_KIMI = [
+    "moonshotai/kimi-k2-instruct",
+    "moonshotai/kimi-k2-instruct-0905",
+]
+# Regular code files: rotate across three strong models
+GROQ_STANDARD = [
+    "openai/gpt-oss-120b",
+    "llama-3.3-70b-versatile",
+    "qwen/qwen3-32b",
+]
+# Non-code docs (README, txt, etc.) — fast, minimal analysis needed
+GROQ_FAST = "llama-3.1-8b-instant"
+
+# File extensions treated as non-code docs → fast model
+NON_CODE_EXTENSIONS = {
+    ".md", ".txt", ".rst", ".pdf", ".docx", ".log",
+    ".license", ".changelog", ".gitignore", ".gitattributes",
+    ".editorconfig", ".dockerignore", ".mailmap",
+}
+LARGE_FILE_TOKEN_THRESHOLD = 3_000  # tokens — route to kimi above this
+
+# Rotation indices (in-memory, reset each process)
+_kimi_idx: int = 0
+_standard_idx: int = 0
+
+
+def _next_available(models: list[str], idx: int) -> tuple[str, int]:
+    """Return the next non-cooling model in a group and advance the index."""
+    n = len(models)
+    for offset in range(n):
+        m = models[(idx + offset) % n]
+        if not is_cooling(m):
+            return m, (idx + offset + 1) % n
+    # All cooling — return next anyway; the call will 429 and fall back normally
+    return models[idx % n], (idx + 1) % n
+
+
+def get_groq_file_model(file_path: str, token_count: int) -> str:
+    """Pick the right Groq model for a file based on type and size."""
+    global _kimi_idx, _standard_idx
+    ext = ("." + file_path.rsplit(".", 1)[-1].lower()) if "." in file_path else ""
+
+    if ext in NON_CODE_EXTENSIONS:
+        return GROQ_FAST
+
+    if token_count >= LARGE_FILE_TOKEN_THRESHOLD:
+        model, _kimi_idx = _next_available(GROQ_KIMI, _kimi_idx)
+        return model
+
+    model, _standard_idx = _next_available(GROQ_STANDARD, _standard_idx)
+    return model
+
+
+def get_groq_report_model() -> str:
+    """For synthesis / report generation → kimi-k2 rotation."""
+    global _kimi_idx
+    model, _kimi_idx = _next_available(GROQ_KIMI, _kimi_idx)
+    return model
+
 
 # ── Priority chains: best → worst ────────────────────────────────────────────
 CHAINS: dict[str, list[str]] = {
     "groq": [
-        "moonshotai/kimi-k2-instruct",                    # 671B MoE — most capable
-        "qwen/qwen3-32b",                                  # Qwen 3 32B
-        "openai/gpt-oss-120b",                             # 120B
-        "llama-3.3-70b-versatile",                         # reliable 70B
-        "meta-llama/llama-4-maverick-17b-128e-instruct",  # Llama 4 MoE
-        "meta-llama/llama-4-scout-17b-16e-instruct",      # lighter MoE
-        "openai/gpt-oss-20b",                              # 20B
-        "llama-3.1-8b-instant",                            # smallest / fastest fallback
+        "moonshotai/kimi-k2-instruct",
+        "moonshotai/kimi-k2-instruct-0905",
+        "openai/gpt-oss-120b",
+        "llama-3.3-70b-versatile",
+        "qwen/qwen3-32b",
+        "openai/gpt-oss-20b",
+        "llama-3.1-8b-instant",
     ],
     "gemini": [
-        "gemini-3.0-flash",        # newest — highest capability, 250K TPM
-        "gemini-2.5-pro",          # most capable 2.5
-        "gemini-2.5-flash",        # fast + strong, 250K TPM
-        "gemini-2.0-flash",        # reliable baseline
-        "gemini-2.5-flash-lite",   # lighter
-        "gemini-2.0-flash-lite",   # lightest text model
-        "gemma-3-27b-it",          # largest Gemma 3 — 15K TPM
-        "gemma-3-12b-it",          # good quality Gemma
-        "gemma-3-4b-it",           # medium Gemma
-        "gemma-3-2b-it",           # small Gemma
-        "gemma-3-1b-it",           # smallest / last resort
+        "gemini-2.5-flash",      # executive report primary — 250K TPM, 20 RPD
+        "gemini-2.5-flash-lite", # fallback if flash RPD exhausted
+        "gemma-3-27b-it",        # last resort — 15K TPM, 14.4K TPD
+        "gemma-3-12b-it",
+        "gemma-3-4b-it",
     ],
     "anthropic": [
         "claude-opus-4-6",         # most capable
@@ -102,10 +291,14 @@ def cooling_remaining(model: str) -> int:
     return max(0, int(_cooldowns.get(model, 0) - time.time()))
 
 
-def mark_cooling(model: str) -> None:
-    cool_until = time.time() + COOLDOWN_SECONDS
+def mark_cooling(model: str, provider: str = "") -> None:
+    duration   = COOLDOWN_SECONDS.get(provider, _DEFAULT_COOLDOWN) if provider else _DEFAULT_COOLDOWN
+    cool_until = time.time() + duration
     _cooldowns[model] = cool_until
-    logger.warning(f"[router] '{model}' rate-limited — cooling for {COOLDOWN_SECONDS // 60} min")
+    if duration >= 3600:
+        logger.warning(f"[router] '{model}' rate-limited — cooling for {duration // 3600}h")
+    else:
+        logger.warning(f"[router] '{model}' rate-limited — cooling for {duration}s")
 
     # Persist to DB if available
     try:

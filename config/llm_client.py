@@ -13,6 +13,11 @@ from config.settings import get_model, get_api_key
 
 logger = logging.getLogger("arkhe.llm")
 
+
+class _GeminiRateLimitError(Exception):
+    """Raised only for Gemini 429 / quota errors — NOT for 400 invalid-argument errors."""
+
+
 MAX_RETRIES   = 3
 RETRY_BACKOFF = 2
 
@@ -127,7 +132,7 @@ async def llm_call_async(role: str, system: str, user_prompt: str, max_tokens: i
             try:
                 return await _dispatch_async(provider, model, api_key, system, user_prompt, max_tokens)
             except rate_limit_exc as e:
-                mark_cooling(model)
+                mark_cooling(model, provider)
                 logger.warning(f"[{role}] Rate limit on {model} — falling back")
                 break  # try next model in chain
             except transient_exc as e:
@@ -167,7 +172,7 @@ async def _call_user_chain(
             try:
                 return await _dispatch_async(provider, model, api_key, system, user_prompt, max_tokens)
             except rate_limit_exc:
-                mark_cooling(model)
+                mark_cooling(model, provider)
                 logger.warning(f"[{role}] Rate limit on {model} — trying next in ARKHE_CHAIN")
                 break
             except transient_exc as e:
@@ -204,16 +209,20 @@ def _call_groq(api_key, model, system, prompt, max_tokens):
 
 def _call_gemini(api_key, model, system, prompt, max_tokens):
     from google.genai import types
+    # Gemma models don't support system_instruction — prepend to user prompt instead
+    is_gemma = model.startswith("gemma-")
+    contents = f"{system}\n\n{prompt}" if is_gemma else prompt
+    config   = types.GenerateContentConfig(
+        max_output_tokens=max_tokens,
+        temperature=0.2,
+        top_p=0.95,
+        **({}  if is_gemma else {"system_instruction": system}),
+    )
     client   = _get_gemini_client(api_key)
     response = client.models.generate_content(
         model=model,
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            system_instruction=system,
-            max_output_tokens=max_tokens,
-            temperature=0.2,
-            top_p=0.95,
-        ),
+        contents=contents,
+        config=config,
     )
 
     if not response.candidates:
@@ -266,6 +275,15 @@ def _call_openai(api_key, model, system, prompt, max_tokens):
 # ── Async call implementations ───────────────────────────────────────────────
 
 async def _call_groq_async(api_key, model, system, prompt, max_tokens):
+    from config.model_router import acquire_slot, record_usage
+
+    estimated = (len(system) + len(prompt)) // 4
+    try:
+        await acquire_slot(model, estimated)
+    except RuntimeError as e:
+        from groq import RateLimitError
+        raise RateLimitError(message=str(e), response=None, body=None) from e
+
     client   = _get_groq_async_client(api_key)
     response = await client.chat.completions.create(
         model=model,
@@ -278,23 +296,51 @@ async def _call_groq_async(api_key, model, system, prompt, max_tokens):
     content = response.choices[0].message.content
     if not content:
         raise ValueError("Groq returned empty content.")
+
+    if hasattr(response, "usage") and response.usage:
+        record_usage(model, response.usage.total_tokens or 0)
+
     return content
 
 
 async def _call_gemini_async(api_key, model, system, prompt, max_tokens):
     from google.genai import types
-    # The sync client exposes an async interface via .aio — no separate client needed
-    client   = _get_gemini_client(api_key)
-    response = await client.aio.models.generate_content(
-        model=model,
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            system_instruction=system,
-            max_output_tokens=max_tokens,
-            temperature=0.2,
-            top_p=0.95,
-        ),
+    from config.model_router import acquire_slot, record_usage
+
+    # Rough token estimate for throttle pre-check (chars / 4 ≈ tokens)
+    estimated = (len(system) + len(prompt)) // 4
+    try:
+        await acquire_slot(model, estimated)
+    except RuntimeError as e:
+        # Daily budget exhausted — convert to rate-limit sentinel so router falls back
+        raise _GeminiRateLimitError(str(e)) from e
+
+    # Gemma models don't support system_instruction — prepend to user prompt instead
+    is_gemma = model.startswith("gemma-")
+    contents = f"{system}\n\n{prompt}" if is_gemma else prompt
+    config   = types.GenerateContentConfig(
+        max_output_tokens=max_tokens,
+        temperature=0.2,
+        top_p=0.95,
+        **({}  if is_gemma else {"system_instruction": system}),
     )
+
+    # The sync client exposes an async interface via .aio — no separate client needed
+    client = _get_gemini_client(api_key)
+    try:
+        response = await client.aio.models.generate_content(
+            model=model,
+            contents=contents,
+            config=config,
+        )
+    except Exception as e:
+        # Translate Gemini quota/rate-limit errors to our sentinel so the router
+        # can fall back. Any other ClientError (400 invalid arg, etc.) is re-raised
+        # as-is so it surfaces as a real error rather than silently cooling the model.
+        err = str(e).lower()
+        if any(kw in err for kw in ("429", "quota", "rate limit", "resource exhausted")):
+            raise _GeminiRateLimitError(str(e)) from e
+        raise
 
     if not response.candidates:
         raise ValueError(f"Gemini returned no candidates. Feedback: {response.prompt_feedback}")
@@ -306,6 +352,12 @@ async def _call_gemini_async(api_key, model, system, prompt, max_tokens):
     text = response.text
     if not text or not text.strip():
         raise ValueError("Gemini returned empty text.")
+
+    # Record actual token usage for throttle accounting
+    if hasattr(response, "usage_metadata") and response.usage_metadata:
+        total = getattr(response.usage_metadata, "total_token_count", 0) or 0
+        record_usage(model, total)
+
     return text
 
 
@@ -346,35 +398,50 @@ async def _call_anthropic_async(api_key, model, system, prompt, max_tokens):
 async def llm_call_async_explicit(
     provider: str, model: str, system: str, user_prompt: str, max_tokens: int = 4096
 ) -> str:
-    """Like llm_call_async but with explicit provider+model — also uses fallback chain."""
-    from config.model_router import get_chain, is_cooling, mark_cooling
+    """Like llm_call_async but with explicit provider+model — also uses fallback chain.
+
+    When all models in the chain are cooling, waits for the soonest one to recover
+    and retries rather than failing immediately.
+    """
+    from config.model_router import get_chain, is_cooling, mark_cooling, cooling_remaining
     api_key        = get_api_key(provider)
     chain          = get_chain(provider, model)
     rate_limit_exc = _rate_limit_exceptions(provider)
     transient_exc  = _transient_exceptions(provider)
 
-    for m in chain:
-        if is_cooling(m):
-            logger.debug(f"[explicit] {m} cooling — skipping")
-            continue
-        logger.debug(f"[explicit] provider={provider} model={m}")
+    while True:
+        attempted_any = False
+        for m in chain:
+            if is_cooling(m):
+                logger.debug(f"[explicit] {m} cooling — skipping")
+                continue
+            attempted_any = True
+            logger.debug(f"[explicit] provider={provider} model={m}")
 
-        for attempt in range(1, MAX_RETRIES + 1):
-            try:
-                return await _dispatch_async(provider, m, api_key, system, user_prompt, max_tokens)
-            except rate_limit_exc:
-                mark_cooling(m)
-                logger.warning(f"[explicit] Rate limit on {m} — falling back")
-                break
-            except transient_exc as e:
-                if attempt == MAX_RETRIES:
+            for attempt in range(1, MAX_RETRIES + 1):
+                try:
+                    return await _dispatch_async(provider, m, api_key, system, user_prompt, max_tokens)
+                except rate_limit_exc:
+                    mark_cooling(m, provider)
+                    logger.warning(f"[explicit] Rate limit on {m} — falling back")
                     break
-                await asyncio.sleep(RETRY_BACKOFF * attempt)
-            except Exception as e:
-                logger.error(f"[explicit] Non-retryable error on {m}: {e}")
-                raise
+                except transient_exc as e:
+                    if attempt == MAX_RETRIES:
+                        break
+                    await asyncio.sleep(RETRY_BACKOFF * attempt)
+                except Exception as e:
+                    # 404 = model doesn't exist — skip it, don't crash the chain
+                    if "404" in str(e) or "NOT_FOUND" in str(e):
+                        logger.warning(f"[explicit] {m} not found (404) — removing from chain")
+                        break
+                    logger.error(f"[explicit] Non-retryable error on {m}: {e}")
+                    raise
 
-    raise RuntimeError(f"[explicit] All models for '{provider}' are rate-limited or failed")
+        if not attempted_any:
+            # All models cooling — wait for the soonest to recover then retry
+            wait = min((cooling_remaining(m) for m in chain), default=0) + 5
+            logger.info(f"[explicit] All models cooling — waiting {wait}s for recovery")
+            await asyncio.sleep(wait)
 
 
 # ── Dispatch helper ───────────────────────────────────────────────────────────
@@ -404,11 +471,7 @@ def _rate_limit_exceptions(provider: str) -> tuple:
         except ImportError:
             logger.error("groq package not importable — rate-limit detection disabled")
     elif provider == "gemini":
-        try:
-            from google.genai.errors import ClientError
-            return (ClientError,)
-        except ImportError:
-            logger.error("google-genai not importable — rate-limit detection disabled")
+        return (_GeminiRateLimitError,)
     elif provider == "anthropic":
         try:
             from anthropic import RateLimitError

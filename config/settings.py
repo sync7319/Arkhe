@@ -51,7 +51,7 @@ REFACTOR_PROVIDER  = os.getenv("REFACTOR_PROVIDER",  "groq")
 # ── Cheap models (used for traversal always; used for all roles when EXPENSIVE=false) ──────
 CHEAP_MODELS = {
     "groq":      {"traversal": "openai/gpt-oss-20b",  "report": "llama-3.1-8b-instant", "refactor": "llama-3.1-8b-instant"},
-    "gemini":    {"traversal": "gemini-2.0-flash",     "report": "gemini-2.0-flash",     "refactor": "gemini-2.0-flash"},
+    "gemini":    {"traversal": "gemma-3-27b-it",       "report": "gemma-3-27b-it",       "refactor": "gemma-3-27b-it"},
     "anthropic": {"traversal": "claude-haiku-4-5",     "report": "claude-haiku-4-5",     "refactor": "claude-haiku-4-5"},
 }
 
@@ -59,7 +59,7 @@ CHEAP_MODELS = {
 # Traversal and refactor are intentionally absent — per-file work never needs heavy models
 PREMIUM_MODELS = {
     "groq":      {"report": "llama-3.3-70b-versatile"},
-    "gemini":    {"report": "gemini-2.0-flash"},
+    "gemini":    {"report": "gemma-3-27b-it"},
     "anthropic": {"report": "claude-sonnet-4-6"},
 }
 
@@ -69,7 +69,7 @@ PREMIUM_MODELS = {
 EXECUTIVE_MODELS = {
     "anthropic": {"large": "claude-opus-4-6",         "small": "claude-sonnet-4-6"},
     "groq":      {"large": "llama-3.3-70b-versatile", "small": "llama-3.3-70b-versatile"},
-    "gemini":    {"large": "gemini-2.0-flash",         "small": "gemini-2.0-flash"},
+    "gemini":    {"large": "gemma-3-27b-it",           "small": "gemma-3-27b-it"},
 }
 
 VALID_PROVIDERS = {"groq", "gemini", "anthropic", "openai"}

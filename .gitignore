@@ -13,9 +13,11 @@ __pycache__/
 dist/
 build/
 
-# Arkhe generated output (these are produced by running the tool, not source)
-docs/CODEBASE_MAP.md
-docs/DEPENDENCY_MAP.html
+# Arkhe generated output (produced by running the tool, not source)
+docs/
+tests_generated/
+server/cache/
+*_refactored/
 
 # Arkhe cache (future — resumable pipeline)
 .arkhe_cache/

@@ -6,7 +6,6 @@ Model selection is automatic:
   - EXPENSIVE_MODELS_ALLOWED=true  → Opus for large repos, Sonnet for smaller ones
     Threshold controlled by COMPLEXITY_THRESHOLD_TOKENS in .env (default 50 000 tokens)
 """
-from config.settings import get_executive_model
 from config.llm_client import llm_call_async_explicit
 
 SYSTEM = """You are a senior software architect writing a professional executive report
@@ -46,9 +45,13 @@ async def generate_report(
     Generate the executive Word report.
     Returns (report_text, provider, model) — provider/model logged by caller.
     """
-    total_tokens = sum(f.get("tokens", 0) for f in files)
-    provider, model = get_executive_model(total_tokens)
+    # Executive report uses Gemini 2.5 Flash (250K TPM — handles large prompts in
+    # one shot). Falls back to Flash Lite if the daily limit (20 RPD) is exhausted.
+    # These models are reserved exclusively for this agent — nothing else uses them.
+    provider = "gemini"
+    model    = "gemini-2.5-flash"
 
+    total_tokens = sum(f.get("tokens", 0) for f in files)
     file_summary = "\n".join(
         f"- {f['path']} ({f.get('tokens', 0)} tokens)" for f in files
     )

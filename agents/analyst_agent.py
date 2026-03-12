@@ -10,7 +10,7 @@ New files are analyzed concurrently, bounded by MAX_CONCURRENT_FILES.
 import asyncio
 import logging
 from cache.db import get_db
-from config.llm_client import llm_call_async
+from config.llm_client import llm_call_async_explicit
 
 logger = logging.getLogger("arkhe.analyst")
 
@@ -23,11 +23,13 @@ Be concise. Markdown format."""
 
 # Free-tier safe limits per model (tokens per minute)
 MODEL_TPM_LIMITS = {
-    "openai/gpt-oss-20b":        6000,
-    "openai/gpt-oss-120b":       6000,
-    "llama-3.1-8b-instant":      5000,
-    "llama-3.3-70b-versatile":   5000,
-    "gemini-2.0-flash":         50000,
+    "moonshotai/kimi-k2-instruct":       8000,
+    "moonshotai/kimi-k2-instruct-0905":  8000,
+    "openai/gpt-oss-120b":               6000,
+    "llama-3.3-70b-versatile":           5000,
+    "qwen/qwen3-32b":                    5000,
+    "openai/gpt-oss-20b":                6000,
+    "llama-3.1-8b-instant":              5000,
 }
 DEFAULT_SAFE_TPM = 5000
 
@@ -62,9 +64,11 @@ def _build_prompt(file: dict) -> str:
 
 
 async def _analyze_file(file: dict, idx: int, sem: asyncio.Semaphore) -> dict:
+    from config.model_router import get_groq_file_model
     async with sem:
         prompt   = _build_prompt(file)
-        analysis = await llm_call_async("traversal", SYSTEM, prompt, max_tokens=512)
+        model    = get_groq_file_model(file["path"], file.get("tokens", 0))
+        analysis = await llm_call_async_explicit("groq", model, SYSTEM, prompt, max_tokens=512)
 
     db = get_db()
     db.save_analysis(file["path"], file["content_hash"], analysis)
@@ -73,8 +77,8 @@ async def _analyze_file(file: dict, idx: int, sem: asyncio.Semaphore) -> dict:
 
 
 async def analyze_parallel(files: list[dict]) -> list[dict]:
-    from config.settings import get_model
-    _, model = get_model("traversal")
+    from config.model_router import get_groq_file_model
+    model = "groq/multi-model"  # display label only
     db       = get_db()
 
     cached_results, new_files = [], []
