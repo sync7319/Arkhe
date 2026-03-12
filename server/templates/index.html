@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Arkhe — Codebase Intelligence</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      min-height: 100vh;
+    }
+
+    /* ── Nav ── */
+    nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1.25rem 2rem;
+      border-bottom: 1px solid #1e293b;
+    }
+    .logo { font-size: 1.25rem; font-weight: 700; color: #fff; letter-spacing: -0.5px; }
+    .logo span { color: #6366f1; }
+    .nav-links { display: flex; gap: 1.5rem; font-size: 0.875rem; color: #94a3b8; }
+    .nav-links a { color: inherit; text-decoration: none; }
+    .nav-links a:hover { color: #e2e8f0; }
+
+    /* ── Hero ── */
+    .hero {
+      max-width: 760px;
+      margin: 5rem auto 3rem;
+      text-align: center;
+      padding: 0 1.5rem;
+    }
+    .hero h1 {
+      font-size: clamp(2rem, 5vw, 3.25rem);
+      font-weight: 800;
+      line-height: 1.15;
+      letter-spacing: -1px;
+      color: #fff;
+    }
+    .hero h1 em { font-style: normal; color: #6366f1; }
+    .hero p {
+      margin-top: 1.25rem;
+      font-size: 1.125rem;
+      color: #94a3b8;
+      line-height: 1.7;
+    }
+
+    /* ── Form ── */
+    .form-card {
+      max-width: 640px;
+      margin: 0 auto 4rem;
+      padding: 0 1.5rem;
+    }
+    .input-row {
+      display: flex;
+      gap: 0.75rem;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 0.5rem;
+    }
+    .input-row input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      outline: none;
+      color: #e2e8f0;
+      font-size: 0.975rem;
+      padding: 0.5rem 0.75rem;
+    }
+    .input-row input::placeholder { color: #475569; }
+    .btn-analyze {
+      background: #6366f1;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 0.6rem 1.4rem;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.15s;
+    }
+    .btn-analyze:hover { background: #4f46e5; }
+    .btn-analyze:disabled { background: #3730a3; cursor: not-allowed; }
+    .form-hint { margin-top: 0.75rem; font-size: 0.8rem; color: #475569; text-align: center; }
+    .error-msg { margin-top: 0.75rem; color: #f87171; font-size: 0.85rem; text-align: center; }
+
+    /* ── Status bar ── */
+    .status-bar {
+      display: none;
+      max-width: 640px;
+      margin: 0 auto 2rem;
+      padding: 0 1.5rem;
+    }
+    .status-inner {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      padding: 1rem 1.25rem;
+      font-size: 0.875rem;
+      color: #94a3b8;
+    }
+    .status-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.75rem;
+    }
+    .status-label { display: flex; align-items: center; gap: 0.6rem; }
+    .spinner {
+      width: 14px; height: 14px;
+      border: 2px solid #334155;
+      border-top-color: #6366f1;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .status-pct { font-size: 0.8rem; color: #6366f1; font-weight: 600; }
+    .progress-track {
+      width: 100%;
+      height: 6px;
+      background: #0f172a;
+      border-radius: 999px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #6366f1, #818cf8);
+      border-radius: 999px;
+      transition: width 1.5s ease;
+    }
+    .progress-steps {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 0.6rem;
+      font-size: 0.7rem;
+      color: #334155;
+    }
+    .progress-steps span.done { color: #6366f1; }
+    .progress-steps span.active { color: #94a3b8; }
+
+    /* ── Tier comparison ── */
+    .tiers {
+      max-width: 760px;
+      margin: 0 auto 5rem;
+      padding: 0 1.5rem;
+    }
+    .tiers h2 {
+      text-align: center;
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 1.5rem;
+    }
+    .tier-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 1rem;
+    }
+    @media (max-width: 600px) { .tier-grid { grid-template-columns: 1fr; } }
+    .tier-card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 1.5rem;
+    }
+    .tier-card.highlight { border-color: #6366f1; }
+    .tier-name { font-size: 0.8rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: #6366f1; margin-bottom: 0.5rem; }
+    .tier-price { font-size: 1.75rem; font-weight: 800; color: #fff; margin-bottom: 0.25rem; }
+    .tier-price span { font-size: 0.875rem; font-weight: 400; color: #64748b; }
+    .tier-desc { font-size: 0.825rem; color: #94a3b8; margin-bottom: 1rem; line-height: 1.5; }
+    .tier-features { list-style: none; font-size: 0.825rem; color: #94a3b8; display: flex; flex-direction: column; gap: 0.4rem; }
+    .tier-features li::before { content: "✓ "; color: #6366f1; }
+    .tier-features li.locked { color: #475569; }
+    .tier-features li.locked::before { content: "🔒 "; }
+    .tier-badge {
+      display: inline-block;
+      margin-top: 1rem;
+      font-size: 0.75rem;
+      padding: 0.2rem 0.6rem;
+      border-radius: 999px;
+      background: #0f172a;
+      color: #475569;
+      border: 1px solid #334155;
+    }
+
+    /* ── CLI callout ── */
+    .cli-callout {
+      max-width: 760px;
+      margin: 0 auto 5rem;
+      padding: 0 1.5rem;
+    }
+    .cli-inner {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 2rem;
+      display: flex;
+      gap: 2rem;
+      align-items: flex-start;
+    }
+    @media (max-width: 600px) { .cli-inner { flex-direction: column; } }
+    .cli-text h3 { font-size: 1.1rem; font-weight: 700; color: #fff; margin-bottom: 0.5rem; }
+    .cli-text p { font-size: 0.875rem; color: #94a3b8; line-height: 1.6; }
+    .cli-code { flex-shrink: 0; }
+    .cli-code pre {
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      font-size: 0.825rem;
+      color: #a5f3fc;
+      line-height: 1.8;
+      white-space: pre;
+    }
+
+    footer {
+      text-align: center;
+      padding: 2rem;
+      font-size: 0.8rem;
+      color: #334155;
+      border-top: 1px solid #1e293b;
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <div class="logo">Arkhe<span>.</span></div>
+  <div class="nav-links">
+    <a href="https://github.com/sync7319/Arkhe" target="_blank">GitHub</a>
+    <a href="#install">Install CLI</a>
+  </div>
+</nav>
+
+<section class="hero">
+  <h1>Understand any codebase<br><em>in seconds.</em></h1>
+  <p>Paste a GitHub or GitLab URL. Arkhe scans the repo, maps every dependency,<br>
+  and generates AI-powered architecture documentation — instantly.</p>
+</section>
+
+<div class="form-card">
+  <div class="input-row">
+    <input type="text" id="repo-url" placeholder="https://github.com/owner/repo" autocomplete="off" />
+    <button class="btn-analyze" id="analyze-btn" onclick="submitRepo()">Analyze →</button>
+  </div>
+  <div class="form-hint">Supports GitHub and GitLab • Free • No account needed</div>
+  <div class="error-msg" id="error-msg"></div>
+</div>
+
+<div class="status-bar" id="status-bar">
+  <div class="status-inner">
+    <div class="status-header">
+      <div class="status-label">
+        <div class="spinner"></div>
+        <span id="status-text">Cloning repository...</span>
+      </div>
+      <span class="status-pct" id="status-pct">0%</span>
+    </div>
+    <div class="progress-track">
+      <div class="progress-fill" id="progress-fill"></div>
+    </div>
+    <div class="progress-steps">
+      <span id="step-clone">Clone</span>
+      <span id="step-scan">Scan</span>
+      <span id="step-parse">Parse</span>
+      <span id="step-analyze">Analyze</span>
+      <span id="step-synthesize">Synthesize</span>
+      <span id="step-graph">Graph</span>
+      <span id="step-done">Done</span>
+    </div>
+  </div>
+</div>
+
+<section class="tiers">
+  <h2>Free to try. More power when you need it.</h2>
+  <div class="tier-grid">
+
+    <div class="tier-card">
+      <div class="tier-name">Web — Free</div>
+      <div class="tier-price">$0 <span>/ forever</span></div>
+      <div class="tier-desc">Paste any public repo URL and get full analysis instantly. No install, no API keys.</div>
+      <ul class="tier-features">
+        <li>Codebase map + dependency graph</li>
+        <li>Security audit</li>
+        <li>Dead code detection</li>
+        <li>Powered by Gemini</li>
+        <li class="locked">Anthropic Claude (Pro)</li>
+        <li class="locked">Private repos (Pro)</li>
+      </ul>
+      <div class="tier-badge">You are here</div>
+    </div>
+
+    <div class="tier-card highlight">
+      <div class="tier-name">Web — Pro</div>
+      <div class="tier-price">$15 <span>/ mo</span></div>
+      <div class="tier-desc">For teams that want the best models and full output suite on any repo.</div>
+      <ul class="tier-features">
+        <li>Everything in Free</li>
+        <li>Anthropic Claude synthesis</li>
+        <li>Private repo support</li>
+        <li>Executive Word report</li>
+        <li>Priority queue</li>
+      </ul>
+      <div class="tier-badge">Coming soon</div>
+    </div>
+
+    <div class="tier-card" id="install">
+      <div class="tier-name">CLI — Unlimited</div>
+      <div class="tier-price">$0 <span>BYOK</span></div>
+      <div class="tier-desc">Install locally. Use your own API keys. Run on any directory, unlimited.</div>
+      <ul class="tier-features">
+        <li>Bring your own Anthropic key</li>
+        <li>Run on any local directory</li>
+        <li>All outputs + refactor mode</li>
+        <li>No rate limits</li>
+        <li>Works offline (after install)</li>
+      </ul>
+      <div class="tier-badge">pip install arkhe</div>
+    </div>
+
+  </div>
+</section>
+
+<section class="cli-callout">
+  <div class="cli-inner">
+    <div class="cli-text">
+      <h3>Want full Anthropic Claude on everything?</h3>
+      <p>Install the CLI, add your own Anthropic API key, and run Arkhe on any repo with no tier limits.
+      Groq and Gemini free tiers are also supported — most users pay $0.</p>
+    </div>
+    <div class="cli-code">
+      <pre>pip install arkhe
+arkhe ./my-project
+arkhe ./my-project --refactor</pre>
+    </div>
+  </div>
+</section>
+
+<footer>
+  © 2026 Arkhe — MIT License
+</footer>
+
+<script>
+  let pollInterval = null;
+
+  const STEPS = [
+    { id: "step-clone",     label: "Cloning repository...",      pct: 5  },
+    { id: "step-scan",      label: "Scanning files...",           pct: 15 },
+    { id: "step-parse",     label: "Parsing AST structure...",    pct: 30 },
+    { id: "step-analyze",   label: "Analyzing with AI...",        pct: 65 },
+    { id: "step-synthesize",label: "Synthesizing codebase map...",pct: 85 },
+    { id: "step-graph",     label: "Building dependency graph...", pct: 95 },
+    { id: "step-done",      label: "Finishing up...",             pct: 99 },
+  ];
+
+  async function submitRepo() {
+    const url   = document.getElementById("repo-url").value.trim();
+    const errEl = document.getElementById("error-msg");
+    const btn   = document.getElementById("analyze-btn");
+    errEl.textContent = "";
+
+    if (!url) {
+      errEl.textContent = "Please enter a GitHub or GitLab URL.";
+      return;
+    }
+
+    btn.disabled    = true;
+    btn.textContent = "Analyzing...";
+    setProgress(0);
+    document.getElementById("status-bar").style.display = "block";
+
+    try {
+      const res  = await fetch("/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        showError(data.error || "Something went wrong.");
+        resetBtn();
+        return;
+      }
+
+      pollStatus(data.job_id);
+
+    } catch (e) {
+      showError("Network error — please try again.");
+      resetBtn();
+    }
+  }
+
+  function pollStatus(jobId) {
+    let stepIdx = 0;
+    setProgress(stepIdx);
+
+    pollInterval = setInterval(async () => {
+      stepIdx = Math.min(stepIdx + 1, STEPS.length - 1);
+      setProgress(stepIdx);
+
+      try {
+        const res  = await fetch(`/status/${jobId}`);
+        const data = await res.json();
+
+        if (data.status === "complete") {
+          clearInterval(pollInterval);
+          setProgress(STEPS.length - 1, true);
+          setTimeout(() => window.location.href = `/results/${jobId}`, 400);
+        } else if (data.status === "error") {
+          clearInterval(pollInterval);
+          showError(data.error || "Pipeline failed.");
+          resetBtn();
+        }
+      } catch (e) {
+        // network blip — keep polling
+      }
+    }, 3000);
+  }
+
+  function setProgress(stepIdx, complete = false) {
+    const step = STEPS[stepIdx];
+    const pct  = complete ? 100 : step.pct;
+
+    document.getElementById("status-text").textContent = complete ? "Complete!" : step.label;
+    document.getElementById("status-pct").textContent  = pct + "%";
+    document.getElementById("progress-fill").style.width = pct + "%";
+
+    // Update step labels
+    STEPS.forEach((s, i) => {
+      const el = document.getElementById(s.id);
+      if (!el) return;
+      el.className = i < stepIdx ? "done" : i === stepIdx ? "active" : "";
+    });
+  }
+
+  function showError(msg) {
+    document.getElementById("error-msg").textContent   = msg;
+    document.getElementById("status-bar").style.display = "none";
+  }
+
+  function resetBtn() {
+    const btn = document.getElementById("analyze-btn");
+    btn.disabled    = false;
+    btn.textContent = "Analyze →";
+  }
+
+  // Allow Enter key to submit
+  document.addEventListener("DOMContentLoaded", () => {
+    document.getElementById("repo-url").addEventListener("keydown", e => {
+      if (e.key === "Enter") submitRepo();
+    });
+  });
+</script>
+
+</body>
+</html>

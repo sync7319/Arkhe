@@ -399,8 +399,8 @@ def _rate_limit_exceptions(provider: str) -> tuple:
     treated as rate limits, which would mask bugs and retry API key errors."""
     if provider == "groq":
         try:
-            from groq import RateLimitError
-            return (RateLimitError,)
+            from groq import RateLimitError, APIStatusError
+            return (RateLimitError, APIStatusError)
         except ImportError:
             logger.error("groq package not importable — rate-limit detection disabled")
     elif provider == "gemini":

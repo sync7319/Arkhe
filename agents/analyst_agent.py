@@ -102,19 +102,29 @@ async def analyze_parallel(files: list[dict]) -> list[dict]:
         f"concurrency: {min(MAX_CONCURRENT_FILES, max(misses, 1))})"
     )
 
-    sem      = asyncio.Semaphore(MAX_CONCURRENT_FILES)
-    tasks    = [
-        _analyze_file(f, hits + i, sem)
-        for i, f in enumerate(new_files)
-    ]
-    raw = await asyncio.gather(*tasks, return_exceptions=True)
+    sem = asyncio.Semaphore(MAX_CONCURRENT_FILES)
+    new_results     = []
+    consecutive_failures = 0
+    ABORT_THRESHOLD = 3   # abort after this many consecutive all-model failures
 
-    new_results = []
-    for f, result in zip(new_files, raw):
+    for i, f in enumerate(new_files):
+        task   = _analyze_file(f, hits + i, sem)
+        result = await asyncio.gather(task, return_exceptions=True)
+        result = result[0]
+
         if isinstance(result, Exception):
             logger.error(f"[analyze] failed for {f['path']}: {result}")
+            consecutive_failures += 1
+            if consecutive_failures >= ABORT_THRESHOLD:
+                logger.warning(
+                    f"[analyze] {consecutive_failures} consecutive failures — "
+                    f"aborting early to preserve quota. "
+                    f"{len(new_results)}/{misses} new files analyzed before abort."
+                )
+                break
         else:
             new_results.append(result)
+            consecutive_failures = 0  # reset on success
 
     if not new_results and misses > 0:
         raise RuntimeError(

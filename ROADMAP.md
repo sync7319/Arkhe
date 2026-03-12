@@ -97,19 +97,35 @@ GitLab webhook  ┘→ same worker pool → post PR/MR comment
 
 **Hosting: Google Cloud Run** — chosen for hackathon eligibility (qualifies for "Most Impactful on GitLab & Google" $10,000 category prize on top of the Anthropic prize already covered by the existing Anthropic provider integration).
 
+**Model strategy:**
+| Tier | Models | Cost to us |
+|------|--------|------------|
+| Free (everyone) | Gemini 2.5 Pro / 2.5 Flash across all roles | ~$0 free tier |
+| Pro (paying users) | Anthropic Sonnet/Opus for synthesis + executive report | We pay, covered by subscription |
+
+Backend shell for Anthropic is already built — just needs a payment gate in front of it. Nothing in the pipeline changes when a user upgrades.
+
 **Tasks:**
 
 *Core infrastructure (platform-agnostic):*
-- [ ] `scripts/clone_repo.py` — clone from GitHub or GitLab URL to temp dir, clean up after
-- [ ] FastAPI server — accept URL, detect platform, enqueue job, return results link
+- [x] `scripts/clone_repo.py` — clone from GitHub or GitLab URL to temp dir, clean up after
+- [x] FastAPI server — accept URL, detect platform, enqueue job, return results link
 - [ ] Google Cloud Tasks job queue (replaces Redis/ARQ)
 - [ ] Per-request API key injection — server keys passed at runtime, not from `.env`
 - [ ] Rate limiting + abuse protection — per-IP and per-user limits by tier
 - [ ] Google Cloud Storage (GCS) output storage — upload `docs/`, serve via URL
 - [ ] Landing page — hero, demo, install command, works for both platforms
+  - Clear free vs Pro tier comparison on the landing page
+  - Free web tier: runs on Gemini (best free model) — great for trying Arkhe instantly
+  - Pro tier (future): Anthropic Sonnet/Opus for synthesis + executive report — locked behind payment, visible in UI as an upgrade prompt
+  - CLI callout: "Install locally, bring your own Anthropic key, run on any repo, unlimited" — power users who want full Anthropic on everything use the CLI, no tier restrictions
+  - Web UI shows Anthropic-powered toggle/badge that is visibly locked for free users — demonstrates the business model to judges without us spending anything
 - [ ] Analytics — Plausible or Umami
 - [ ] `Dockerfile` — containerize FastAPI app for Cloud Run deployment
-- [ ] Warm-up endpoint — keep Cloud Run instance warm to avoid cold starts during demos
+- [x] Warm-up endpoint (`/_health`) — keep Cloud Run instance warm to avoid cold starts during demos
+- [ ] Token optimization — filter non-code files (certs, docs, configs, CI) before LLM; AST handles deps for all files at zero cost; hierarchical synthesis; persistent cache keyed by repo URL + commit SHA
+- [ ] Feature toggle UI — checkboxes on landing page for optional agents (security audit, dead code, test gap, executive report, complexity heatmap); passed per-job at runtime instead of reading from options.env
+- [ ] GCS-backed cache for Cloud Run — before each run download `{url_hash}/arkhe.db` from GCS into temp repo; after run (success or failure) upload back; replaces local `server/cache/` which is wiped on container restart; same SQLite file, just stored in GCS instead of disk
 
 *GitHub:*
 - [ ] GitHub App — webhook receiver, PR comment poster
@@ -147,45 +163,48 @@ GitLab webhook  ┘→ same worker pool → post PR/MR comment
 | Layer | Technology |
 |-------|-----------|
 | Frontend | React + existing D3 visualization |
-| Backend | FastAPI |
-| Database | PostgreSQL (Supabase) |
-| Job queue | Redis + ARQ (Upstash) |
-| Auth | GitHub OAuth + GitLab OAuth (Authlib supports both) |
-| Storage | Cloudflare R2 |
+| Backend | FastAPI (Google Cloud Run) |
+| Database | Firebase Firestore — user records, repo history, analyses |
+| Auth | Firebase Auth — GitHub OAuth + GitLab OAuth (built-in, no Authlib needed) |
+| Job queue | Google Cloud Tasks (already used in Stage 3) |
+| File storage | Google Cloud Storage — generated `docs/` outputs |
+
+All Google ecosystem — pairs naturally with Cloud Run, stays free at early scale, and strengthens the Google category prize case for the hackathon.
 
 ### Dual-platform auth design (decide in Stage 3, build in Stage 4)
 One user account, multiple connected platform identities. Designed this way from day one to avoid identity collisions and billing splits when a user has both GitHub and GitLab accounts.
 
 ```
-users
-  id, email, created_at
+Firestore collections:
 
-connected_accounts
-  user_id, platform (github|gitlab), platform_user_id, username, access_token
+users/{uid}
+  email, created_at, tier (free|pro)
 
-repos
-  id, user_id, platform, platform_repo_id, full_name
-  e.g. platform=github, full_name=sync7319/Arkhe
+connected_accounts/{uid}/platforms/{github|gitlab}
+  platform_user_id, username, access_token
 
-analyses
-  id, repo_id, run_at, status, outputs_r2_path
+repos/{repo_id}
+  user_id, platform (github|gitlab), platform_repo_id, full_name
+
+analyses/{analysis_id}
+  repo_id, run_at, status, outputs_gcs_path
 ```
 
-- First login creates the user account
+- First login creates the user document via Firebase Auth
 - Subsequent logins from either platform link to the same account via `connected_accounts`
 - Every repo is keyed by `(platform, platform_repo_id)` — no namespace collisions
 - Webhooks are routed by `(platform, repo_id)` — no ambiguity
-- Billing is per user, not per connected account
+- Billing (Pro tier) is per user, not per connected account
 
 **This schema must be established in Stage 3** before any auth code is written. Migrating away from a simple one-OAuth-one-account model after real users exist is painful.
 
 ### Cost
 | Users | Monthly |
 |-------|---------|
-| Early stage (<100) | ~$8/mo |
-| Growth (1,000+) | ~$88/mo |
+| Early stage (<100) | ~$0 (Firebase + Cloud Run free tiers) |
+| Growth (1,000+) | ~$20–40/mo |
 
-At 1,000 users on $15/mo Pro: **$15,000 MRR vs $88 infra.**
+At 1,000 users on $15/mo Pro: **$15,000 MRR vs ~$40 infra.**
 
 ---
 

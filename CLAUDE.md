@@ -194,6 +194,28 @@ Everything through Stage 2 is genuinely $0.
 - **`config/model_router.py` — cooldowns now persisted to DB** (via `cache/db.py`)
 - **`main.py` — pipeline expanded** to orchestrate all new agents in correct order; `--format json` exit preserved; rich progress spinner for every step
 
+### 2026-03-11 (session 2 — Shreeyut)
+- **Stage 3 web server — initial build:**
+  - `scripts/clone_repo.py` — clones GitHub/GitLab URLs to temp dir, context manager auto-cleans, `CloneError` for bad URLs/auth failures, shallow clone (depth=1)
+  - `server/app.py` — FastAPI server: `POST /analyze` (background job), `GET /status/{job_id}`, `GET /results/{job_id}`, `GET /results/{job_id}/{filename}`, `GET /_health` warm-up endpoint
+  - `server/templates/index.html` — landing page: repo URL form, live status polling, free/Pro/CLI tier comparison, CLI BYOK callout
+  - `server/templates/results.html` — results page: auto-polls while running, output cards with View/Download per file type
+  - Added `fastapi`, `uvicorn`, `jinja2`, `python-multipart` to `pyproject.toml`
+  - Run locally: `uv run uvicorn server.app:app --reload --port 8000`
+
+- **Bug fix — `config/llm_client.py`:**
+  - Added `groq.APIStatusError` to `_rate_limit_exceptions` for Groq — catches 413 "request too large" errors and triggers model fallback instead of crashing
+
+- **Token optimization — identified, not yet built:**
+  - Root cause: pipeline sends every file (certs, docs, configs, CI files) to LLM — wasteful
+  - Fix: filter to source code files only before LLM analysis; AST parser handles dependency mapping for all files at zero LLM cost
+  - Hierarchical synthesis (module → folder → final) to avoid giant single synthesis call
+  - Persistent cache on website (GCS/Firestore keyed by repo URL + commit SHA) — currently temp dir wipes cache every run
+  - Token optimization research in progress — will implement before website goes live
+
+- **Hosting decision finalized:** Google Cloud Run (free tier, qualifies for Google hackathon prize)
+- **Model strategy finalized:** Gemini for all roles on website free tier; Anthropic locked behind Pro tier; CLI users BYOK unlimited
+
 ### 2026-03-11 (session — Shreeyut)
 - **GitLab Duo Agent Platform Hackathon — registration in progress:**
   - Deadline: March 25, 2026 at 2:00 PM ET (~14 days away)
@@ -214,6 +236,7 @@ Everything through Stage 2 is genuinely $0.
   - `AGENTS.md` is already written and ready
   - `LICENSE` is already written and ready
   - Target prizes: "Most Impactful on GitLab & Anthropic" ($10,000) + "Most Impactful on GitLab & Google" ($10,000) + Grand Prize ($15,000)
+  - Hosting on Google Cloud Run qualifies for the Google category prize; Anthropic provider already in codebase qualifies for the Anthropic category prize
   - Hosting on Google Cloud Run qualifies for the Google category prize; Anthropic provider already in codebase qualifies for the Anthropic category prize
   - A project can win one Grand Prize + one Category Prize — eligible for two category prizes doubles the chances
 
