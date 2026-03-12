@@ -235,6 +235,42 @@ Everything through Stage 2 is genuinely $0.
   - Record demo video (<3 min): trigger → analysis runs → MR comment posted
   - Submit on Devpost before March 25
 
+### 2026-03-12 (session 2 — Shreeyut)
+- **CI pipeline now passing** — both `placeholder-test` and `validate-items` jobs green
+  - Resolved through iterative schema debugging across many attempts
+  - **Correct schema discovered:**
+    - `flows/flow.yml` component: `type: AgentComponent`, `prompt_id` (required), plain string `toolset` (NOT objects), NO `tool_name` on component
+    - `agents/agent.yml`: `name`, `description`, `public`, `system_prompt`, plain string `tools` list
+    - `tool_name` on component is for referencing built-in GitLab tools only (must match `tool_mapping.json`) — not for custom agent names
+    - `prompt_id` and `tool_name` are mutually exclusive on a component (oneOf schema)
+  - `flows/arkhe.yml` renamed to `flows/flow.yml` to match hackathon repo convention
+
+- **Git setup clarified — three repos, clear ownership:**
+  - GitHub (`sync7319/Arkhe`) — source of truth, all Python dev work
+  - GitLab personal (`nshreeyut/Arkhe`) — auto-mirror of GitHub, never touch manually
+  - GitLab hackathon (`gitlab-ai-hackathon/participants/35223940`) — minimal submission repo, only contains `flows/flow.yml` + `agents/agent.yml` + `LICENSE` + `README.md`
+  - Hackathon repo is NOT a copy of the Python app — it's a standalone GitLab Duo agent definition
+  - Both collaborators can edit hackathon repo via Web IDE; coordinate before editing same files
+
+- **Python app vs GitLab Duo flow — key distinction:**
+  - Python app: local/Cloud Run, BYOK, 6-stage pipeline, multi-agent, outputs files to `docs/`
+  - GitLab Duo flow: runs on GitLab's compute, GitLab's AI tokens, single LLM call, posts MR comment
+  - GitLab flow is the hackathon integration layer — same idea, different delivery method
+  - GitLab flow does NOT run any Python code — uses GitLab's built-in tools via AI Gateway
+
+- **Partner's token optimization changes pulled in** (`git pull origin dev --no-rebase`):
+  - `config/model_router.py` — major rework, multi-model Groq routing, proactive throttle
+  - `agents/synthesizer_agent.py` — hierarchical synthesis
+  - `config/llm_client.py`, `agents/analyst_agent.py`, `agents/report_agent.py`, `config/settings.py`, `options.env`
+
+- **Hackathon next steps remaining:**
+  - Enhance agent to commit reports (`docs/CODEBASE_MAP.md`, `docs/SECURITY_REPORT.md`) and Mermaid dependency graph using `create_file_with_contents` + `create_commit` tools
+  - Create a git tag (`v1.0.0`) to publish flow to the GitLab catalog
+  - Enable flow in the project
+  - Test by mentioning agent in an MR comment
+  - Record demo video (<3 min): trigger → analysis runs → reports committed + MR comment posted
+  - Submit on Devpost before March 25
+
 - **Token optimization — partner working on:**
   - Filter non-code files before LLM (certs, docs, CI configs, Makefiles)
   - AST parser handles dependency mapping for ALL files at zero LLM cost

@@ -12,17 +12,17 @@ definition:
       inputs:
         - "context:goal"
       toolset:
-        - list_repository_tree
-        - read_file
-        - read_files
-        - find_files
-        - grep
-        - get_merge_request
-        - list_merge_request_diffs
-        - get_commit_diff
-        - gitlab_blob_search
-        - create_merge_request_note
-        - get_project
+        - tool_name: list_repository_tree
+        - tool_name: read_file
+        - tool_name: read_files
+        - tool_name: find_files
+        - tool_name: grep
+        - tool_name: get_merge_request
+        - tool_name: list_merge_request_diffs
+        - tool_name: get_commit_diff
+        - tool_name: gitlab_blob_search
+        - tool_name: create_merge_request_note
+        - tool_name: get_project
       ui_log_events:
         - on_agent_final_answer
         - on_tool_execution_success
