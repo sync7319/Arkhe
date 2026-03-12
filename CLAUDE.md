@@ -194,6 +194,55 @@ Everything through Stage 2 is genuinely $0.
 - **`config/model_router.py` — cooldowns now persisted to DB** (via `cache/db.py`)
 - **`main.py` — pipeline expanded** to orchestrate all new agents in correct order; `--format json` exit preserved; rich progress spinner for every step
 
+### 2026-03-12 (session — Shreeyut)
+- **GitLab Duo flow file created:**
+  - `flows/arkhe.yml` — custom flow YAML for GitLab Duo Agent Platform
+  - Committed to hackathon repo (`gitlab-ai-hackathon/participants/35223940`) via Web IDE
+  - CI pipeline running to validate YAML
+  - Tools used: `list_repository_tree`, `read_file`, `read_files`, `find_files`, `grep`, `get_merge_request`, `list_merge_request_diffs`, `get_commit_diff`, `gitlab_blob_search`, `create_merge_request_note`, `get_project`
+  - Trigger: mention `@ai-arkhe-...` in any MR or issue
+  - Output: full analysis posted as MR comment (architecture, dependencies, PR impact, security, gotchas)
+
+- **GitLab hackathon group access granted** — email received March 12
+  - Participant project: `gitlab.com/gitlab-ai-hackathon/participants/35223940`
+  - Partner (sync7319) added as member
+  - nshreeyut1 is the Representative for the team submission
+  - Partner's participant repo stays unused — one submission from nshreeyut1's repo
+  - Flow template structure: `agents/agent.yml.template`, `flows/flow.yml.template` at repo root
+
+- **GitLab Duo Agent Platform — architecture confirmed from 8-part blog series:**
+  - Arkhe is a **custom flow** (not external agent, not foundational)
+  - Flows run on **GitLab's CI/CD compute** — no Cloud Run webhook needed for hackathon
+  - Requires **Premium or Ultimate** GitLab tier — hackathon group has this
+  - Three trigger types: mention, assign, assign_reviewer
+  - Auto-injected variables: `$AI_FLOW_CONTEXT` (MR JSON + diff), `$AI_FLOW_INPUT` (user comment), `$AI_FLOW_EVENT` (trigger type)
+  - `AGENTS.md` confirmed correct — GitLab reads it at workspace root for flow context
+  - Tool list confirmed from `tool_mapping.json` — 89 tools available including all needed ones
+  - Flow YAML schema: `version: v1`, `environment: ambient`, `components`, `prompts`, `routers`, `flow.entry_point`
+  - Results posted back via `create_merge_request_note` tool — no external URL needed
+  - Monitoring: Project → Automate → Sessions
+
+- **Three delivery methods now confirmed:**
+  - Website (our Gemini/Groq keys, Cloud Run) — anyone, paste URL
+  - CLI pip install (BYOK, user's own keys) — developers, local
+  - GitLab Duo flow (GitLab's AI Gateway tokens, CI/CD compute) — GitLab teams, MR trigger
+
+- **Hackathon next steps remaining:**
+  - Wait for CI pipeline to pass on flow.yml
+  - Create a tag to publish flow to the public catalog
+  - Enable flow in the project
+  - Test by mentioning @ai-arkhe handle in an MR comment
+  - Record demo video (<3 min): trigger → analysis runs → MR comment posted
+  - Submit on Devpost before March 25
+
+- **Token optimization — partner working on:**
+  - Filter non-code files before LLM (certs, docs, CI configs, Makefiles)
+  - AST parser handles dependency mapping for ALL files at zero LLM cost
+  - Only source code (.py, .js, .ts, .go, .rs, .java, .rb) hits LLM
+  - Expected reduction: 119 files → ~20 LLM calls (~83% token reduction)
+  - Early abort after 3 consecutive all-model failures (already built in analyst_agent.py)
+  - Persistent cache per repo URL in server/cache/ (already built in server/app.py)
+
 ### 2026-03-11 (session 2 — Shreeyut)
 - **Stage 3 web server — initial build:**
   - `scripts/clone_repo.py` — clones GitHub/GitLab URLs to temp dir, context manager auto-cleans, `CloneError` for bad URLs/auth failures, shallow clone (depth=1)
