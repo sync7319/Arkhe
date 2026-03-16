@@ -8,6 +8,14 @@ API keys and provider selection live in .env.
 import argparse
 import asyncio
 import os
+import sys
+
+# Force UTF-8 output on Windows to avoid cp1252 encoding errors with Rich spinners
+if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if sys.stderr.encoding and sys.stderr.encoding.lower() != "utf-8":
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
@@ -68,6 +76,16 @@ async def run(repo_path: str, fmt: str, refactor: bool = False):
 
     db = init_db(repo_path)
     restore_from_db(db)   # load persisted cooldowns; reset if new calendar day
+
+    from config.settings import GROQ_API_KEY, GEMINI_API_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY, NVIDIA_API_KEY
+    from config.model_router import build_available_pools
+    build_available_pools({
+        "groq":      GROQ_API_KEY,
+        "gemini":    GEMINI_API_KEY,
+        "anthropic": ANTHROPIC_API_KEY,
+        "openai":    OPENAI_API_KEY,
+        "nvidia":    NVIDIA_API_KEY,
+    })
 
     with Progress(SpinnerColumn(), TextColumn("{task.description}"), console=console) as p:
 

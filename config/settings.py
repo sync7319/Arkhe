@@ -15,6 +15,7 @@ GROQ_API_KEY      = os.getenv("GROQ_API_KEY", "")
 GEMINI_API_KEY    = os.getenv("GEMINI_API_KEY", "")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 OPENAI_API_KEY    = os.getenv("OPENAI_API_KEY", "")
+NVIDIA_API_KEY    = os.getenv("NVIDIA_API_KEY", "")
 
 # ── Feature flags (from options.env) ──────────────────────────
 CODEBASE_MAP_ENABLED        = os.getenv("CODEBASE_MAP_ENABLED",        "true").lower()  == "true"
@@ -72,7 +73,7 @@ EXECUTIVE_MODELS = {
     "gemini":    {"large": "gemma-3-27b-it",           "small": "gemma-3-27b-it"},
 }
 
-VALID_PROVIDERS = {"groq", "gemini", "anthropic", "openai"}
+VALID_PROVIDERS = {"groq", "gemini", "anthropic", "openai", "nvidia"}
 VALID_ROLES     = {"traversal", "report", "refactor"}
 
 
@@ -163,6 +164,7 @@ def get_api_key(provider: str) -> str:
         "gemini":    GEMINI_API_KEY,
         "anthropic": ANTHROPIC_API_KEY,
         "openai":    OPENAI_API_KEY,
+        "nvidia":    NVIDIA_API_KEY,
     }
     key = keys.get(provider, "")
     if not key:

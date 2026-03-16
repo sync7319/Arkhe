@@ -9,7 +9,7 @@ Uses hierarchical synthesis for large codebases:
 This keeps every LLM call well under Groq's per-minute token limits.
 """
 import logging
-from config.llm_client import llm_call_async_explicit
+from config.llm_client import llm_call_async_pool
 
 logger = logging.getLogger("arkhe.synthesizer")
 
@@ -39,10 +39,10 @@ Be thorough but scannable. Use tables where appropriate."""
 
 
 async def _call(system: str, prompt: str, max_tokens: int) -> str:
-    from config.model_router import get_groq_report_model
-    model = get_groq_report_model()
-    logger.info(f"[synthesize] model: {model} | prompt: {len(prompt):,} chars")
-    return await llm_call_async_explicit("groq", model, system, prompt, max_tokens=max_tokens)
+    from config.model_router import get_heavy_pool
+    pool = get_heavy_pool()
+    logger.info(f"[synthesize] heavy pool: {[m for _, m in pool]} | prompt: {len(prompt):,} chars")
+    return await llm_call_async_pool(pool, system, prompt, max_tokens=max_tokens, role="synthesize")
 
 
 async def synthesize(reports: list[dict], file_tree: list[dict]) -> str:
@@ -69,7 +69,7 @@ async def synthesize(reports: list[dict], file_tree: list[dict]) -> str:
             f"File: {', '.join(r['files'])}\n{r['analysis']}"
             for r in batch
         )
-        summary = await _call(BATCH_SYSTEM, combined, max_tokens=512)
+        summary = await _call(BATCH_SYSTEM, combined, max_tokens=2048)
         summaries.append(f"### Batch {i // BATCH_SIZE + 1} ({len(batch)} files)\n{summary}")
         logger.info(f"[synthesize] batch {i // BATCH_SIZE + 1}/{(len(reports) + BATCH_SIZE - 1) // BATCH_SIZE} done")
 

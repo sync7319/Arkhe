@@ -26,36 +26,45 @@ logger = logging.getLogger("arkhe.router")
 # Groq   → 90s  (per-minute limits reset in 60s; 90s gives a safe buffer)
 # Gemini → 24h  (Gemma free tier has strict daily quotas)
 COOLDOWN_SECONDS: dict[str, int] = {
-    "groq":      90,
+    "groq":      65,    # RPM windows reset every 60s; 65s gives a safe buffer
     "gemini":    86400,
     "anthropic": 300,
     "openai":    300,
+    "nvidia":    65,
 }
 _DEFAULT_COOLDOWN = 300
 
 # ── Per-model rate limits (RPM / TPM / optional RPD / optional TPD) ──────────
 # Source: provider dashboards, free tier as of 2026-03
 MODEL_LIMITS: dict[str, dict[str, int]] = {
-    # Groq
-    "moonshotai/kimi-k2-instruct":          {"rpm": 60,  "tpm": 10_000, "rpd": 1_000},
-    "moonshotai/kimi-k2-instruct-0905":     {"rpm": 60,  "tpm": 10_000, "rpd": 1_000},
-    "openai/gpt-oss-120b":                  {"rpm": 30,  "tpm":  8_000, "rpd": 1_000},
-    "llama-3.3-70b-versatile":              {"rpm": 30,  "tpm": 12_000, "rpd": 1_000},
-    "qwen/qwen3-32b":                       {"rpm": 60,  "tpm":  6_000, "rpd": 1_000},
-    "openai/gpt-oss-20b":                   {"rpm": 30,  "tpm":  8_000, "rpd": 1_000},
-    "llama-3.1-8b-instant":                 {"rpm": 30,  "tpm":  6_000, "rpd": 14_400},
-    # Gemini Flash (executive report only)
-    "gemini-2.5-flash":                     {"rpm":  5,  "tpm": 250_000, "rpd": 20},
-    "gemini-2.5-flash-lite":                {"rpm": 10,  "tpm": 250_000, "rpd": 20},
-    # Gemma (Google AI Studio free tier)
-    "gemma-3-27b-it":                       {"rpm": 30,  "tpm": 15_000, "tpd": 14_400},
-    "gemma-3-12b-it":                       {"rpm": 30,  "tpm": 15_000, "tpd": 14_400},
-    "gemma-3-4b-it":                        {"rpm": 30,  "tpm": 15_000, "tpd": 14_400},
+    # ── Groq ──────────────────────────────────────────────────────────────────
+    "moonshotai/kimi-k2-instruct":                  {"rpm": 60,  "tpm": 10_000,  "rpd":  1_000, "tpd": 300_000},
+    "moonshotai/kimi-k2-instruct-0905":             {"rpm": 60,  "tpm": 10_000,  "rpd":  1_000, "tpd": 300_000},
+    "openai/gpt-oss-120b":                          {"rpm": 30,  "tpm":  8_000,  "rpd":  1_000, "tpd": 200_000},
+    "openai/gpt-oss-20b":                           {"rpm": 30,  "tpm":  8_000,  "rpd":  1_000, "tpd": 200_000},
+    "llama-3.3-70b-versatile":                      {"rpm": 30,  "tpm": 12_000,  "rpd":  1_000, "tpd": 100_000},
+    "llama-3.1-8b-instant":                         {"rpm": 30,  "tpm":  6_000,  "rpd": 14_400, "tpd": 500_000},
+    "qwen/qwen3-32b":                               {"rpm": 60,  "tpm":  6_000,  "rpd":  1_000, "tpd": 500_000},
+    "meta-llama/llama-4-scout-17b-16e-instruct":    {"rpm": 30,  "tpm": 30_000,  "rpd":  1_000, "tpd": 500_000},
+    "groq/compound":                                {"rpm": 30,  "tpm": 70_000,  "rpd":    250},
+    "groq/compound-mini":                           {"rpm": 30,  "tpm": 70_000,  "rpd":    250},
+    "allam-2-7b":                                   {"rpm": 30,  "tpm":  6_000,  "rpd":  7_000, "tpd": 500_000},
+    # ── Gemini Flash / next-gen ────────────────────────────────────────────────
+    "gemini-2.5-flash":                             {"rpm":  5,  "tpm": 250_000, "rpd":    20},
+    "gemini-2.5-flash-lite":                        {"rpm": 10,  "tpm": 250_000, "rpd":    20},
+    "gemini-3-flash-preview":                       {"rpm":  5,  "tpm": 250_000, "rpd":    20},
+    "gemini-3.1-flash-lite-preview":                {"rpm": 15,  "tpm": 250_000, "rpd":   500},
+    # ── Gemma (Google AI Studio free tier) ────────────────────────────────────
+    "gemma-3-27b-it":                               {"rpm": 30,  "tpm": 15_000,  "rpd": 14_400},
+    "gemma-3-12b-it":                               {"rpm": 30,  "tpm": 15_000,  "rpd": 14_400},
+    "gemma-3-4b-it":                                {"rpm": 30,  "tpm": 15_000,  "rpd": 14_400},
+    # ── NVIDIA NIM ────────────────────────────────────────────────────────────
+    "nvidia/llama-3.1-nemotron-ultra-253b-v1":        {"rpm": 40,  "tpm": 200_000},
 }
 
 # Pause when usage hits this fraction of any limit, then recheck
-_THROTTLE_THRESHOLD = 0.90
-_THROTTLE_PAUSE     = 25  # seconds to wait before rechecking
+_THROTTLE_THRESHOLD = 0.80
+_THROTTLE_PAUSE     = 10  # seconds to wait before rechecking
 
 # ── Per-model usage state (in-memory sliding windows) ────────────────────────
 _usage: dict[str, dict] = {}
@@ -85,8 +94,10 @@ def _prune_window(u: dict, now: float) -> None:
 
 
 def _provider_for(model: str) -> str:
-    if model.startswith("gemma-"):
+    if model.startswith("gemma-") or model.startswith("gemini-"):
         return "gemini"
+    if model.startswith("nvidia/"):
+        return "nvidia"
     return "groq"
 
 
@@ -153,66 +164,137 @@ def record_usage(model: str, tokens: int) -> None:
     u["daily_tokens"] += tokens
 
 
-# ── Groq multi-model groups ───────────────────────────────────────────────────
-# Large files / synthesis: rotate between both kimi-k2 variants to spread RPM
-GROQ_KIMI = [
-    "moonshotai/kimi-k2-instruct",
-    "moonshotai/kimi-k2-instruct-0905",
-]
-# Regular code files: rotate across three strong models
-GROQ_STANDARD = [
-    "openai/gpt-oss-120b",
-    "llama-3.3-70b-versatile",
-    "qwen/qwen3-32b",
-]
-# Non-code docs (README, txt, etc.) — fast, minimal analysis needed
-GROQ_FAST = "llama-3.1-8b-instant"
-
-# File extensions treated as non-code docs → fast model
+# ── File extensions routed to the fastest model tier ─────────────────────────
 NON_CODE_EXTENSIONS = {
+    # Docs / prose
     ".md", ".txt", ".rst", ".pdf", ".docx", ".log",
-    ".license", ".changelog", ".gitignore", ".gitattributes",
-    ".editorconfig", ".dockerignore", ".mailmap",
+    # Config / infra
+    ".yml", ".yaml", ".toml", ".cfg", ".ini", ".conf",
+    ".env", ".env.example", ".properties",
+    # Shell / scripts
+    ".sh", ".bash", ".zsh", ".fish", ".bat", ".cmd", ".ps1",
+    # Web / markup
+    ".html", ".htm", ".css", ".scss", ".sass", ".less",
+    # Data / serialization
+    ".json", ".xml", ".csv", ".tsv",
+    # SQL
+    ".sql",
+    # Dot-files / tooling
+    ".gitignore", ".gitattributes", ".editorconfig",
+    ".dockerignore", ".mailmap", ".npmrc", ".yarnrc",
+    # Misc
+    ".license", ".changelog", ".makefile",
 }
-LARGE_FILE_TOKEN_THRESHOLD = 3_000  # tokens — route to kimi above this
 
-# Rotation indices (in-memory, reset each process)
-_kimi_idx: int = 0
-_standard_idx: int = 0
+# ── File tier token thresholds (applied to full-file token counts) ────────────
+TIER_TINY_TOKENS   =   500   # < 500    → tier 1
+TIER_SMALL_TOKENS  = 3_000   # 500-3K   → tier 2
+TIER_MEDIUM_TOKENS = 8_000   # 3K-8K    → tier 3
+                              # ≥ 8K    → tier 4
+
+# ── Base pool definitions: (provider, model) ordered best → fastest ───────────
+# build_available_pools() filters to only providers with valid API keys at startup.
+_POOLS_BASE: dict[str, list[tuple[str, str]]] = {
+    # Non-code / config files — Gemini first (15K TPM vs Groq's 6K), Groq as fallback
+    "tier0": [
+        ("gemini", "gemma-3-4b-it"),
+        ("gemini", "gemma-3-27b-it"),
+        ("groq",   "llama-3.1-8b-instant"),
+        ("groq",   "allam-2-7b"),
+    ],
+    # < 500 tokens — Groq first (low latency), Gemini fallback
+    "tier1": [
+        ("groq",   "qwen/qwen3-32b"),
+        ("groq",   "openai/gpt-oss-20b"),
+        ("gemini", "gemma-3-4b-it"),
+        ("groq",   "allam-2-7b"),
+        ("groq",   "llama-3.1-8b-instant"),
+    ],
+    # 500–3K tokens — capable standard models
+    "tier2": [
+        ("groq",   "moonshotai/kimi-k2-instruct"),
+        ("groq",   "moonshotai/kimi-k2-instruct-0905"),
+        ("groq",   "openai/gpt-oss-120b"),
+        ("groq",   "llama-3.3-70b-versatile"),
+        ("groq",   "meta-llama/llama-4-scout-17b-16e-instruct"),
+        ("gemini", "gemma-3-12b-it"),
+    ],
+    # 3K–8K tokens — high-context models
+    # Groq first (low latency), Gemini as high-TPM overflow (250K TPM each)
+    "tier3": [
+        ("groq",   "meta-llama/llama-4-scout-17b-16e-instruct"),  # 30K TPM
+        ("groq",   "groq/compound"),                               # 70K TPM
+        ("gemini", "gemma-3-27b-it"),                              # 15K TPM, 30 RPM
+        ("gemini", "gemini-2.5-flash-lite"),                       # 250K TPM, 10 RPM
+        ("gemini", "gemini-3.1-flash-lite-preview"),               # 250K TPM, 15 RPM, 500 RPD
+        ("gemini", "gemini-3-flash-preview"),                      # 250K TPM, 5 RPM
+        ("groq",   "moonshotai/kimi-k2-instruct"),
+        ("groq",   "moonshotai/kimi-k2-instruct-0905"),
+    ],
+    # ≥ 8K tokens — max-context models, Gemini leads (250K TPM, 1M ctx)
+    "tier4": [
+        ("gemini", "gemini-2.5-flash"),                            # 250K TPM, established
+        ("gemini", "gemini-3-flash-preview"),                      # 250K TPM, 1M ctx window
+        ("gemini", "gemini-3.1-flash-lite-preview"),               # 250K TPM, 15 RPM, 500 RPD
+        ("gemini", "gemini-2.5-flash-lite"),                       # 250K TPM, 10 RPM
+        ("groq",   "groq/compound"),                               # 70K TPM
+        ("groq",   "meta-llama/llama-4-scout-17b-16e-instruct"),   # 30K TPM
+        ("groq",   "groq/compound-mini"),                          # 70K TPM
+        ("gemini", "gemma-3-27b-it"),                              # 15K TPM, last resort
+    ],
+    # Synthesis / report generation — NVIDIA 253B leads (most capable), Gemini as overflow
+    "heavy": [
+        ("nvidia", "nvidia/llama-3.1-nemotron-ultra-253b-v1"),       # 253B, 40 RPM
+        ("gemini", "gemini-3-flash-preview"),                        # 1M ctx, 250K TPM
+        ("gemini", "gemini-2.5-flash"),                              # established, reliable
+        ("gemini", "gemini-3.1-flash-lite-preview"),                 # 15 RPM, 500 RPD
+        ("groq",   "moonshotai/kimi-k2-instruct"),
+        ("groq",   "moonshotai/kimi-k2-instruct-0905"),
+        ("groq",   "openai/gpt-oss-120b"),
+        ("groq",   "llama-3.3-70b-versatile"),
+    ],
+}
+
+# Active pools — populated once at startup by build_available_pools()
+_POOLS: dict[str, list[tuple[str, str]]] = {}
 
 
-def _next_available(models: list[str], idx: int) -> tuple[str, int]:
-    """Return the next non-cooling model in a group and advance the index."""
-    n = len(models)
-    for offset in range(n):
-        m = models[(idx + offset) % n]
-        if not is_cooling(m):
-            return m, (idx + offset + 1) % n
-    # All cooling — return next anyway; the call will 429 and fall back normally
-    return models[idx % n], (idx + 1) % n
+def build_available_pools(api_keys: dict[str, str]) -> None:
+    """
+    Called once at startup. Checks which providers have valid API keys and
+    builds filtered tier pools — models for unavailable providers are excluded.
+    """
+    global _POOLS
+    available = {p for p, key in api_keys.items() if key and key.strip()}
+    logger.info(f"[router] Active providers: {sorted(available)}")
+    for tier, pool in _POOLS_BASE.items():
+        _POOLS[tier] = [(p, m) for p, m in pool if p in available]
+    for tier, pool in _POOLS.items():
+        names = [m for _, m in pool]
+        if names:
+            logger.info(f"[router] {tier} pool ({len(names)}): {names}")
+        else:
+            logger.warning(f"[router] {tier} pool is empty — no matching API keys")
 
 
-def get_groq_file_model(file_path: str, token_count: int) -> str:
-    """Pick the right Groq model for a file based on type and size."""
-    global _kimi_idx, _standard_idx
+def get_file_pool(file_path: str, token_count: int) -> list[tuple[str, str]]:
+    """Return the appropriate model pool for a file based on type and size."""
     ext = ("." + file_path.rsplit(".", 1)[-1].lower()) if "." in file_path else ""
-
     if ext in NON_CODE_EXTENSIONS:
-        return GROQ_FAST
+        return _POOLS.get("tier0") or _POOLS.get("tier1") or []
+    if token_count < TIER_TINY_TOKENS:
+        return _POOLS.get("tier1") or []
+    elif token_count < TIER_SMALL_TOKENS:
+        return _POOLS.get("tier2") or []
+    elif token_count < TIER_MEDIUM_TOKENS:
+        return _POOLS.get("tier3") or []
+    else:
+        return _POOLS.get("tier4") or []
 
-    if token_count >= LARGE_FILE_TOKEN_THRESHOLD:
-        model, _kimi_idx = _next_available(GROQ_KIMI, _kimi_idx)
-        return model
 
-    model, _standard_idx = _next_available(GROQ_STANDARD, _standard_idx)
-    return model
-
-
-def get_groq_report_model() -> str:
-    """For synthesis / report generation → kimi-k2 rotation."""
-    global _kimi_idx
-    model, _kimi_idx = _next_available(GROQ_KIMI, _kimi_idx)
-    return model
+def get_heavy_pool() -> list[tuple[str, str]]:
+    """Return the heavy-task pool for synthesis and report generation."""
+    return _POOLS.get("heavy") or []
 
 
 # ── Priority chains: best → worst ────────────────────────────────────────────
@@ -222,28 +304,37 @@ CHAINS: dict[str, list[str]] = {
         "moonshotai/kimi-k2-instruct-0905",
         "openai/gpt-oss-120b",
         "llama-3.3-70b-versatile",
+        "meta-llama/llama-4-scout-17b-16e-instruct",
+        "groq/compound",
         "qwen/qwen3-32b",
         "openai/gpt-oss-20b",
+        "groq/compound-mini",
+        "allam-2-7b",
         "llama-3.1-8b-instant",
     ],
     "gemini": [
-        "gemini-2.5-flash",      # executive report primary — 250K TPM, 20 RPD
-        "gemini-2.5-flash-lite", # fallback if flash RPD exhausted
-        "gemma-3-27b-it",        # last resort — 15K TPM, 14.4K TPD
+        "gemini-3-flash-preview",
+        "gemini-2.5-flash",
+        "gemini-3.1-flash-lite-preview",
+        "gemini-2.5-flash-lite",
+        "gemma-3-27b-it",
         "gemma-3-12b-it",
         "gemma-3-4b-it",
     ],
     "anthropic": [
-        "claude-opus-4-6",         # most capable
-        "claude-sonnet-4-6",       # balanced
-        "claude-haiku-4-5",        # fastest / cheapest
+        "claude-opus-4-6",
+        "claude-sonnet-4-6",
+        "claude-haiku-4-5",
     ],
     "openai": [
-        "o3",                      # most capable reasoning
-        "gpt-4.5-preview",         # largest GPT
-        "gpt-4o",                  # flagship multimodal
-        "gpt-4o-mini",             # fast + cheap
-        "o1-mini",                 # lightweight reasoning
+        "o3",
+        "gpt-4.5-preview",
+        "gpt-4o",
+        "gpt-4o-mini",
+        "o1-mini",
+    ],
+    "nvidia": [
+        "nvidia/llama-3.1-nemotron-ultra-253b-v1",
     ],
 }
 

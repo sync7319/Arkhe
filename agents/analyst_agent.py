@@ -10,7 +10,7 @@ New files are analyzed concurrently, bounded by MAX_CONCURRENT_FILES.
 import asyncio
 import logging
 from cache.db import get_db
-from config.llm_client import llm_call_async_explicit
+from config.llm_client import llm_call_async_explicit, llm_call_async_pool
 
 logger = logging.getLogger("arkhe.analyst")
 
@@ -33,14 +33,10 @@ MODEL_TPM_LIMITS = {
 }
 DEFAULT_SAFE_TPM = 5000
 
-# Max content chars sent per file in the prompt
-MAX_FILE_CHARS = 800
-
 # Max files analyzed concurrently.
-# Keep at 1 for free-tier providers (Groq/Gemini) — bursting concurrent calls
-# exhausts the RPM budget instantly and triggers cascading fallbacks.
-# Raise to 3-5 only when using paid API keys with higher rate limits.
-MAX_CONCURRENT_FILES = 1
+# acquire_slot() in model_router.py pauses at 90% of RPM/TPM before dispatching,
+# so 3 concurrent calls are safe even on free-tier providers.
+MAX_CONCURRENT_FILES = 3
 
 
 def _safe_budget(model: str) -> int:
@@ -52,7 +48,7 @@ def _safe_budget(model: str) -> int:
 
 def _build_prompt(file: dict) -> str:
     s    = file.get("structure", {})
-    body = file["content"][:MAX_FILE_CHARS].strip()
+    body = file["content"].strip()
     fns  = ", ".join(s.get("functions", [])[:6]) or "none"
     cls  = ", ".join(s.get("classes",   [])[:4]) or "none"
     imps = ", ".join(s.get("imports",   [])[:5]) or "none"
@@ -64,11 +60,11 @@ def _build_prompt(file: dict) -> str:
 
 
 async def _analyze_file(file: dict, idx: int, sem: asyncio.Semaphore) -> dict:
-    from config.model_router import get_groq_file_model
+    from config.model_router import get_file_pool
     async with sem:
-        prompt   = _build_prompt(file)
-        model    = get_groq_file_model(file["path"], file.get("tokens", 0))
-        analysis = await llm_call_async_explicit("groq", model, SYSTEM, prompt, max_tokens=512)
+        prompt = _build_prompt(file)
+        pool   = get_file_pool(file["path"], file.get("tokens", 0))
+        analysis = await llm_call_async_pool(pool, SYSTEM, prompt, max_tokens=512, role="analyst")
 
     db = get_db()
     db.save_analysis(file["path"], file["content_hash"], analysis)
@@ -77,9 +73,8 @@ async def _analyze_file(file: dict, idx: int, sem: asyncio.Semaphore) -> dict:
 
 
 async def analyze_parallel(files: list[dict]) -> list[dict]:
-    from config.model_router import get_groq_file_model
-    model = "groq/multi-model"  # display label only
-    db       = get_db()
+    model = "multi-provider/tiered"  # display label only
+    db    = get_db()
 
     cached_results, new_files = [], []
     for file in files:
@@ -106,29 +101,21 @@ async def analyze_parallel(files: list[dict]) -> list[dict]:
         f"concurrency: {min(MAX_CONCURRENT_FILES, max(misses, 1))})"
     )
 
-    sem = asyncio.Semaphore(MAX_CONCURRENT_FILES)
-    new_results     = []
-    consecutive_failures = 0
-    ABORT_THRESHOLD = 3   # abort after this many consecutive all-model failures
+    sem   = asyncio.Semaphore(MAX_CONCURRENT_FILES)
+    tasks = [_analyze_file(f, hits + i, sem) for i, f in enumerate(new_files)]
+    raw   = await asyncio.gather(*tasks, return_exceptions=True)
 
-    for i, f in enumerate(new_files):
-        task   = _analyze_file(f, hits + i, sem)
-        result = await asyncio.gather(task, return_exceptions=True)
-        result = result[0]
-
+    new_results = []
+    failures    = 0
+    for result in raw:
         if isinstance(result, Exception):
-            logger.error(f"[analyze] failed for {f['path']}: {result}")
-            consecutive_failures += 1
-            if consecutive_failures >= ABORT_THRESHOLD:
-                logger.warning(
-                    f"[analyze] {consecutive_failures} consecutive failures — "
-                    f"aborting early to preserve quota. "
-                    f"{len(new_results)}/{misses} new files analyzed before abort."
-                )
-                break
+            logger.error(f"[analyze] failed: {result}")
+            failures += 1
         else:
             new_results.append(result)
-            consecutive_failures = 0  # reset on success
+
+    if failures:
+        logger.warning(f"[analyze] {failures}/{misses} new file(s) failed — continuing with {len(new_results)} results")
 
     if not new_results and misses > 0:
         raise RuntimeError(

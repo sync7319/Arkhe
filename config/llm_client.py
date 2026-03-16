@@ -75,6 +75,16 @@ def _get_openai_async_client(api_key: str):
     return _async_clients["openai_async"]
 
 
+def _get_nvidia_async_client(api_key: str):
+    if "nvidia_async" not in _async_clients:
+        from openai import AsyncOpenAI
+        _async_clients["nvidia_async"] = AsyncOpenAI(
+            api_key=api_key,
+            base_url="https://integrate.api.nvidia.com/v1",
+        )
+    return _async_clients["nvidia_async"]
+
+
 def llm_call(role: str, system: str, user_prompt: str, max_tokens: int = 4096) -> str:
     provider, model = get_model(role)
     api_key         = get_api_key(provider)
@@ -446,6 +456,41 @@ async def llm_call_async_explicit(
 
 # ── Dispatch helper ───────────────────────────────────────────────────────────
 
+async def _call_nvidia_async(api_key, model, system, prompt, max_tokens):
+    from config.model_router import acquire_slot, record_usage
+
+    estimated = (len(system) + len(prompt)) // 4
+    try:
+        await acquire_slot(model, estimated)
+    except RuntimeError as e:
+        from openai import RateLimitError
+        raise RateLimitError(message=str(e), response=None, body=None) from e
+
+    client   = _get_nvidia_async_client(api_key)
+    response = await client.chat.completions.create(
+        model=model,
+        max_tokens=max_tokens,
+        temperature=0.6,
+        top_p=0.95,
+        extra_body={"chat_template_kwargs": {"enable_thinking": False}},
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user",   "content": prompt},
+        ],
+    )
+    msg           = response.choices[0].message
+    finish_reason = response.choices[0].finish_reason
+    # Nemotron-Ultra always puts output in reasoning_content; content is None
+    content = msg.content or getattr(msg, "reasoning_content", None) or ""
+    if not content.strip():
+        raise RuntimeError("NVIDIA_EMPTY_CONTENT")
+    if finish_reason not in ("stop", "length", None):
+        logger.warning(f"[nvidia] unusual finish_reason={finish_reason} but content present — using it")
+    if hasattr(response, "usage") and response.usage:
+        record_usage(model, response.usage.total_tokens or 0)
+    return content
+
+
 async def _dispatch_async(provider, model, api_key, system, prompt, max_tokens):
     if provider == "groq":
         return await _call_groq_async(api_key, model, system, prompt, max_tokens)
@@ -455,7 +500,9 @@ async def _dispatch_async(provider, model, api_key, system, prompt, max_tokens):
         return await _call_anthropic_async(api_key, model, system, prompt, max_tokens)
     elif provider == "openai":
         return await _call_openai_async(api_key, model, system, prompt, max_tokens)
-    raise ValueError(f"Unknown provider: '{provider}'. Valid: groq | gemini | anthropic | openai")
+    elif provider == "nvidia":
+        return await _call_nvidia_async(api_key, model, system, prompt, max_tokens)
+    raise ValueError(f"Unknown provider: '{provider}'. Valid: groq | gemini | anthropic | openai | nvidia")
 
 
 # ── Exception helpers ─────────────────────────────────────────────────────────
@@ -484,6 +531,12 @@ def _rate_limit_exceptions(provider: str) -> tuple:
             return (RateLimitError,)
         except ImportError:
             logger.error("openai package not importable — rate-limit detection disabled")
+    elif provider == "nvidia":
+        try:
+            from openai import RateLimitError
+            return (RateLimitError,)
+        except ImportError:
+            logger.error("openai package not importable — nvidia rate-limit detection disabled")
     return ()
 
 
@@ -513,4 +566,73 @@ def _transient_exceptions(provider: str) -> tuple:
             return (APIConnectionError, APITimeoutError)
         except ImportError:
             pass
+    elif provider == "nvidia":
+        try:
+            from openai import APIConnectionError, APITimeoutError
+            return (APIConnectionError, APITimeoutError)
+        except ImportError:
+            pass
     return (ConnectionError, TimeoutError)
+
+
+async def llm_call_async_pool(
+    pool: list[tuple[str, str]],
+    system: str,
+    user_prompt: str,
+    max_tokens: int = 4096,
+    role: str = "pool",
+) -> str:
+    """
+    Try models from a cross-provider pool in priority order.
+    Skips cooling models, falls back on rate limits, waits if all are cooling.
+    Pool entries are (provider, model) tuples pre-built by model_router.
+    """
+    from config.model_router import is_cooling, mark_cooling, cooling_remaining
+
+    if not pool:
+        raise RuntimeError("Empty model pool — no API keys configured for this tier. Check your .env.")
+
+    while True:
+        attempted_any = False
+        for provider, model in pool:
+            if is_cooling(model):
+                logger.debug(f"[{role}] {model} cooling — skipping")
+                continue
+            try:
+                api_key = get_api_key(provider)
+            except ValueError:
+                logger.warning(f"[{role}] No API key for {provider} — skipping {model}")
+                continue
+
+            rate_limit_exc = _rate_limit_exceptions(provider)
+            transient_exc  = _transient_exceptions(provider)
+            attempted_any  = True
+            logger.debug(f"[{role}] provider={provider} model={model}")
+
+            for attempt in range(1, MAX_RETRIES + 1):
+                try:
+                    return await _dispatch_async(provider, model, api_key, system, user_prompt, max_tokens)
+                except rate_limit_exc:
+                    mark_cooling(model, provider)
+                    logger.warning(f"[{role}] Rate limit on {model} — falling back")
+                    break
+                except transient_exc as e:
+                    if attempt == MAX_RETRIES:
+                        logger.warning(f"[{role}] {model} failed after {MAX_RETRIES} retries — falling back")
+                        break
+                    await asyncio.sleep(RETRY_BACKOFF * attempt)
+                except Exception as e:
+                    err = str(e)
+                    if "404" in err or "NOT_FOUND" in err:
+                        logger.warning(f"[{role}] {model} not found (404) — skipping")
+                        break
+                    if "NVIDIA_EMPTY_CONTENT" in err:
+                        logger.warning(f"[{role}] {model} returned empty — falling back")
+                        break
+                    logger.error(f"[{role}] Non-retryable error on {model}: {e}")
+                    raise
+
+        if not attempted_any:
+            wait = min((cooling_remaining(m) for _, m in pool), default=0) + 5
+            logger.info(f"[{role}] All models cooling — waiting {wait}s for recovery")
+            await asyncio.sleep(wait)

@@ -153,55 +153,15 @@ def build_graph(modules: list[dict]) -> dict:
 
 # ── HTML generation ──────────────────────────────────────────────────────────
 
-_HEATMAP_SCRIPT = """
-<script>
-(function(){
-  const nodes = ALL_NODES;
-  if (!nodes.length) return;
-  const maxC = Math.max(...nodes.map(n => n.complexity || 0), 1);
-  // Green (safe) → Yellow → Red (complex) using HSL
-  function heatColor(score) {
-    const t   = Math.min(score / maxC, 1);        // 0 = simple, 1 = complex
-    const hue = Math.round((1 - t) * 120);        // 120 = green, 0 = red
-    return `hsl(${hue},70%,52%)`;
-  }
-  // Re-color every file-rect using its node's complexity score
-  document.querySelectorAll('.file-node').forEach(el => {
-    const d = el.__data__;
-    if (d && d.complexity != null) {
-      const rect = el.querySelector('.file-rect');
-      if (rect) rect.setAttribute('fill', heatColor(d.complexity));
-    }
-  });
-  // Patch the legend to show heatmap key instead of folder colors
-  const leg = document.getElementById('leg-folders');
-  if (leg) {
-    leg.innerHTML = [
-      ['Low complexity',    'hsl(120,70%,52%)'],
-      ['Medium complexity', 'hsl(60,70%,52%)'],
-      ['High complexity',   'hsl(0,70%,52%)'],
-    ].map(([label, color]) =>
-      `<div class="leg-row"><div class="leg-dot" style="background:${color}"></div><span>${label}</span></div>`
-    ).join('');
-  }
-})();
-</script>
-"""
-
-
 def generate_html(graph: dict, heatmap: bool = False) -> str:
     template = files("templates").joinpath("dependency_map.html").read_text(encoding="utf-8")
 
-    html = (
+    return (
         template
         .replace("{{NODES_JSON}}", json.dumps(graph["nodes"], indent=2))
         .replace("{{LINKS_JSON}}", json.dumps(graph["links"], indent=2))
+        .replace("{{HEATMAP_DEFAULT}}", "true" if heatmap else "false")
     )
-
-    if heatmap:
-        html = html.replace("</body>", _HEATMAP_SCRIPT + "\n</body>")
-
-    return html
 
 
 def write_visualizer(graph: dict, repo_path: str, heatmap: bool = False) -> str:
