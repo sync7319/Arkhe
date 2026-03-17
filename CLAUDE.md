@@ -138,6 +138,21 @@ Everything through Stage 2 is genuinely $0.
 
 ## Progress Log
 
+### 2026-03-17 (session — Shreeyut)
+- **GitLab Duo flow upgraded to 3-agent pipeline (Scanner → Analyst → Reporter):**
+  - `flows/flow.yml` rewritten as a multi-agent flow, CI passing
+  - `agents/agent.yml` updated with partner's improved 5-phase system prompt
+  - **Schema clarified (corrects earlier CLAUDE.md entry):**
+    - Multi-agent components use `inputs: [{from: "context:goal", as: "var"}]` object syntax (not plain strings)
+    - Data passes between agents via `context:component_name.final_answer` — each component's `user:` prompt references the input variable `{{var_name}}`
+    - Three component types: `AgentComponent` (LLM, uses `prompt_id`), `OneOffComponent` (single-shot LLM), `DeterministicStepComponent` (no LLM, uses `tool_name`)
+    - `tool_name` is ONLY for `DeterministicStepComponent` — never on `AgentComponent`
+  - **Agent responsibilities:**
+    - `scanner`: `get_project`, `get_merge_request`, `list_merge_request_diffs`, `list_repository_tree`, `find_files` — maps repo, builds priority read list
+    - `analyst`: `read_files`, `read_file`, `grep`, `gitlab_blob_search`, `get_commit_diff` — deep reads, 6-dimensional analysis (arch, deps, PR impact, OWASP, test coverage, quality)
+    - `reporter`: `create_merge_request_note`, `create_file_with_contents`, `create_commit` — posts MR comment + commits `docs/CODEBASE_MAP.md` + `docs/SECURITY_REPORT.md`
+  - Partner pulled in: NVIDIA NIM provider (Nemotron-253B for synthesis), tiered model routing (tier0–4 + heavy pool), concurrent file analysis (3x), full file content sent (removed 800-char truncation)
+
 ### 2026-03-10 (session — Shreeyut)
 - **Stage 2 completed in full:**
 123
@@ -238,23 +253,23 @@ Everything through Stage 2 is genuinely $0.
 ### 2026-03-12 (session 2 — Shreeyut)
 - **CI pipeline now passing** — both `placeholder-test` and `validate-items` jobs green
   - Resolved through iterative schema debugging across many attempts
-  - **Correct schema discovered:**
-    - `flows/flow.yml` component: `type: AgentComponent`, `prompt_id` (required), plain string `toolset` (NOT objects), NO `tool_name` on component
+  - **Correct schema (single-agent):**
+    - `flows/flow.yml` component: `type: AgentComponent`, `prompt_id` (required), plain string `toolset`, `inputs: ["context:goal"]`
     - `agents/agent.yml`: `name`, `description`, `public`, `system_prompt`, plain string `tools` list
-    - `tool_name` on component is for referencing built-in GitLab tools only (must match `tool_mapping.json`) — not for custom agent names
-    - `prompt_id` and `tool_name` are mutually exclusive on a component (oneOf schema)
+    - `tool_name` on component is ONLY for `DeterministicStepComponent` (no LLM, calls one tool directly) — not for AgentComponent
+    - `prompt_id` and `tool_name` are mutually exclusive — `AgentComponent` uses `prompt_id`, `DeterministicStepComponent` uses `tool_name`
   - `flows/arkhe.yml` renamed to `flows/flow.yml` to match hackathon repo convention
 
-- **Git setup clarified — three repos, clear ownership:**
-  - GitHub (`sync7319/Arkhe`) — source of truth, all Python dev work
-  - GitLab personal (`nshreeyut/Arkhe`) — auto-mirror of GitHub, never touch manually
-  - GitLab hackathon (`gitlab-ai-hackathon/participants/35223940`) — minimal submission repo, only contains `flows/flow.yml` + `agents/agent.yml` + `LICENSE` + `README.md`
-  - Hackathon repo is NOT a copy of the Python app — it's a standalone GitLab Duo agent definition
+- **Git setup clarified — two repos, clear ownership:**
+  - GitHub (`sync7319/Arkhe`) — source of truth for all work (Python app + hackathon files)
+  - GitLab hackathon (`gitlab-ai-hackathon/participants/35223940`) — submission repo, deploy by copying from `hackathon/` via Web IDE
+  - GitLab personal mirror (`nshreeyut/Arkhe`) — removed, no longer needed
+  - Hackathon files live in `hackathon/` subfolder — completely separate from Python app
   - Both collaborators can edit hackathon repo via Web IDE; coordinate before editing same files
 
 - **Python app vs GitLab Duo flow — key distinction:**
   - Python app: local/Cloud Run, BYOK, 6-stage pipeline, multi-agent, outputs files to `docs/`
-  - GitLab Duo flow: runs on GitLab's compute, GitLab's AI tokens, single LLM call, posts MR comment
+  - GitLab Duo flow: runs on GitLab's compute, GitLab's AI tokens, 3-agent pipeline, posts MR comment + commits docs
   - GitLab flow is the hackathon integration layer — same idea, different delivery method
   - GitLab flow does NOT run any Python code — uses GitLab's built-in tools via AI Gateway
 
@@ -264,7 +279,6 @@ Everything through Stage 2 is genuinely $0.
   - `config/llm_client.py`, `agents/analyst_agent.py`, `agents/report_agent.py`, `config/settings.py`, `options.env`
 
 - **Hackathon next steps remaining:**
-  - Enhance agent to commit reports (`docs/CODEBASE_MAP.md`, `docs/SECURITY_REPORT.md`) and Mermaid dependency graph using `create_file_with_contents` + `create_commit` tools
   - Create a git tag (`v1.0.0`) to publish flow to the GitLab catalog
   - Enable flow in the project
   - Test by mentioning agent in an MR comment
