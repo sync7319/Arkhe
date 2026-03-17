@@ -1,107 +1,79 @@
-# Arkhe — Agent Context
+# Arkhe — GitLab Duo Agent Context
 
-Arkhe is an autonomous codebase intelligence tool. It deploys a suite of specialized AI agents against any repository and produces always-current documentation, visualizations, and analysis reports — automatically, on every run.
+Arkhe is an autonomous codebase intelligence agent built on the GitLab Duo Agent Platform. Triggered by a mention or MR assignment, it runs a three-agent pipeline that reads the repository using GitLab's built-in tools, analyzes architecture and security, and posts a full intelligence report as an MR comment — then commits generated docs back to the repo.
 
----
-
-## What Arkhe produces
-
-| Output | Description |
-|--------|-------------|
-| `docs/CODEBASE_MAP.md` | AI-generated architecture narrative: data flows, module guide, gotchas |
-| `docs/DEPENDENCY_MAP.html` | Interactive D3.js graph of every file and its dependencies |
-| `docs/EXECUTIVE_REPORT.docx` | Word report summarizing architecture for stakeholders |
-| `docs/SECURITY_REPORT.md` | OWASP Top 10 vulnerability scan across all source files |
-| `docs/DEAD_CODE_REPORT.md` | Functions and classes defined but never referenced |
-| `docs/TEST_GAP_REPORT.md` | Public functions with no test coverage |
-| `docs/PR_IMPACT.md` | Blast radius of changed files vs base branch |
-| `tests_generated/` | pytest scaffold files for every uncovered function |
+No installation. No API keys. No webhooks. Runs entirely on GitLab's compute using GitLab's AI Gateway.
 
 ---
 
-## How to trigger Arkhe
+## How to trigger
 
-**As a GitLab Duo agent:**
-- Assign Arkhe as a reviewer on any merge request
-- Mention `@arkhe` in an MR or issue comment
-
-**As a CLI tool:**
-```bash
-arkhe ./my-project          # full analysis
-arkhe diff ./my-project     # compare vs last snapshot (no LLM)
-arkhe watch ./my-project    # re-analyze on every file change
-```
+- Mention the Arkhe agent handle in any MR or issue comment
+- Assign Arkhe as a reviewer on a merge request
 
 ---
 
-## Pipeline
+## What Arkhe does
 
-```
-scan → parse (tree-sitter AST) → analyze (LLM per file) → synthesize → visualize → write
-```
+Arkhe runs three agents in sequence. Each agent receives the previous agent's output as its input.
 
-1. **Scan** — walks the repo, reads files, counts tokens, respects `.gitignore`
-2. **Parse** — extracts AST (functions, classes, imports) via tree-sitter for 7 languages
-3. **Analyze** — batches files, calls LLM sequentially with TPM-aware rate limiting
-4. **Synthesize** — combines batch reports into the final `CODEBASE_MAP.md`
-5. **Visualize** — builds dependency graph, injects into D3.js template
-6. **Write** — outputs all reports to `docs/`
+### Agent 1 — Scanner
+**Tools:** `get_project`, `get_merge_request`, `list_merge_request_diffs`, `list_repository_tree`, `find_files`
 
----
+Establishes full context before any files are read:
+- Calls `get_project` to identify the language, default branch, and project description
+- In MR mode: calls `get_merge_request` + `list_merge_request_diffs` to get the exact set of changed files and their line-level diffs
+- Calls `list_repository_tree` to map the repo structure — entry points, core modules, test directories, config layers, API surfaces
+- Builds a prioritized read list and import grep patterns for the Analyst
 
-## Supported languages
+### Agent 2 — Analyst
+**Tools:** `read_files`, `read_file`, `grep`, `gitlab_blob_search`, `get_commit_diff`
 
-Python · JavaScript · TypeScript · Go · Rust · Java · Ruby
+Reads source files and runs six-dimensional analysis:
+- Batches file reads using `read_files` — 2–3 calls covering 10–15 files
+- Uses `grep` and `gitlab_blob_search` to trace which files import changed modules (blast radius)
+- **A. Architecture** — what the system does, architectural pattern, data flow, load-bearing modules
+- **B. Dependencies** — import graph, circular deps, risky external packages
+- **C. PR Impact** — per-file change type, importers, risk score (🟢/🟡/🔴), overall risk
+- **D. Security** — OWASP Top 10 static scan (A01–A09) on code actually read
+- **E. Test Coverage** — changed files with no corresponding test file, untested public functions
+- **F. Code Quality** — oversized functions, deep nesting, TODOs in changed code, missing docstrings
 
----
+### Agent 3 — Reporter
+**Tools:** `create_merge_request_note`, `create_file_with_contents`, `create_commit`
 
-## LLM providers
-
-Arkhe supports Anthropic, Groq, Gemini, and OpenAI. Provider and model are configured via environment variables — BYOK (Bring Your Own Key). Groq and Gemini have free tiers; the full pipeline runs at $0 with either.
-
-A model fallback router automatically cascades to the next model on rate limits, with cooldowns persisted to SQLite across restarts.
-
----
-
-## Feature toggles
-
-All optional agents are off by default and enabled via `options.env`:
-
-```
-SECURITY_AUDIT_ENABLED=true
-DEAD_CODE_DETECTION_ENABLED=true
-TEST_GAP_ANALYSIS_ENABLED=true
-TEST_SCAFFOLDING_ENABLED=true
-PR_ANALYSIS_ENABLED=true
-EXECUTIVE_REPORT_ENABLED=true
-COMPLEXITY_HEATMAP_ENABLED=true
-REFACTOR_ENABLED=true
-```
+Posts the report and commits docs:
+- Calls `create_merge_request_note` once with the full structured intelligence report
+- Calls `create_file_with_contents` + `create_commit` to commit two files to the default branch:
+  - `docs/CODEBASE_MAP.md` — architecture narrative, core modules table, dependency map, gotchas
+  - `docs/SECURITY_REPORT.md` — OWASP findings with severity, file, and description
 
 ---
 
-## Caching
+## What Arkhe cannot do in this context
 
-Results are cached in SQLite keyed by file content hash (`<repo>/.arkhe_cache/arkhe.db`). On a re-run, only files that changed since the last run hit the LLM. A 200-file repo with 1 changed file makes 1 LLM call.
+These are constraints of the GitLab Duo Agent Platform — not limitations of Arkhe's design:
+
+- **No code execution** — analysis is static only; no running tests, linters, or build tools
+- **No external HTTP calls** — cannot call GitHub, npm registry, CVE databases, or any external API
+- **No file system writes outside GitLab** — all output goes through `create_file_with_contents` + `create_commit`
+- **No persistent memory** — each trigger starts fresh; no history across MRs
+- **No parallel agents** — pipeline is sequential: Scanner → Analyst → Reporter
+- **GitLab's AI model only** — uses whatever model GitLab's AI Gateway provides; no BYOK
 
 ---
 
-## Key files
+## Output
 
-```
-main.py                      — pipeline orchestration + subcommand dispatch
-config/settings.py           — provider selection, model defaults, BYOK chain parsing
-config/llm_client.py         — unified LLM wrapper (Anthropic, Groq, Gemini, OpenAI)
-config/model_router.py       — priority chains + cooldown fallback
-agents/analyst_agent.py      — TPM-aware batch file analysis
-agents/synthesizer_agent.py  — final map synthesis
-agents/parser_agent.py       — tree-sitter AST extraction
-agents/visualizer_agent.py   — D3.js dependency graph builder
-agents/security_agent.py     — OWASP Top 10 scan
-agents/dead_code_agent.py    — static dead symbol detection
-agents/test_gap_agent.py     — test coverage gap analysis + scaffold generation
-agents/impact_agent.py       — PR blast radius analysis
-agents/report_agent.py       — executive Word report generation
-cache/db.py                  — SQLite cache (ArkheDB)
-options.env                  — feature toggles
-```
+| Output | Where |
+|--------|-------|
+| Intelligence report | MR comment (posted by Reporter agent) |
+| `docs/CODEBASE_MAP.md` | Committed to default branch |
+| `docs/SECURITY_REPORT.md` | Committed to default branch |
+
+---
+
+## Flow definition
+
+See `flows/flow.yml` for the full YAML definition.
+See `agents/agent.yml` for the standalone single-agent definition (directly triggerable).
