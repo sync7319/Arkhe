@@ -38,7 +38,7 @@ def test_cooling_remaining_positive_after_mark(monkeypatch):
         pass
     remaining = router.cooling_remaining("gemini-2.0-flash")
     assert remaining > 0
-    assert remaining <= router.COOLDOWN_SECONDS
+    assert remaining <= router.COOLDOWN_SECONDS.get("gemini", router._DEFAULT_COOLDOWN)
 
 
 def test_cooling_remaining_zero_when_not_cooling():
@@ -76,7 +76,7 @@ def test_get_chain_unknown_provider_returns_custom_only():
 
 
 def test_get_chain_gemini_full_chain():
-    chain = router.get_chain("gemini", "gemini-2.5-pro")
+    chain = router.get_chain("gemini", router.CHAINS["gemini"][0])
     assert chain == router.CHAINS["gemini"]
 
 
