@@ -11,55 +11,11 @@ Users bring their own API keys. Groq and Gemini are free tiers, so most CLI user
 Users paste a repo URL and get results instantly. No install, no API keys. Free tier is capped; paid tiers remove limits. The model fallback router handles rate limits automatically on the backend.
 
 **GitLab Duo flow — zero setup, GitLab's AI tokens.**
-Users mention the Arkhe agent in any MR. No install, no API keys, no webhook setup. Runs on GitLab's compute. Entry point for GitLab users.
-
-**The CLI is the acquisition channel. The website is the conversion funnel. The GitLab flow is the GitLab-native entry point.**
+Users mention the Arkhe agent in any MR. No install, no API keys, no webhook setup. Runs on GitLab's compute. Entry point for GitLab users. See `hackathon/ROADMAP.md` for the GitLab Duo track.
 
 ---
 
-## Two Tracks
-
-### Track 1 — GitLab Duo Integration
-Native GitLab agent built on the GitLab Duo Agent Platform. Zero setup for users. Runs on GitLab's compute using GitLab's AI tokens.
-
-### Track 2 — Python App / CLI / Web
-The core product. Full pipeline, all outputs, BYOK, CLI + Cloud Run web server.
-
-Both tracks post results back to GitLab/GitHub natively. Track 1 is the entry point; Track 2 is the full-power mode. A toggle on the web server lets users switch between them per repo.
-
----
-
-## Track 1 — GitLab Duo Integration
-
-### Hackathon Phase (due March 25, 2026)
-
-**Status: CI passing ✅ — flow and agent validated**
-
-- [x] `flows/flow.yml` — valid GitLab Duo flow YAML, CI passing
-- [x] `agents/agent.yml` — Arkhe agent with full system prompt and tool list
-- [ ] Upgrade to multi-agent flow — split into specialized sequential agents:
-  - **Scanner agent** — repo structure, key files, MR diff context (`build_review_merge_request_context`)
-  - **Dependency agent** — map imports, infer dependency graph, generate Mermaid diagram
-  - **Security agent** — pull real SAST findings via `get_security_finding_details` + `list_vulnerabilities`
-  - **Report agent** — synthesize all findings, post rich MR comment
-- [ ] Create git tag `v1.0.0` on hackathon repo to publish to GitLab catalog
-- [ ] Enable flow in the project settings
-- [ ] Test end-to-end: mention agent in MR → analysis runs → comment posted
-- [ ] Record demo video (<3 min): trigger → analysis → MR comment with Mermaid graph
-- [ ] Submit on Devpost before March 25
-
-### Post-Hackathon Phase
-
-- [ ] Connect Duo flow to Cloud Run backend — Duo flow triggers Cloud Run for deep analysis (via CI job or webhook), posts full results back to GitLab
-- [ ] Web server toggle — "Quick mode" (Duo flow, instant, GitLab's AI) vs "Full mode" (Cloud Run, full pipeline, all 7 outputs)
-- [ ] GitLab OAuth on web server — user connects once, we auto-register webhooks on selected repos
-- [ ] GitLab webhook receiver — `POST /gitlab-webhook`, parse `X-Gitlab-Event` MR payload, run full Python pipeline, post results via GitLab Notes API
-- [ ] Commit full `docs/` output to repo via GitLab API after full pipeline run
-- [ ] Maintain and improve the Duo flow as GitLab platform capabilities expand
-
----
-
-## Track 2 — Python App / CLI / Web
+## Python App / CLI / Web
 
 ### Stage 0 — Foundation ✅
 - [x] `pyproject.toml` + UV venv
@@ -103,7 +59,6 @@ arkhe watch ./my-project
 - [x] BYOK fallback chain — `ARKHE_CHAIN=openai:gpt-4o:sk-xxx,gemini:gemini-2.5-pro:AIza_yyy`
 - [x] `README.md` — install, setup, BYOK chain, optional features
 - [x] GitHub Actions CI — `.github/workflows/ci.yml` — tests on every push to `dev`
-- [x] GitLab CI — `.gitlab-ci.yml` — same tests, runs on GitLab pipelines
 - [x] `arkhe diff` — compare current state vs snapshot, surface added/removed files and deps
 - [x] `arkhe watch` — live-reload map as files change (via `watchdog`)
 
@@ -254,8 +209,6 @@ At 1,000 users on $15/mo Pro: **$15,000 MRR vs ~$40 infra.**
 
 | Stage | Status | Monthly Cost |
 |-------|--------|-------------|
-| Track 1 — GitLab Duo (Hackathon) | In progress | $0 |
-| Track 1 — GitLab Duo (Post-hackathon) | Upcoming | $0 |
 | Stage 0 — Foundation | ✅ Complete | $0 |
 | Stage 1 — Robust Core | ✅ Complete | $0 |
 | Stage 2 — CLI Product | ✅ Complete | $0–1 |
