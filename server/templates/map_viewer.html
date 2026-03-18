@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Arkhe — Dependency Map</title>
+  <link rel="stylesheet" href="/static/arkhe.css" />
+  <style>
+    html, body { height: 100%; overflow: hidden; }
+    .viewer-layout {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+    .viewer-toolbar {
+      position: relative;
+      z-index: 200;
+      flex-shrink: 0;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      gap: 1.5rem;
+      padding: 0 2rem;
+      border-bottom: 1px solid var(--border);
+      background: var(--nav-bg);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+    }
+    .viewer-back {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.82rem;
+      color: var(--text-2);
+      text-decoration: none;
+      transition: color 0.15s;
+      white-space: nowrap;
+    }
+    .viewer-back:hover { color: var(--text); }
+    .viewer-sep { color: var(--text-3); font-size: 0.8rem; }
+    .viewer-logo { font-size: 1rem; font-weight: 700; color: var(--text); text-decoration: none; }
+    .viewer-logo span { color: var(--accent); }
+    .viewer-title {
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .viewer-meta {
+      font-size: 0.78rem;
+      color: var(--text-3);
+      margin-left: auto;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 280px;
+    }
+    .viewer-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      flex-shrink: 0;
+    }
+    .viewer-actions a {
+      font-size: 0.8rem;
+      font-weight: 600;
+      padding: 0.35rem 0.85rem;
+      border-radius: 6px;
+      text-decoration: none;
+      background: var(--surface-hi);
+      color: var(--accent-hi);
+      border: 1px solid var(--border-hi);
+      transition: background 0.15s;
+      white-space: nowrap;
+    }
+    .viewer-actions a:hover { background: var(--accent-bg); }
+    .viewer-frame {
+      flex: 1;
+      border: none;
+      width: 100%;
+      display: block;
+    }
+  </style>
+</head>
+<body>
+
+<div class="viewer-layout">
+  <div class="viewer-toolbar">
+    <a class="viewer-back" href="/results/{{ job_id }}">← Back</a>
+    <span class="viewer-sep">/</span>
+    <a class="viewer-logo" href="/">Arkhe<span>.</span></a>
+    <span class="viewer-sep">/</span>
+    <span class="viewer-title">Dependency Map</span>
+    <div class="viewer-meta">{{ job_url }}</div>
+    <div class="viewer-actions">
+      <a href="/results/{{ job_id }}/DEPENDENCY_MAP.html" download>Download</a>
+      <button class="theme-toggle" id="theme-toggle" style="border-radius:6px;padding:0.3rem 0.75rem;">
+        <span class="t-icon" id="t-icon">☀️</span>
+        <span id="t-label">Light</span>
+      </button>
+    </div>
+  </div>
+
+  <iframe
+    class="viewer-frame"
+    id="map-frame"
+    src="/results/{{ job_id }}/DEPENDENCY_MAP.html"
+    title="Dependency Map"
+  ></iframe>
+</div>
+
+<script>
+  (function () {
+    const stored = localStorage.getItem("arkhe-theme") || "dark";
+    document.documentElement.setAttribute("data-theme", stored);
+    function syncLabel() {
+      const t = document.documentElement.getAttribute("data-theme");
+      const icon = document.getElementById("t-icon");
+      const label = document.getElementById("t-label");
+      if (!icon) return;
+      if (t === "dark") { icon.textContent = "☀️"; label.textContent = "Light"; }
+      else              { icon.textContent = "🌙"; label.textContent = "Dark"; }
+    }
+    document.addEventListener("DOMContentLoaded", () => {
+      syncLabel();
+      document.getElementById("theme-toggle").addEventListener("click", () => {
+        const cur  = document.documentElement.getAttribute("data-theme");
+        const next = cur === "dark" ? "light" : "dark";
+        document.documentElement.setAttribute("data-theme", next);
+        localStorage.setItem("arkhe-theme", next);
+        syncLabel();
+      });
+    });
+  })();
+</script>
+
+</body>
+</html>

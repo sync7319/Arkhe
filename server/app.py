@@ -2,11 +2,14 @@
 Arkhe Web Server — FastAPI demo server for the website.
 
 Endpoints:
-  GET  /                        — landing page
-  POST /analyze                 — submit a repo URL, returns job_id
-  GET  /status/{job_id}         — poll job status
-  GET  /results/{job_id}        — results page
-  GET  /results/{job_id}/{file} — serve individual output files
+  GET  /                              — landing page
+  POST /analyze                       — submit a repo URL, returns job_id
+  GET  /status/{job_id}               — poll job status
+  GET  /results/{job_id}              — results dashboard
+  GET  /results/{job_id}/view/{file}  — dedicated viewer (map or report)
+  GET  /results/{job_id}/{file}       — serve raw output file (for download/iframe)
+  GET  /pricing                       — pricing page
+  GET  /_health                       — health check
 
 Run locally:
   uv run uvicorn server.app:app --reload --port 8000
@@ -36,23 +39,23 @@ app = FastAPI(title="Arkhe", docs_url=None, redoc_url=None)
 
 SERVER_DIR  = Path(__file__).parent
 RESULTS_DIR = SERVER_DIR / "results"
-CACHE_DIR   = SERVER_DIR / "cache"   # persistent cache — survives between runs
+CACHE_DIR   = SERVER_DIR / "cache"
 RESULTS_DIR.mkdir(exist_ok=True)
 CACHE_DIR.mkdir(exist_ok=True)
 
 
 def _repo_cache_dir(url: str) -> Path:
-    """Persistent cache directory keyed by repo URL — survives temp dir cleanup."""
     url_hash = hashlib.sha256(url.encode()).hexdigest()[:16]
     d = CACHE_DIR / url_hash
     d.mkdir(parents=True, exist_ok=True)
     return d
 
+
 templates = Jinja2Templates(directory=str(SERVER_DIR / "templates"))
 app.mount("/static", StaticFiles(directory=str(SERVER_DIR / "static")), name="static")
 
 
-# ── Job state (in-memory for demo — replaced by Firestore in Stage 4) ─────────
+# ── Job state ─────────────────────────────────────────────────────────────────
 
 class JobStatus(str, Enum):
     PENDING  = "pending"
@@ -61,10 +64,8 @@ class JobStatus(str, Enum):
     ERROR    = "error"
 
 
-# jobs[job_id] = {"status": JobStatus, "url": str, "outputs": [...], "error": str|None}
 jobs: dict[str, dict] = {}
 
-# Output files the pipeline produces (in order of importance)
 OUTPUT_FILES = [
     ("CODEBASE_MAP.md",      "Codebase Map",        "markdown"),
     ("DEPENDENCY_MAP.html",  "Dependency Graph",    "html"),
@@ -76,18 +77,38 @@ OUTPUT_FILES = [
 ]
 
 
-# ── Background pipeline runner ────────────────────────────────────────────────
+# ── Options → settings patch ──────────────────────────────────────────────────
 
-async def _run_pipeline(job_id: str, url: str) -> None:
+def _apply_options(options: dict) -> None:
+    import config.settings as s
+    flag_map = {
+        "codebase_map":       "CODEBASE_MAP_ENABLED",
+        "dependency_map":     "DEPENDENCY_MAP_ENABLED",
+        "executive_report":   "EXECUTIVE_REPORT_ENABLED",
+        "security_audit":     "SECURITY_AUDIT_ENABLED",
+        "dead_code":          "DEAD_CODE_DETECTION_ENABLED",
+        "test_gap":           "TEST_GAP_ANALYSIS_ENABLED",
+        "test_scaffolding":   "TEST_SCAFFOLDING_ENABLED",
+        "complexity_heatmap": "COMPLEXITY_HEATMAP_ENABLED",
+        "pr_analysis":        "PR_ANALYSIS_ENABLED",
+    }
+    for key, attr in flag_map.items():
+        if key in options:
+            setattr(s, attr, bool(options[key]))
+
+
+# ── Background pipeline ───────────────────────────────────────────────────────
+
+async def _run_pipeline(job_id: str, url: str, options: dict) -> None:
     jobs[job_id]["status"] = JobStatus.RUNNING
     job_results_dir = RESULTS_DIR / job_id
     job_results_dir.mkdir(exist_ok=True)
 
     persistent_cache = _repo_cache_dir(url)
+    _apply_options(options)
 
     try:
         with clone_repo(url) as repo_path:
-            # Restore persistent cache into temp repo so previous progress is reused
             temp_cache = Path(repo_path) / ".arkhe_cache"
             temp_cache.mkdir(exist_ok=True)
             cached_db = persistent_cache / "arkhe.db"
@@ -99,13 +120,11 @@ async def _run_pipeline(job_id: str, url: str) -> None:
                 from main import run as arkhe_run
                 await arkhe_run(repo_path, fmt="default", refactor=False)
             finally:
-                # Always save cache back — even on failure, preserve progress
                 live_db = temp_cache / "arkhe.db"
                 if live_db.exists():
                     shutil.copy2(live_db, cached_db)
                     logger.info(f"[job {job_id}] saved cache for future retries")
 
-            # Copy docs/ output to results/job_id/
             docs_dir = Path(repo_path) / "docs"
             outputs = []
             if docs_dir.exists():
@@ -126,7 +145,6 @@ async def _run_pipeline(job_id: str, url: str) -> None:
         logger.error(f"[job {job_id}] clone error: {e}")
     except RuntimeError as e:
         err = str(e)
-        # Rate limit exhaustion — progress is cached, user can retry
         if "rate-limited or failed" in err or "All models" in err:
             from config.model_router import COOLDOWN_SECONDS
             retry_mins = COOLDOWN_SECONDS // 60
@@ -153,6 +171,11 @@ async def landing(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
 
+@app.get("/pricing", response_class=HTMLResponse)
+async def pricing(request: Request):
+    return templates.TemplateResponse("pricing.html", {"request": request})
+
+
 @app.post("/analyze")
 async def analyze(request: Request, background_tasks: BackgroundTasks):
     body = await request.json()
@@ -161,14 +184,14 @@ async def analyze(request: Request, background_tasks: BackgroundTasks):
     if not url:
         return JSONResponse({"error": "URL is required"}, status_code=400)
 
-    # Basic pre-validation before queuing
     try:
         from scripts.clone_repo import parse_repo_url
         parse_repo_url(url)
     except CloneError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
 
-    job_id = str(uuid.uuid4())[:8]
+    options = body.get("options") or {}
+    job_id  = str(uuid.uuid4())[:8]
     jobs[job_id] = {
         "status":  JobStatus.PENDING,
         "url":     url,
@@ -176,9 +199,8 @@ async def analyze(request: Request, background_tasks: BackgroundTasks):
         "error":   None,
     }
 
-    background_tasks.add_task(_run_pipeline, job_id, url)
+    background_tasks.add_task(_run_pipeline, job_id, url, options)
     logger.info(f"[job {job_id}] queued: {url}")
-
     return JSONResponse({"job_id": job_id})
 
 
@@ -206,21 +228,53 @@ async def results(request: Request, job_id: str):
     })
 
 
-@app.get("/results/{job_id}/{filename}")
-async def serve_file(job_id: str, filename: str):
-    # Sanitise — only allow known output filenames, no path traversal
+@app.get("/results/{job_id}/view/{filename}", response_class=HTMLResponse)
+async def view_output(request: Request, job_id: str, filename: str):
     allowed = {f for f, _, _ in OUTPUT_FILES}
     if filename not in allowed:
-        return JSONResponse({"error": "File not found"}, status_code=404)
+        return HTMLResponse("<h2>File not found.</h2>", status_code=404)
 
     path = RESULTS_DIR / job_id / filename
     if not path.exists():
-        return JSONResponse({"error": "File not found"}, status_code=404)
+        return HTMLResponse("<h2>Output not yet generated.</h2>", status_code=404)
 
+    job     = jobs.get(job_id) or {}
+    job_url = job.get("url", "")
+    label   = next((l for f, l, _ in OUTPUT_FILES if f == filename), filename)
+
+    if filename.endswith(".html"):
+        # Dependency map — full-screen iframe viewer
+        return templates.TemplateResponse("map_viewer.html", {
+            "request": request,
+            "job_id":  job_id,
+            "job_url": job_url,
+        })
+
+    if filename.endswith(".md"):
+        content = path.read_text(encoding="utf-8", errors="replace")
+        return templates.TemplateResponse("report_viewer.html", {
+            "request": request,
+            "job_id":  job_id,
+            "filename": filename,
+            "label":   label,
+            "content": content,
+            "job_url": job_url,
+        })
+
+    # Fallback for any other type — serve directly
     return FileResponse(str(path))
 
 
-# ── Health check (used by Cloud Run warm-up) ──────────────────────────────────
+@app.get("/results/{job_id}/{filename}")
+async def serve_file(job_id: str, filename: str):
+    allowed = {f for f, _, _ in OUTPUT_FILES}
+    if filename not in allowed:
+        return JSONResponse({"error": "File not found"}, status_code=404)
+    path = RESULTS_DIR / job_id / filename
+    if not path.exists():
+        return JSONResponse({"error": "File not found"}, status_code=404)
+    return FileResponse(str(path))
+
 
 @app.get("/_health")
 async def health():

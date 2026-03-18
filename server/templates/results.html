@@ -1,210 +1,310 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Arkhe — Results</title>
+  <link rel="stylesheet" href="/static/arkhe.css" />
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background: #0f172a;
-      color: #e2e8f0;
-      min-height: 100vh;
+    .page-wrap {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 7rem 2rem 5rem;
     }
-    nav {
+
+    /* ── Breadcrumb ── */
+    .breadcrumb {
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      padding: 1.25rem 2rem;
-      border-bottom: 1px solid #1e293b;
+      gap: 0.5rem;
+      font-size: 0.8rem;
+      color: var(--text-3);
+      margin-bottom: 2.5rem;
     }
-    .logo { font-size: 1.25rem; font-weight: 700; color: #fff; }
-    .logo span { color: #6366f1; }
-    .nav-back { font-size: 0.875rem; color: #6366f1; text-decoration: none; }
-    .nav-back:hover { text-decoration: underline; }
+    .breadcrumb a { color: var(--text-3); text-decoration: none; }
+    .breadcrumb a:hover { color: var(--text-2); }
+    .breadcrumb span { color: var(--text-3); }
 
-    .container { max-width: 760px; margin: 3rem auto; padding: 0 1.5rem; }
+    /* ── Header ── */
+    .results-header { margin-bottom: 3rem; }
+    .results-header h1 {
+      font-size: clamp(1.75rem, 3.5vw, 2.5rem);
+      font-weight: 800;
+      letter-spacing: -1px;
+      color: var(--text);
+      margin-bottom: 0.5rem;
+    }
+    .results-meta {
+      font-size: 0.85rem;
+      color: var(--text-3);
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+    .results-meta .repo-url {
+      color: var(--accent-hi);
+      font-weight: 500;
+    }
+    .results-meta .dot { color: var(--text-3); }
 
-    h1 { font-size: 1.75rem; font-weight: 800; color: #fff; margin-bottom: 0.5rem; }
-    .subtitle { color: #64748b; font-size: 0.875rem; margin-bottom: 2.5rem; }
-
-    /* ── Pending/running state ── */
-    .pending-card {
-      background: #1e293b;
-      border: 1px solid #334155;
-      border-radius: 12px;
-      padding: 2rem;
+    /* ── Pending state ── */
+    .pending-wrap {
       text-align: center;
+      padding: 5rem 2rem;
     }
-    .spinner {
-      width: 32px; height: 32px;
-      border: 3px solid #334155;
-      border-top-color: #6366f1;
+    .pending-spinner {
+      width: 44px; height: 44px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
       border-radius: 50%;
-      animation: spin 0.8s linear infinite;
-      margin: 0 auto 1rem;
+      animation: ark-spin 0.8s linear infinite;
+      margin: 0 auto 1.5rem;
     }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    .pending-card p { color: #94a3b8; font-size: 0.9rem; }
+    .pending-wrap h2 {
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 0.5rem;
+    }
+    .pending-wrap p {
+      font-size: 0.9rem;
+      color: var(--text-2);
+      line-height: 1.6;
+    }
 
     /* ── Error state ── */
-    .error-card {
-      background: #1e293b;
-      border: 1px solid #ef4444;
+    .error-wrap {
+      border: 1px solid rgba(239,68,68,0.35);
+      background: rgba(239,68,68,0.05);
       border-radius: 12px;
       padding: 2rem;
     }
-    .error-card h2 { color: #f87171; margin-bottom: 0.5rem; }
-    .error-card p { color: #94a3b8; font-size: 0.875rem; }
+    .error-wrap h2 { color: #f87171; margin-bottom: 0.5rem; font-size: 1.1rem; }
+    .error-wrap p  { font-size: 0.875rem; color: var(--text-2); line-height: 1.6; }
 
     /* ── Output cards ── */
-    .outputs { display: flex; flex-direction: column; gap: 0.75rem; }
-    .output-card {
-      background: #1e293b;
-      border: 1px solid #334155;
-      border-radius: 12px;
-      padding: 1.25rem 1.5rem;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
+    .outputs-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
       gap: 1rem;
     }
-    .output-info { display: flex; align-items: center; gap: 0.75rem; }
-    .output-icon {
-      width: 36px; height: 36px;
-      background: #0f172a;
-      border: 1px solid #334155;
-      border-radius: 8px;
+    @media (max-width: 600px) { .outputs-grid { grid-template-columns: 1fr; } }
+
+    .output-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 1.75rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .output-card:hover { border-color: var(--border-hi); background: var(--surface-hi); }
+
+    .oc-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 1rem;
+    }
+    .oc-icon {
+      width: 40px; height: 40px;
+      background: var(--accent-bg);
+      border-radius: 10px;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 1rem;
+      font-size: 1.1rem;
       flex-shrink: 0;
     }
-    .output-label { font-weight: 600; color: #e2e8f0; font-size: 0.9rem; }
-    .output-type  { font-size: 0.75rem; color: #475569; margin-top: 0.15rem; }
-
-    .btn-view {
-      background: #6366f1;
+    .oc-type-badge {
+      font-size: 0.68rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 0.2rem 0.55rem;
+      border-radius: 4px;
+      background: var(--surface-hi);
+      color: var(--text-3);
+    }
+    .oc-title {
+      font-size: 1rem;
+      font-weight: 700;
+      letter-spacing: -0.2px;
+      color: var(--text);
+      margin-bottom: 0.4rem;
+    }
+    .oc-desc {
+      font-size: 0.825rem;
+      color: var(--text-2);
+      line-height: 1.55;
+      flex: 1;
+    }
+    .oc-actions {
+      display: flex;
+      gap: 0.6rem;
+      margin-top: 1.5rem;
+    }
+    .oc-actions a {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-size: 0.82rem;
+      font-weight: 600;
+      padding: 0.45rem 1rem;
+      border-radius: 7px;
+      text-decoration: none;
+      transition: background 0.15s, filter 0.15s;
+      white-space: nowrap;
+    }
+    .oc-btn-view {
+      background: var(--accent);
       color: #fff;
       border: none;
-      border-radius: 8px;
-      padding: 0.5rem 1.1rem;
-      font-size: 0.825rem;
-      font-weight: 600;
-      cursor: pointer;
-      text-decoration: none;
-      white-space: nowrap;
-      transition: background 0.15s;
     }
-    .btn-view:hover { background: #4f46e5; }
-    .btn-download {
+    .oc-btn-view:hover { filter: brightness(1.1); }
+    .oc-btn-dl {
       background: transparent;
-      color: #6366f1;
-      border: 1px solid #6366f1;
-      border-radius: 8px;
-      padding: 0.5rem 1.1rem;
-      font-size: 0.825rem;
-      font-weight: 600;
-      cursor: pointer;
-      text-decoration: none;
-      white-space: nowrap;
-      transition: all 0.15s;
+      color: var(--accent-hi);
+      border: 1px solid var(--border-hi);
     }
-    .btn-download:hover { background: #6366f1; color: #fff; }
-    .btn-group { display: flex; gap: 0.5rem; }
+    .oc-btn-dl:hover { background: var(--accent-bg); }
 
     .new-analysis {
-      margin-top: 2rem;
+      margin-top: 3rem;
       text-align: center;
     }
     .new-analysis a {
-      color: #6366f1;
       font-size: 0.875rem;
+      color: var(--text-3);
       text-decoration: none;
     }
-    .new-analysis a:hover { text-decoration: underline; }
+    .new-analysis a:hover { color: var(--text-2); }
   </style>
 </head>
 <body>
 
-<nav>
-  <div class="logo">Arkhe<span>.</span></div>
-  <a class="nav-back" href="/">← New analysis</a>
+<nav class="ark-nav">
+  <a class="ark-logo" href="/">Arkhe<span>.</span></a>
+  <div class="ark-nav-right">
+    <a href="/pricing">Pricing</a>
+    <a href="https://github.com/sync7319/Arkhe" target="_blank">GitHub</a>
+    <button class="theme-toggle" id="theme-toggle">
+      <span class="t-icon" id="t-icon">☀️</span>
+      <span id="t-label">Light</span>
+    </button>
+  </div>
 </nav>
 
-<div class="container">
+<div class="page-wrap">
+
+  <div class="breadcrumb">
+    <a href="/">Home</a>
+    <span>/</span>
+    <span>Results</span>
+    <span>/</span>
+    <span>{{ job_id }}</span>
+  </div>
 
   {% if job.status == "pending" or job.status == "running" %}
-  <div class="pending-card" id="pending-card">
-    <div class="spinner"></div>
-    <p id="status-text">Running pipeline — this takes 1–3 minutes depending on repo size...</p>
+
+  <div class="results-header">
+    <h1>Analysis in progress</h1>
+    <div class="results-meta">
+      <span class="repo-url">{{ job.url }}</span>
+    </div>
+  </div>
+
+  <div class="pending-wrap" id="pending-card">
+    <div class="pending-spinner"></div>
+    <h2>Running pipeline</h2>
+    <p id="status-text">This takes 1–3 minutes depending on repo size.<br>You can keep this tab open — it will update automatically.</p>
   </div>
 
   <script>
     const messages = [
-      "Running pipeline — this takes 1–3 minutes depending on repo size...",
+      "Cloning the repository...",
       "Scanning files and counting tokens...",
       "Parsing AST structure across all files...",
       "Analyzing files with AI — this is the long step...",
       "Synthesizing the final codebase map...",
       "Building the dependency graph...",
-      "Almost done...",
+      "Almost done — writing output files...",
     ];
     let idx = 0;
     setInterval(() => {
       idx = Math.min(idx + 1, messages.length - 1);
       document.getElementById("status-text").textContent = messages[idx];
-    }, 8000);
-
+    }, 9000);
     setInterval(async () => {
       const res  = await fetch("/status/{{ job_id }}");
       const data = await res.json();
-      if (data.status === "complete") {
-        window.location.reload();
-      } else if (data.status === "error") {
+      if (data.status === "complete") window.location.reload();
+      else if (data.status === "error") {
         document.getElementById("pending-card").innerHTML =
-          `<h2 style="color:#f87171">Pipeline failed</h2>
-           <p style="color:#94a3b8;margin-top:0.5rem">${data.error || "Unknown error"}</p>`;
+          `<div class="error-wrap"><h2>Pipeline failed</h2><p>${data.error || "Unknown error"}</p></div>`;
       }
     }, 5000);
   </script>
 
   {% elif job.status == "error" %}
-  <h1>Something went wrong</h1>
-  <div class="error-card">
+
+  <div class="results-header">
+    <h1>Something went wrong</h1>
+  </div>
+  <div class="error-wrap">
     <h2>Pipeline Error</h2>
     <p>{{ job.error or "Unknown error" }}</p>
   </div>
   <div class="new-analysis"><a href="/">← Try another repo</a></div>
 
   {% else %}
-  <h1>Analysis complete</h1>
-  <p class="subtitle">{{ job.url }} &nbsp;·&nbsp; {{ job.outputs | length }} output(s) generated</p>
 
-  <div class="outputs">
+  <div class="results-header">
+    <h1>Analysis complete</h1>
+    <div class="results-meta">
+      <span class="repo-url">{{ job.url }}</span>
+      <span class="dot">·</span>
+      <span>{{ job.outputs | length }} output(s) generated</span>
+    </div>
+  </div>
+
+  <div class="outputs-grid">
     {% for output in job.outputs %}
     <div class="output-card">
-      <div class="output-info">
-        <div class="output-icon">
-          {% if output.kind == "html" %}🗺️
-          {% elif output.kind == "docx" %}📄
-          {% else %}📋{% endif %}
+      <div class="oc-header">
+        <div class="oc-icon">
+          {% if output.kind == "html" %}🕸
+          {% elif output.kind == "docx" %}📊
+          {% elif output.filename == "SECURITY_REPORT.md" %}🔒
+          {% elif output.filename == "DEAD_CODE_REPORT.md" %}🧹
+          {% elif output.filename == "TEST_GAP_REPORT.md" %}🧪
+          {% elif output.filename == "PR_IMPACT.md" %}⚡
+          {% else %}📄{% endif %}
         </div>
-        <div>
-          <div class="output-label">{{ output.label }}</div>
-          <div class="output-type">{{ output.filename }}</div>
-        </div>
+        <span class="oc-type-badge">{{ output.kind | upper }}</span>
       </div>
-      <div class="btn-group">
+      <div class="oc-title">{{ output.label }}</div>
+      <div class="oc-desc">
+        {% if output.filename == "CODEBASE_MAP.md" %}Architecture, data flows, module guide, and codebase gotchas.
+        {% elif output.filename == "DEPENDENCY_MAP.html" %}Interactive D3.js graph of every file and its dependencies.
+        {% elif output.filename == "SECURITY_REPORT.md" %}OWASP Top 10 scan: hardcoded secrets, injection risks, weak crypto.
+        {% elif output.filename == "DEAD_CODE_REPORT.md" %}Functions and classes defined but never referenced in the codebase.
+        {% elif output.filename == "TEST_GAP_REPORT.md" %}Public functions with no test coverage. Includes pytest stubs.
+        {% elif output.filename == "PR_IMPACT.md" %}Blast radius of changed files and downstream dependencies.
+        {% elif output.filename == "EXECUTIVE_REPORT.docx" %}Stakeholder-ready Word document: strengths, risks, recommendations.
+        {% else %}Generated output file.{% endif %}
+      </div>
+      <div class="oc-actions">
         {% if output.kind == "html" %}
-          <a class="btn-view" href="/results/{{ job_id }}/{{ output.filename }}" target="_blank">Open Graph</a>
+          <a class="oc-btn-view" href="/results/{{ job_id }}/view/{{ output.filename }}">Open Map</a>
         {% elif output.kind == "docx" %}
-          <a class="btn-download" href="/results/{{ job_id }}/{{ output.filename }}" download>Download</a>
+          <a class="oc-btn-dl" href="/results/{{ job_id }}/{{ output.filename }}" download>Download .docx</a>
         {% else %}
-          <a class="btn-view" href="/results/{{ job_id }}/{{ output.filename }}" target="_blank">View</a>
-          <a class="btn-download" href="/results/{{ job_id }}/{{ output.filename }}" download>Download</a>
+          <a class="oc-btn-view" href="/results/{{ job_id }}/view/{{ output.filename }}">View Report</a>
+          <a class="oc-btn-dl"  href="/results/{{ job_id }}/{{ output.filename }}" download>Download</a>
         {% endif %}
       </div>
     </div>
@@ -212,8 +312,43 @@
   </div>
 
   <div class="new-analysis"><a href="/">← Analyze another repo</a></div>
+
   {% endif %}
 
 </div>
+
+<footer class="ark-footer">
+  <a class="ark-footer-logo" href="/">Arkhe<span>.</span></a>
+  <div class="ark-footer-links">
+    <a href="/">Home</a>
+    <a href="/pricing">Pricing</a>
+  </div>
+</footer>
+
+<script>
+  (function () {
+    const stored = localStorage.getItem("arkhe-theme") || "dark";
+    document.documentElement.setAttribute("data-theme", stored);
+    function syncLabel() {
+      const t = document.documentElement.getAttribute("data-theme");
+      const icon = document.getElementById("t-icon");
+      const label = document.getElementById("t-label");
+      if (!icon) return;
+      if (t === "dark") { icon.textContent = "☀️"; label.textContent = "Light"; }
+      else              { icon.textContent = "🌙"; label.textContent = "Dark"; }
+    }
+    document.addEventListener("DOMContentLoaded", () => {
+      syncLabel();
+      document.getElementById("theme-toggle").addEventListener("click", () => {
+        const cur  = document.documentElement.getAttribute("data-theme");
+        const next = cur === "dark" ? "light" : "dark";
+        document.documentElement.setAttribute("data-theme", next);
+        localStorage.setItem("arkhe-theme", next);
+        syncLabel();
+      });
+    });
+  })();
+</script>
+
 </body>
 </html>

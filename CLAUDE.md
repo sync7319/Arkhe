@@ -138,6 +138,28 @@ Everything through Stage 2 is genuinely $0.
 
 ## Progress Log
 
+### 2026-03-18 (session — Shreeyut)
+- **Web server frontend — full redesign and multi-page expansion:**
+  - **Dark/light mode** — toggle in nav on every page, persisted in `localStorage`
+    - Dark: deep indigo-black (`#07071a`) with blue/purple accent (`#6366f1`)
+    - Light: white/green (`#f5f7f5`) with emerald accent (`#059669`)
+  - **Shared CSS** — `server/static/arkhe.css`: theme variables, nav, buttons, footer, grid utilities, spinner — imported by all templates
+  - **Scroll-driven background gradients** — 8 fixed gradient layers (4 dark, 4 light), JS bell-curve opacity driven by scroll position; color shifts indigo→violet→teal→rose (dark) and emerald→teal→green→mint (light)
+  - **New pages:**
+    - `server/templates/pricing.html` — dedicated pricing page (`/pricing`) with tier cards (Free/Pro/CLI), FAQ section, theme toggle
+    - `server/templates/map_viewer.html` — full-screen iframe viewer for `DEPENDENCY_MAP.html` with Arkhe nav chrome and toolbar
+    - `server/templates/report_viewer.html` — markdown report viewer with sidebar TOC (auto-generated from headings), `marked.js` rendering, prose styles, download button
+  - **Redesigned pages:**
+    - `server/templates/results.html` — professional dashboard hub; each output has its own card with description, icon, and links to dedicated viewer pages
+    - `server/templates/index.html` — full landing page redesign: hero with gradient headline, provider pills (GitHub/GitLab), outputs grid, CLI callout, pricing link in nav
+  - **Options panel** — checkboxes for all `options.env` feature flags sent with POST `/analyze`; `_apply_options()` in `server/app.py` patches `config.settings` attributes per-job at runtime
+  - **Progress bar resume** — job ID, URL, and step index persisted in `localStorage`; on page load, home page re-attaches to any active running job automatically (survives navigation away and back)
+  - **New app.py routes:**
+    - `GET /pricing` — pricing page
+    - `GET /results/{job_id}/view/{filename}` — renders `map_viewer.html` for `.html` files, `report_viewer.html` for `.md` files; raw file serving route unchanged for downloads/iframe src
+
+- **Known issue / TODO:** Progress bar is still time-based (fake timer), not tied to real pipeline stage. Fix planned: add `step` + `pct` fields to the job dict, updated by `_run_pipeline` at each stage, returned by `/status` endpoint, consumed by frontend instead of timer.
+
 ### 2026-03-17 (session — Shreeyut)
 - **GitLab Duo flow upgraded to 3-agent pipeline (Scanner → Analyst → Reporter):**
   - `flows/flow.yml` rewritten as a multi-agent flow, CI passing
