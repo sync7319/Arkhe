@@ -8,12 +8,9 @@
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <style>
     .report-layout {
-      display: grid;
-      grid-template-columns: 240px 1fr;
       min-height: 100vh;
     }
     @media (max-width: 700px) {
-      .report-layout { grid-template-columns: 1fr; }
       .report-sidebar { display: none; }
     }
 
@@ -55,10 +52,13 @@
     .sidebar-toc li.h3-item a { padding-left: 1rem; font-size: 0.76rem; color: var(--text-3); }
 
     /* ── Main content ── */
+    /* Sidebar is position:fixed so no grid needed — just margin-left to clear it */
     .report-main {
       margin-left: 240px;
       padding: 7rem 3rem 5rem;
       max-width: 860px;
+      min-width: 0;
+      box-sizing: border-box;
     }
     @media (max-width: 700px) { .report-main { margin-left: 0; padding: 7rem 1.5rem 5rem; } }
 
@@ -179,6 +179,13 @@
       color: var(--text-2);
     }
     .prose hr { border: none; border-top: 1px solid var(--border); margin: 2rem 0; }
+
+  @media print {
+    .ark-nav, .report-sidebar { display: none !important; }
+    .report-main { margin-left: 0 !important; padding: 1rem 2rem !important; max-width: 100% !important; }
+    .report-layout { display: block !important; }
+    .report-actions { display: none !important; }
+  }
   </style>
 </head>
 <body>

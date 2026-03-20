@@ -97,7 +97,17 @@ def _complexity_score(module: dict) -> int:
     )
 
 
+_CODE_EXTENSIONS = {
+    ".py", ".js", ".mjs", ".cjs", ".ts", ".tsx",
+    ".go", ".rs", ".java", ".rb", ".c", ".cpp", ".cc",
+    ".h", ".hpp", ".cs", ".swift", ".kt", ".scala", ".php",
+}
+
+
 def build_graph(modules: list[dict]) -> dict:
+    # Only include source code files — skip configs, docs, data, CI files, etc.
+    modules = [m for m in modules if os.path.splitext(m["path"])[1].lower() in _CODE_EXTENSIONS]
+
     path_to_id: dict[str, int] = {}
     nodes = []
 

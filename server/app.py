@@ -32,6 +32,9 @@ from scripts.clone_repo import CloneError, clone_repo
 
 logger = logging.getLogger("arkhe.server")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logging.getLogger("arkhe.llm").setLevel(logging.DEBUG)
+logging.getLogger("arkhe.router").setLevel(logging.DEBUG)
+logging.getLogger("arkhe.analyst").setLevel(logging.DEBUG)
 
 app = FastAPI(title="Arkhe", docs_url=None, redoc_url=None)
 
@@ -108,6 +111,11 @@ async def _run_pipeline(job_id: str, url: str, options: dict) -> None:
     _apply_options(options)
 
     try:
+        def _step(step: int, label: str) -> None:
+            if job_id in jobs:
+                jobs[job_id]["step"]       = step
+                jobs[job_id]["step_label"] = label
+
         with clone_repo(url) as repo_path:
             temp_cache = Path(repo_path) / ".arkhe_cache"
             temp_cache.mkdir(exist_ok=True)
@@ -118,7 +126,7 @@ async def _run_pipeline(job_id: str, url: str, options: dict) -> None:
 
             try:
                 from main import run as arkhe_run
-                await arkhe_run(repo_path, fmt="default", refactor=False)
+                await arkhe_run(repo_path, fmt="default", refactor=False, progress_cb=_step)
             finally:
                 live_db = temp_cache / "arkhe.db"
                 if live_db.exists():
@@ -193,10 +201,12 @@ async def analyze(request: Request, background_tasks: BackgroundTasks):
     options = body.get("options") or {}
     job_id  = str(uuid.uuid4())[:8]
     jobs[job_id] = {
-        "status":  JobStatus.PENDING,
-        "url":     url,
-        "outputs": [],
-        "error":   None,
+        "status":     JobStatus.PENDING,
+        "url":        url,
+        "outputs":    [],
+        "error":      None,
+        "step":       0,
+        "step_label": "Cloning repository...",
     }
 
     background_tasks.add_task(_run_pipeline, job_id, url, options)
@@ -210,15 +220,29 @@ async def status(job_id: str):
     if not job:
         return JSONResponse({"error": "Job not found"}, status_code=404)
     return JSONResponse({
-        "status":  job["status"],
-        "outputs": job["outputs"],
-        "error":   job["error"],
+        "status":     job["status"],
+        "outputs":    job["outputs"],
+        "error":      job["error"],
+        "step":       job.get("step", 0),
+        "step_label": job.get("step_label", ""),
     })
+
+
+def _reconstruct_job_from_disk(job_id: str) -> dict | None:
+    """Rebuild a minimal job dict from on-disk results when the in-memory job is gone (e.g. after server reload)."""
+    job_dir = RESULTS_DIR / job_id
+    if not job_dir.exists():
+        return None
+    outputs = []
+    for filename, label, kind in OUTPUT_FILES:
+        if (job_dir / filename).exists():
+            outputs.append({"filename": filename, "label": label, "kind": kind})
+    return {"status": "complete", "url": "", "outputs": outputs, "error": None}
 
 
 @app.get("/results/{job_id}", response_class=HTMLResponse)
 async def results(request: Request, job_id: str):
-    job = jobs.get(job_id)
+    job = jobs.get(job_id) or _reconstruct_job_from_disk(job_id)
     if not job:
         return HTMLResponse("<h2>Job not found.</h2>", status_code=404)
     return templates.TemplateResponse("results.html", {

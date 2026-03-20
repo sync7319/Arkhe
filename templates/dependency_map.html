@@ -2,96 +2,128 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<title>Arkhe — Dependency Map</title>
+<title>Dependency Map</title>
+<script>document.documentElement.setAttribute("data-theme",localStorage.getItem("arkhe-theme")||"dark");</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
 <style>
+:root{
+  --bg:#0b0f1a;--surface:#141927;--surface2:#1a2236;--border:#2a3550;
+  --text:#e2e8f0;--text2:#94a3b8;--text3:#64748b;--text4:#3d4f6b;
+  --text-bright:#f1f5f9;--text5:#cbd5e1;
+  --accent:#3b82f6;
+  --search-bg:#141927;--sym-hover:#1a2236;
+  --shadow:rgba(0,0,0,.45);
+  --c-fwd:#3b82f6;
+  --c-back:#8b5cf6;
+  --c-mut:#f59e0b;
+  --folder-bg:rgba(255,255,255,.022);
+  --folder-border:rgba(255,255,255,.06);
+  --folder-label:#4a5c7a;
+  --col-div:rgba(255,255,255,.05);
+}
+[data-theme="light"]{
+  --bg:#f0f4f8;--surface:#ffffff;--surface2:#f8fafc;--border:#d1d9e6;
+  --text:#0f172a;--text2:#475569;--text3:#64748b;--text4:#94a3b8;
+  --text-bright:#1e293b;--text5:#475569;
+  --accent:#2563eb;
+  --search-bg:#f1f5f9;--sym-hover:#f1f5f9;
+  --shadow:rgba(0,0,0,.1);
+  --c-fwd:#2563eb;
+  --c-back:#7c3aed;
+  --c-mut:#d97706;
+  --folder-bg:rgba(0,0,0,.025);
+  --folder-border:rgba(0,0,0,.09);
+  --folder-label:#94a3b8;
+  --col-div:rgba(0,0,0,.07);
+}
 *{margin:0;padding:0;box-sizing:border-box}
-body{background:#0f172a;color:#e2e8f0;font-family:'Inter',-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;overflow:hidden;user-select:none}
+body{background:var(--bg);color:var(--text);font-family:'Inter',-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;overflow:hidden;user-select:none}
 
-/* Header */
-#header{position:fixed;top:0;left:0;right:0;height:48px;background:#1e293b;border-bottom:1px solid #334155;display:flex;align-items:center;padding:0 20px;gap:12px;z-index:300}
-#logo{font-size:12px;font-weight:800;letter-spacing:2.5px;color:#3b82f6}
-#logo-sub{font-size:7px;color:#64748b;letter-spacing:1.5px;margin-top:1px;text-transform:uppercase}
-#search{flex:0 1 220px;padding:5px 14px;background:#0f172a;border:1px solid #334155;border-radius:20px;color:#e2e8f0;font-size:11px;outline:none;transition:border .15s}
-#search:focus{border-color:#3b82f6}
-#search::placeholder{color:#475569}
-.ctrl-btn{padding:4px 12px;border-radius:6px;border:1px solid #334155;background:#1e293b;color:#94a3b8;font-size:10px;cursor:pointer;transition:all .15s;white-space:nowrap}
-.ctrl-btn:hover{background:#334155;color:#e2e8f0}
-.ctrl-btn.active{background:#3b82f6;color:#fff;border-color:#3b82f6}
-#stats{margin-left:auto;font-size:10px;color:#64748b;letter-spacing:.3px;white-space:nowrap}
+/* ── Header ── */
+#header{position:fixed;top:0;left:0;right:0;height:48px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 20px;gap:12px;z-index:300}
+#map-label{font-size:10px;font-weight:700;color:var(--text3);letter-spacing:1.5px;text-transform:uppercase;white-space:nowrap;flex-shrink:0}
+#search{flex:0 1 220px;padding:5px 14px;background:var(--search-bg);border:1px solid var(--border);border-radius:20px;color:var(--text);font-size:11px;outline:none;transition:border .15s}
+#search:focus{border-color:var(--accent)}
+#search::placeholder{color:var(--text4)}
+.ctrl-btn{padding:4px 12px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text2);font-size:10px;cursor:pointer;transition:all .15s;white-space:nowrap}
+.ctrl-btn:hover{background:var(--border);color:var(--text)}
+.ctrl-btn.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+#stats{margin-left:auto;font-size:10px;color:var(--text3);letter-spacing:.3px;white-space:nowrap}
 
-/* Legend */
-#legend{position:fixed;bottom:16px;right:16px;background:#1e293b;border:1px solid #334155;border-radius:10px;padding:12px 16px;z-index:300;min-width:180px;box-shadow:0 4px 24px rgba(0,0,0,.3)}
-#legend h4{font-size:8px;color:#64748b;letter-spacing:2px;text-transform:uppercase;margin-bottom:8px;font-weight:600}
-.leg-row{display:flex;align-items:center;gap:8px;margin:4px 0;font-size:10px;color:#94a3b8}
-.leg-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
-.leg-sep{border-top:1px solid #334155;margin:8px 0}
+/* ── Legend ── */
+#legend{position:fixed;bottom:16px;right:16px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 16px;z-index:300;min-width:190px;box-shadow:0 4px 24px var(--shadow)}
+#legend h4{font-size:8px;color:var(--text3);letter-spacing:2px;text-transform:uppercase;margin-bottom:8px;font-weight:600}
+.leg-row{display:flex;align-items:center;gap:8px;margin:4px 0;font-size:10px;color:var(--text2)}
+.leg-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.leg-sep{border-top:1px solid var(--border);margin:9px 0}
 .leg-gradient{height:6px;border-radius:3px;margin:4px 0 2px}
-.leg-gradient-labels{display:flex;justify-content:space-between;font-size:8px;color:#64748b}
-.leg-link{display:flex;align-items:center;gap:8px;margin:4px 0;font-size:10px;color:#94a3b8}
+.leg-gradient-labels{display:flex;justify-content:space-between;font-size:8px;color:var(--text3)}
+.leg-link{display:flex;align-items:center;gap:9px;margin:5px 0;font-size:10px;color:var(--text2)}
 
-/* Tooltip */
-#tooltip{position:fixed;pointer-events:none;background:#1e293b;border:1px solid #334155;border-radius:8px;padding:10px 14px;font-size:10px;box-shadow:0 8px 32px rgba(0,0,0,.3);z-index:400;display:none;max-width:280px}
-.tt-name{font-weight:700;color:#f1f5f9;margin-bottom:4px;font-size:11px;font-family:monospace}
-.tt-row{color:#64748b;margin:2px 0}
-.tt-row span{color:#94a3b8;font-weight:500}
+/* ── Tooltip ── */
+#tooltip{position:fixed;pointer-events:none;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-size:10px;box-shadow:0 8px 32px var(--shadow);z-index:400;display:none;max-width:300px}
+.tt-name{font-weight:700;color:var(--text-bright);margin-bottom:2px;font-size:11px;font-family:'SF Mono',Consolas,monospace}
+.tt-path{font-size:9px;color:var(--text3);font-family:'SF Mono',Consolas,monospace;margin-bottom:5px}
+.tt-row{color:var(--text3);margin:2px 0}
+.tt-row span{color:var(--text2);font-weight:500}
 
-/* Info Panel */
-#info{position:fixed;top:64px;left:16px;background:#1e293b;border:1px solid #334155;border-radius:12px;width:300px;z-index:300;box-shadow:0 8px 32px rgba(0,0,0,.3);flex-direction:column;max-height:calc(100vh - 80px)}
-.i-head{display:flex;justify-content:space-between;align-items:center;padding:12px 14px 10px;border-bottom:1px solid #334155;flex-shrink:0}
-.i-crumb{font-size:9px;color:#64748b;margin-bottom:1px;font-family:monospace}
-.i-title{font-size:12px;font-weight:700;color:#f1f5f9;word-break:break-all;line-height:1.3}
-.i-close{color:#64748b;cursor:pointer;font-size:16px;line-height:1;padding:3px 5px;border-radius:4px;flex-shrink:0;margin-left:6px;transition:all .1s}
-.i-close:hover{color:#f1f5f9;background:#334155}
+/* ── Info Panel ── */
+#info{position:fixed;top:64px;left:16px;background:var(--surface);border:1px solid var(--border);border-radius:12px;width:300px;z-index:300;box-shadow:0 8px 32px var(--shadow);flex-direction:column;max-height:calc(100vh - 80px)}
+.i-head{display:flex;justify-content:space-between;align-items:center;padding:12px 14px 10px;border-bottom:1px solid var(--border);flex-shrink:0}
+.i-crumb{font-size:9px;color:var(--text3);margin-bottom:1px;font-family:'SF Mono',Consolas,monospace}
+.i-title{font-size:12px;font-weight:700;color:var(--text-bright);word-break:break-all;line-height:1.3}
+.i-close{color:var(--text3);cursor:pointer;font-size:16px;line-height:1;padding:3px 5px;border-radius:4px;flex-shrink:0;margin-left:6px;transition:all .1s}
+.i-close:hover{color:var(--text-bright);background:var(--border)}
 .i-scroll{overflow-y:auto;flex:1;padding:12px 14px}
 .i-stats{display:flex;gap:6px;margin-bottom:12px}
-.i-stat{flex:1;text-align:center;padding:6px 3px;background:#0f172a;border-radius:6px;border:1px solid #334155}
-.i-stat-n{font-size:16px;font-weight:800;color:#f1f5f9;line-height:1}
-.i-stat-l{font-size:8px;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-top:2px}
+.i-stat{flex:1;text-align:center;padding:6px 3px;background:var(--surface2);border-radius:6px;border:1px solid var(--border)}
+.i-stat-n{font-size:16px;font-weight:800;color:var(--text-bright);line-height:1}
+.i-stat-l{font-size:8px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:2px}
 .i-section{margin-bottom:12px}
-.i-label{font-size:8px;color:#64748b;letter-spacing:1.5px;text-transform:uppercase;font-weight:600;display:flex;align-items:center;gap:6px;margin-bottom:6px}
-.i-label::after{content:"";flex:1;height:1px;background:#334155}
+.i-label{font-size:8px;color:var(--text3);letter-spacing:1.5px;text-transform:uppercase;font-weight:600;display:flex;align-items:center;gap:6px;margin-bottom:6px}
+.i-label::after{content:"";flex:1;height:1px;background:var(--border)}
 .sym{display:flex;align-items:center;gap:6px;padding:3px 6px;border-radius:4px;margin:2px 0;transition:background .1s}
-.sym:hover{background:#0f172a}
+.sym:hover{background:var(--sym-hover)}
 .sym-badge{font-size:8px;font-weight:700;letter-spacing:.3px;padding:1px 5px;border-radius:3px;flex-shrink:0;font-family:monospace}
 .badge-fn{background:rgba(59,130,246,.15);color:#60a5fa}
 .badge-cls{background:rgba(16,185,129,.15);color:#34d399}
-.sym-name{font-family:monospace;font-size:10px;color:#cbd5e1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
-.dep-row{display:flex;align-items:flex-start;gap:6px;padding:3px 6px;border-radius:4px;margin:2px 0;font-size:10px;font-family:monospace;color:#64748b;transition:background .1s}
+.sym-name{font-family:monospace;font-size:10px;color:var(--text5);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.dep-row{display:flex;align-items:flex-start;gap:6px;padding:3px 6px;border-radius:4px;margin:2px 0;font-size:10px;font-family:monospace;color:var(--text3);transition:background .1s}
 .dep-row.clickable{cursor:pointer;color:#a78bfa}
 .dep-row.clickable:hover{background:rgba(167,139,250,.08)}
-.dep-row.ext{color:#475569}
-.dep-arrow{flex-shrink:0;font-style:normal;color:#475569;line-height:1.5}
+.dep-row.ext{color:var(--text4)}
+.dep-arrow{flex-shrink:0;font-style:normal;color:var(--text4);line-height:1.5}
 .dep-body{flex:1;overflow:hidden}
 .dep-file{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.4}
-.dep-syms{font-size:9px;color:#475569;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.none-msg{font-size:10px;color:#334155;padding:3px 6px;font-style:italic}
+.dep-syms{font-size:9px;color:var(--text4);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.none-msg{font-size:10px;color:var(--border);padding:3px 6px;font-style:italic}
 .mod-chip{display:inline-flex;align-items:center;padding:2px 8px;border-radius:12px;font-size:9px;font-weight:700;letter-spacing:.5px;text-transform:uppercase}
 
-/* SVG */
-svg{cursor:grab;background:#0f172a}
+/* ── SVG ── */
+svg{cursor:grab;background:var(--bg)}
 svg:active{cursor:grabbing}
 .node{cursor:pointer}
-.node.dimmed{opacity:.06;transition:opacity .3s}
+.node.dimmed{opacity:.04;transition:opacity .3s}
 .node-rect{transition:filter .2s,fill .3s,stroke .3s}
-.node:hover .node-rect{filter:brightness(1.3) drop-shadow(0 0 8px rgba(255,255,255,.12))}
-.node-label{font-size:9px;font-weight:600;pointer-events:none;fill:#e2e8f0;font-family:'SF Mono',Consolas,monospace}
-.node-meta{font-size:8px;pointer-events:none;fill:#64748b}
-.col-header{font-size:9px;fill:#475569;letter-spacing:2px;text-transform:uppercase;text-anchor:middle;font-weight:700}
-.col-line{stroke:#1e293b;stroke-width:1}
+.node:hover .node-rect{filter:brightness(1.3) drop-shadow(0 0 10px rgba(255,255,255,.12))}
+.node-label{font-size:10px;font-weight:700;pointer-events:none;fill:var(--text-bright);font-family:'SF Mono',Consolas,monospace}
+.node-sub{font-size:8px;pointer-events:none;fill:var(--text3);font-family:'SF Mono',Consolas,monospace}
+.node-count{font-size:8px;pointer-events:none;fill:var(--text4);text-anchor:end}
+.col-header{font-size:8px;fill:var(--text4);letter-spacing:2.5px;text-transform:uppercase;text-anchor:middle;font-weight:700}
+.col-line{stroke:var(--col-div);stroke-width:1}
+
+/* ── Links ── */
 .link{fill:none;transition:opacity .2s,stroke-width .2s}
-.link-import{stroke:#475569;stroke-width:1.3;opacity:.5}
-.link-mutual{stroke:#f59e0b;stroke-width:1.6;opacity:.6}
-.link-back{stroke-dasharray:6,4}
-.link.lit{opacity:1!important;stroke-width:2.5!important}
-.link-import.lit{stroke:#60a5fa}
-.link-mutual.lit{stroke:#fbbf24}
+.link-fwd{stroke:var(--c-fwd);stroke-width:2.2;opacity:.5}
+.link-back{stroke:var(--c-back);stroke-width:2;stroke-dasharray:7,4;opacity:.5}
+.link-mut{stroke:var(--c-mut);stroke-width:2.8;opacity:.6}
+.link.lit{opacity:1!important;stroke-width:3.5!important}
 </style>
 </head>
 <body>
 
 <div id="header">
-  <div><div id="logo">ARKHE</div><div id="logo-sub">Dependency Map</div></div>
+  <span id="map-label">Dependency Map</span>
   <input id="search" type="text" placeholder="Search files\u2026"/>
   <button class="ctrl-btn" onclick="fitGraph()">Fit</button>
   <button class="ctrl-btn" id="btn-color" onclick="toggleColor()">Heatmap</button>
@@ -102,25 +134,22 @@ svg:active{cursor:grabbing}
   <div id="leg-heat">
     <h4>Complexity</h4>
     <div class="leg-gradient" style="background:linear-gradient(to right,#86efac,#fde047,#f87171)"></div>
-    <div class="leg-gradient-labels"><span>Low</span><span>Medium</span><span>High</span></div>
+    <div class="leg-gradient-labels"><span>Low</span><span>High</span></div>
   </div>
   <div id="leg-folders" style="display:none"><h4>Folders</h4></div>
   <div class="leg-sep"></div>
-  <h4>Groups</h4>
-  <div id="leg-groups"></div>
-  <div class="leg-sep"></div>
-  <h4>Links</h4>
+  <h4>Imports</h4>
   <div class="leg-link">
-    <svg width="36" height="12"><line x1="2" y1="6" x2="28" y2="6" stroke="#475569" stroke-width="1.3"/><polygon points="28,2 36,6 28,10" fill="#475569"/></svg>
-    <span>Import</span>
+    <svg width="42" height="14"><line x1="2" y1="7" x2="31" y2="7" stroke="#3b82f6" stroke-width="2.5"/><polygon points="30,3 42,7 30,11" fill="#3b82f6"/></svg>
+    <span>Parent \u2192 Child</span>
   </div>
   <div class="leg-link">
-    <svg width="36" height="12"><line x1="2" y1="6" x2="28" y2="6" stroke="#f59e0b" stroke-width="1.6"/><polygon points="28,2 36,6 28,10" fill="#f59e0b"/></svg>
+    <svg width="42" height="14"><line x1="2" y1="7" x2="31" y2="7" stroke="#8b5cf6" stroke-width="2" stroke-dasharray="5,3"/><polygon points="30,3 42,7 30,11" fill="#8b5cf6"/></svg>
+    <span>Child \u2192 Parent</span>
+  </div>
+  <div class="leg-link">
+    <svg width="42" height="14"><polygon points="0,3 11,7 0,11" fill="#f59e0b"/><line x1="2" y1="7" x2="31" y2="7" stroke="#f59e0b" stroke-width="2.8"/><polygon points="30,3 42,7 30,11" fill="#f59e0b"/></svg>
     <span>Mutual</span>
-  </div>
-  <div class="leg-link">
-    <svg width="36" height="12"><line x1="2" y1="6" x2="28" y2="6" stroke="#475569" stroke-width="1.3" stroke-dasharray="4,3"/><polygon points="28,2 36,6 28,10" fill="#475569"/></svg>
-    <span>Back-edge</span>
   </div>
 </div>
 
@@ -136,349 +165,548 @@ svg:active{cursor:grabbing}
 <svg id="graph"></svg>
 
 <script>
-const ALL_NODES = {{NODES_JSON}};
-const ALL_LINKS = {{LINKS_JSON}};
+const ALL_NODES_RAW = {{NODES_JSON}};
+const ALL_LINKS_RAW = {{LINKS_JSON}};
+
+// ── Show all nodes by default (all are code files, filtered at build time) ────
+const connectedIds = new Set();
+ALL_LINKS_RAW.forEach(l => { connectedIds.add(l.source); connectedIds.add(l.target); });
+
+let showIsolated = true;
+const connectedNodes = ALL_NODES_RAW.filter(n => connectedIds.has(n.id));
+let ALL_NODES = ALL_NODES_RAW;
+let ALL_LINKS = ALL_LINKS_RAW;
+
+const isolatedCount = ALL_NODES_RAW.length - connectedNodes.length;
+if (isolatedCount > 0 && connectedNodes.length > 0) {
+  const btn = document.createElement("button");
+  btn.className = "ctrl-btn active";
+  btn.id = "btn-isolated";
+  btn.textContent = `${isolatedCount} isolated`;
+  btn.title = "Toggle files with no imports";
+  btn.onclick = () => {
+    showIsolated = !showIsolated;
+    btn.classList.toggle("active", showIsolated);
+    ALL_NODES = showIsolated ? ALL_NODES_RAW : connectedNodes;
+    rebuildGraph();
+  };
+  document.getElementById("header").appendChild(btn);
+}
 
 const W = window.innerWidth, H = window.innerHeight;
-const NODE_W = 152, NODE_H = 34, NODE_R = 5;
-const COL_GAP = 250;  // horizontal gap between layers
-const ROW_GAP = 12;   // vertical gap between nodes in same group
-const GRP_GAP = 26;   // extra gap between groups within a layer
-const LEFT_PAD = 80, TOP_PAD = 90;
+
+// ── Layout constants ──────────────────────────────────────────────────────────
+const NODE_W    = 178;
+const NODE_H    = 44;
+const NODE_R    = 7;
+const COL_GAP   = 300;   // horizontal distance between layer columns
+const MAX_LAYERS = 8;    // cap layer depth — compress deep chains into this many columns
+const ROW_GAP   = 10;    // vertical gap between nodes in the same folder group
+const GRP_GAP   = 38;    // extra vertical gap between different folder groups
+const FHDR      = 30;    // folder label height above first node in group
+const FSIDE     = 14;    // folder container horizontal padding
+const FBOT      = 14;    // folder container bottom padding
+const LEFT_PAD  = 72;
+const TOP_PAD   = 82;
 
 // ── Colors ────────────────────────────────────────────────────────────────────
-const groups = [...new Set(ALL_NODES.map(d => d.group))].sort();
-const PALETTE = ["#3b82f6","#10b981","#f59e0b","#8b5cf6","#ef4444","#06b6d4","#ec4899","#6366f1","#14b8a6","#f97316"];
-const colorOf = d3.scaleOrdinal().domain(groups).range(PALETTE);
-const maxC = Math.max(...ALL_NODES.map(n => n.complexity || 0), 1);
+const ALL_GROUPS = [...new Set(ALL_NODES_RAW.map(d => d.group))].sort();
+const PALETTE = [
+  "#3b82f6","#10b981","#f59e0b","#8b5cf6","#ef4444",
+  "#06b6d4","#ec4899","#6366f1","#14b8a6","#f97316",
+  "#84cc16","#a855f7","#0ea5e9","#fb923c","#22d3ee",
+];
+const colorOf = d3.scaleOrdinal().domain(ALL_GROUPS).range(PALETTE);
+const maxC = Math.max(...ALL_NODES_RAW.map(n => n.complexity || 0), 1);
 function heatColor(c) {
-  const t = Math.min((c||0) / maxC, 1);
+  const t = Math.min((c || 0) / maxC, 1);
   if (t < 0.5) return d3.interpolateRgb("#86efac","#fde047")(t * 2);
   return d3.interpolateRgb("#fde047","#f87171")((t - 0.5) * 2);
 }
 let colorMode = {{HEATMAP_DEFAULT}} ? "heat" : "folder";
 function nodeColor(d) { return colorMode === "heat" ? heatColor(d.complexity) : colorOf(d.group); }
 
-document.getElementById("leg-groups").innerHTML = groups.map(g =>
-  `<div class="leg-row"><div class="leg-dot" style="background:${colorOf(g)}"></div><span>${g}</span></div>`).join("");
-document.getElementById("stats").textContent = `${ALL_NODES.length} files \u00b7 ${ALL_LINKS.length} edges`;
-
 // ── SVG + zoom ────────────────────────────────────────────────────────────────
 const svg = d3.select("#graph").attr("width", W).attr("height", H);
 const defs = svg.append("defs");
-defs.append("filter").attr("id","shd").attr("x","-10%").attr("y","-10%").attr("width","120%").attr("height","120%")
-  .append("feDropShadow").attr("dx",0).attr("dy",1).attr("stdDeviation",2).attr("flood-opacity",.3);
+defs.append("filter").attr("id","shd").attr("x","-20%").attr("y","-20%")
+  .attr("width","140%").attr("height","140%")
+  .append("feDropShadow").attr("dx",0).attr("dy",2).attr("stdDeviation",3).attr("flood-opacity",.22);
 
-// Arrow markers — large and clear
+// Arrow markers — forward (blue), back (purple), mutual (orange)
 function mkArr(id, color) {
-  defs.append("marker").attr("id",id).attr("viewBox","0 0 12 8")
-    .attr("refX",12).attr("refY",4).attr("markerWidth",10).attr("markerHeight",7).attr("orient","auto")
+  defs.append("marker").attr("id",id)
+    .attr("viewBox","0 0 12 8").attr("refX",12).attr("refY",4)
+    .attr("markerWidth",10).attr("markerHeight",8).attr("orient","auto")
     .append("path").attr("d","M0,0.5 L11,4 L0,7.5 L2.5,4 Z").attr("fill",color);
 }
-mkArr("a-imp","#64748b"); mkArr("a-mut","#f59e0b");
-mkArr("a-imp-lit","#60a5fa"); mkArr("a-mut-lit","#fbbf24");
-
-// Reverse arrowheads for bidirectional (marker-start needs 180° flip)
 function mkArrRev(id, color) {
-  defs.append("marker").attr("id",id).attr("viewBox","0 0 12 8")
-    .attr("refX",0).attr("refY",4).attr("markerWidth",10).attr("markerHeight",7).attr("orient","auto-start-reverse")
+  defs.append("marker").attr("id",id)
+    .attr("viewBox","0 0 12 8").attr("refX",0).attr("refY",4)
+    .attr("markerWidth",10).attr("markerHeight",8).attr("orient","auto-start-reverse")
     .append("path").attr("d","M12,0.5 L1,4 L12,7.5 L9.5,4 Z").attr("fill",color);
 }
+mkArr("a-fwd","#3b82f6");     mkArr("a-fwd-lit","#60a5fa");
+mkArr("a-back","#8b5cf6");    mkArr("a-back-lit","#a78bfa");
+mkArr("a-mut","#f59e0b");     mkArr("a-mut-lit","#fbbf24");
 mkArrRev("a-mut-rev","#f59e0b"); mkArrRev("a-mut-rev-lit","#fbbf24");
 
 const gMain = svg.append("g");
 let currentTransform = d3.zoomIdentity;
-const zoomB = d3.zoom().scaleExtent([0.03,5]).on("zoom", e => {
+const zoomB = d3.zoom().scaleExtent([0.03, 5]).on("zoom", e => {
   gMain.attr("transform", e.transform); currentTransform = e.transform;
 });
 svg.call(zoomB);
-const gCols = gMain.append("g");
-const gEdges = gMain.append("g");
-const gNodes = gMain.append("g");
 
-// ── Layer assignment (longest-path BFS from entry points) ─────────────────────
-const nodeMap = {};
-ALL_NODES.forEach(n => { nodeMap[n.id] = {...n}; });
-const adj = {}, incoming = {};
-ALL_NODES.forEach(n => { adj[n.id] = []; incoming[n.id] = []; });
-ALL_LINKS.forEach(l => {
-  adj[l.source].push(l.target);
-  incoming[l.target].push(l.source);
-  if (l.bidirectional) { adj[l.target].push(l.source); incoming[l.source].push(l.target); }
-});
+const gFolders = gMain.append("g");  // folder backgrounds (bottom layer)
+const gCols    = gMain.append("g");  // column headers + divider lines
+const gEdges   = gMain.append("g");  // dependency arrows
+const gNodes   = gMain.append("g");  // file nodes (top layer)
 
-// Roots = nobody imports them (entry points, scripts, tests)
-let roots = ALL_NODES.filter(n => incoming[n.id].length === 0);
-if (!roots.length) roots = [ALL_NODES.reduce((a,b) => adj[a.id].length >= adj[b.id].length ? a : b)];
+// ── Graph builder — called on init and when isolated toggle changes ───────────
+let nodes = [], folderBgs = [], renderLinks = [], nodeMap = {};
+let nodeEl, linkEl;
 
-const layer = {};
-roots.forEach(n => layer[n.id] = 0);
-const visited = new Set(roots.map(n => n.id));
-const queue = [...roots.map(n => n.id)];
-while (queue.length) {
-  const id = queue.shift();
-  adj[id].forEach(tid => {
-    const nl = (layer[id]||0) + 1;
-    if (layer[tid] === undefined || nl > layer[tid]) layer[tid] = nl;
-    if (!visited.has(tid)) { visited.add(tid); queue.push(tid); }
+function buildLayout() {
+  if (!ALL_NODES.length) return 0;
+  // ── Layer assignment (longest-path BFS) ──
+  const nm = {};
+  ALL_NODES.forEach(n => { nm[n.id] = {...n}; });
+  const adj = {}, incoming = {};
+  ALL_NODES.forEach(n => { adj[n.id] = []; incoming[n.id] = []; });
+  // Only use links between currently visible nodes
+  const visIds = new Set(ALL_NODES.map(n => n.id));
+  const visLinks = ALL_LINKS_RAW.filter(l => visIds.has(l.source) && visIds.has(l.target));
+  visLinks.forEach(l => {
+    adj[l.source].push(l.target);
+    incoming[l.target].push(l.source);
+    if (l.bidirectional) { adj[l.target].push(l.source); incoming[l.source].push(l.target); }
   });
+
+  let roots = ALL_NODES.filter(n => incoming[n.id].length === 0);
+  if (!roots.length) roots = [ALL_NODES.reduce((a, b) => adj[a.id].length >= adj[b.id].length ? a : b)];
+
+  const layer = {};
+  roots.forEach(n => { layer[n.id] = 0; });
+  const visited = new Set(roots.map(n => n.id));
+  const bfsQ = [...roots.map(n => n.id)];
+  while (bfsQ.length) {
+    const id = bfsQ.shift();
+    adj[id].forEach(tid => {
+      const nl = (layer[id] || 0) + 1;
+      if (layer[tid] === undefined || nl > layer[tid]) layer[tid] = nl;
+      if (!visited.has(tid)) { visited.add(tid); bfsQ.push(tid); }
+    });
+  }
+  ALL_NODES.forEach(n => { if (layer[n.id] === undefined) layer[n.id] = Math.max(0, ...Object.values(layer)) + 1; });
+
+  // Cap layers at MAX_LAYERS — compress everything deeper into the last column
+  const rawMax = Math.max(0, ...Object.values(layer));
+  if (rawMax >= MAX_LAYERS) {
+    ALL_NODES.forEach(n => {
+      layer[n.id] = Math.min(layer[n.id], MAX_LAYERS - 1);
+    });
+  }
+
+  const numLayers = Math.min(rawMax + 1, MAX_LAYERS);
+
+  // ── Group nodes by (layer, folder) ──
+  const byLayerGroup = Array.from({length: numLayers}, () => ({}));
+  ALL_NODES.forEach(n => {
+    const col = layer[n.id];
+    if (!byLayerGroup[col][n.group]) byLayerGroup[col][n.group] = [];
+    byLayerGroup[col][n.group].push(n);
+  });
+  byLayerGroup.forEach(byGrp => {
+    Object.values(byGrp).forEach(arr => arr.sort((a, b) => a.name.localeCompare(b.name)));
+  });
+
+  // ── Assign pixel positions ──
+  nodes = []; folderBgs = []; nodeMap = {};
+  byLayerGroup.forEach((byGrp, col) => {
+    const colX = LEFT_PAD + col * COL_GAP;
+    let y = TOP_PAD;
+    Object.keys(byGrp).sort().forEach((grp, gi) => {
+      if (gi > 0) y += GRP_GAP;
+      const grpNodes = byGrp[grp];
+      const grpStartY = y + FHDR;
+      grpNodes.forEach((n, i) => {
+        const nd = {...n, px: colX, py: grpStartY + i * (NODE_H + ROW_GAP), _layer: col};
+        nodes.push(nd);
+        nodeMap[n.id] = nd;
+      });
+      const grpInnerH = grpNodes.length * (NODE_H + ROW_GAP) - ROW_GAP;
+      const totalH = FHDR + grpInnerH + FBOT;
+      folderBgs.push({x: colX - FSIDE, y, w: NODE_W + FSIDE * 2, h: totalH,
+        color: colorOf(grp), label: grp === "root" ? "/" : grp + "/"});
+      y += totalH;
+    });
+  });
+
+  // ── Prepare edges ──
+  renderLinks = [];
+  visLinks.forEach(l => {
+    const sn = nodeMap[l.source], tn = nodeMap[l.target];
+    if (!sn || !tn) return;
+    const isMut      = !!l.bidirectional;
+    const isBack     = !isMut && sn._layer >= tn._layer;
+    const isSameLayer = sn._layer === tn._layer;
+    renderLinks.push({_source: sn, _target: tn, mutual: isMut, _back: isBack, _sameLayer: isSameLayer});
+  });
+
+  // ── Forward edge bundling: edges from same source + same target layer share midX ──
+  const fwdMidXMap = {};
+  renderLinks.forEach(d => {
+    if (d._back || d._sameLayer) return;
+    const key = `${d._source.id}:${d._target._layer}`;
+    if (!fwdMidXMap[key]) fwdMidXMap[key] = (d._source.px + NODE_W + d._target.px) / 2;
+    d._midX = fwdMidXMap[key];
+  });
+
+  // ── Back + same-layer edge bundling: edges from same source share a left bypass lane ──
+  // All edges from the same source exit at the same bypass x → visual merging.
+  const BYPASS_BASE = LEFT_PAD - 30;
+  const BYPASS_LANE_W = 14;
+  const srcLaneMap = {};
+  let nextLane = 0;
+  renderLinks.forEach(d => {
+    if (!d._back && !d._sameLayer) return;
+    const sid = d._source.id;
+    if (srcLaneMap[sid] === undefined) { srcLaneMap[sid] = nextLane % 10; nextLane++; }
+    d._bypassX = BYPASS_BASE - srcLaneMap[sid] * BYPASS_LANE_W;
+  });
+
+  // stats
+  document.getElementById("stats").textContent =
+    `${ALL_NODES.length} files \u00b7 ${visLinks.length} edges`;
+
+  return numLayers;
 }
-const maxLayer = Math.max(...Object.values(layer), 0);
-ALL_NODES.forEach(n => { if (layer[n.id] === undefined) layer[n.id] = maxLayer + 1; });
 
-// ── Position nodes in columns ─────────────────────────────────────────────────
-const numLayers = Math.max(...Object.values(layer)) + 1;
-const layerNodes = Array.from({length: numLayers}, () => []);
-ALL_NODES.forEach(n => { layerNodes[layer[n.id]].push(n); });
-
-// Within each layer: sort by group, then by name
-layerNodes.forEach(arr => arr.sort((a,b) => a.group === b.group ? a.name.localeCompare(b.name) : a.group.localeCompare(b.group)));
-
-// Assign x, y positions
-const nodes = [];
-layerNodes.forEach((arr, col) => {
-  let y = TOP_PAD;
-  let prevGroup = null;
-  arr.forEach(n => {
-    if (prevGroup !== null && n.group !== prevGroup) y += GRP_GAP;
-    const nd = {...n, px: LEFT_PAD + col * COL_GAP, py: y, _layer: col};
-    nodes.push(nd);
-    nodeMap[n.id] = nd;
-    y += NODE_H + ROW_GAP;
-    prevGroup = n.group;
-  });
-});
-
-// ── Prepare edges ─────────────────────────────────────────────────────────────
-const renderLinks = [];
-ALL_LINKS.forEach(l => {
-  const sn = nodeMap[l.source], tn = nodeMap[l.target];
-  if (!sn || !tn) return;
-  const isMut = !!l.bidirectional;
-  // Single path per link — bidirectional gets arrowheads on both ends
-  renderLinks.push({_source: sn, _target: tn, mutual: isMut, _back: sn._layer >= tn._layer});
-});
-
-// Assign channel offsets for forward edges sharing the same layer gap
-const channels = {};
-renderLinks.forEach(d => {
-  if (d._back) return;
-  const key = `${d._source._layer}-${d._target._layer}`;
-  if (!channels[key]) channels[key] = [];
-  channels[key].push(d);
-});
-Object.values(channels).forEach(edges => {
-  edges.sort((a,b) => (a._source.py + a._target.py) - (b._source.py + b._target.py));
-  const n = edges.length;
-  edges.forEach((d,i) => { d._chOff = (i - (n-1)/2) * 7; });
-});
-renderLinks.forEach(d => { if (d._chOff === undefined) d._chOff = 0; });
-
-// ── Edge path computation ─────────────────────────────────────────────────────
+// ── Edge path computation — all orthogonal, no curves ─────────────────────────
 function edgePath(d) {
   const s = d._source, t = d._target;
-  const sx = s.px + NODE_W, sy = s.py + NODE_H / 2;
-  const tx = t.px,          ty = t.py + NODE_H / 2;
+  const halfH = NODE_H / 2;
 
-  if (!d._back) {
-    // Forward: orthogonal Z-routing
-    const midX = (sx + tx) / 2 + d._chOff;
-    if (Math.abs(sy - ty) < 2) return `M${sx},${sy}L${tx},${ty}`;
-    return `M${sx},${sy}H${midX}V${ty}H${tx}`;
+  // Back edges and same-layer edges: orthogonal routing through LEFT bypass corridor.
+  // All edges from the same source share the same bypassX → visual bundling.
+  // Path: exit left edge of source → go left to bypass lane → go up/down → arrive at left edge of target.
+  if (d._back || d._sameLayer) {
+    const sx = s.px,  sy = s.py + halfH;
+    const tx = t.px,  ty = t.py + halfH;
+    return `M${sx},${sy}H${d._bypassX}V${ty}H${tx}`;
   }
 
-  // Back-edge: curved path routed AROUND nodes (above or below)
-  // Determine which direction to curve
-  const above = sy >= ty;
-  const loopOut = 55;
-  const peakY = above
-    ? Math.min(sy, ty) - 50 - Math.abs(sy - ty) * 0.3
-    : Math.max(sy, ty) + 50 + Math.abs(sy - ty) * 0.3;
-  return `M${sx},${sy} C${sx + loopOut},${sy} ${sx + loopOut},${peakY} ${(sx + tx) / 2},${peakY} S${tx - loopOut},${ty} ${tx},${ty}`;
+  // Forward and cross-layer mutual: orthogonal H-V-H.
+  // Edges from same source to the same target column share midX → visual bundling.
+  const sx = s.px + NODE_W, sy = s.py + halfH;
+  const tx = t.px,          ty = t.py + halfH;
+  const mx = d._midX != null ? d._midX : (sx + tx) / 2;
+  if (Math.abs(sy - ty) < 1) return `M${sx},${sy}L${tx},${ty}`;
+  return `M${sx},${sy}H${mx}V${ty}H${tx}`;
 }
 
-// ── Draw column guides ────────────────────────────────────────────────────────
-const totalH = Math.max(...nodes.map(n => n.py + NODE_H)) + 40;
-for (let col = 0; col < numLayers; col++) {
-  const x = LEFT_PAD + col * COL_GAP + NODE_W / 2;
-  gCols.append("text").attr("class","col-header").attr("x", x).attr("y", TOP_PAD - 20)
-    .text(col === 0 ? "ENTRY" : col === numLayers - 1 ? "BASE" : `LAYER ${col}`);
-  if (col > 0) {
-    const lx = LEFT_PAD + col * COL_GAP - (COL_GAP - NODE_W) / 2;
-    gCols.append("line").attr("class","col-line")
-      .attr("x1", lx).attr("y1", TOP_PAD - 30).attr("x2", lx).attr("y2", totalH);
+// ── Draw graph (clears and redraws everything) ────────────────────────────────
+function drawGraph() {
+  const numLayers = buildLayout();
+
+  gCols.selectAll("*").remove();
+  gFolders.selectAll("*").remove();
+  gEdges.selectAll("*").remove();
+  gNodes.selectAll("*").remove();
+
+  // Column headers + dividers
+  const canvasH = Math.max(...nodes.map(n => n.py + NODE_H), H) + 60;
+  for (let col = 0; col < numLayers; col++) {
+    const colX   = LEFT_PAD + col * COL_GAP;
+    const labelX = colX + NODE_W / 2;
+    const lbl    = col === 0 ? "ENTRY" : col === numLayers - 1 && numLayers > 1 ? "BASE" : `LAYER ${col}`;
+    gCols.append("text").attr("class","col-header").attr("x", labelX).attr("y", TOP_PAD - 46).text(lbl);
+    if (col > 0) {
+      const lx = colX - (COL_GAP - NODE_W) / 2;
+      gCols.append("line").attr("class","col-line")
+        .attr("x1", lx).attr("y1", TOP_PAD - 58).attr("x2", lx).attr("y2", canvasH);
+    }
   }
-}
 
-// ── Draw edges ────────────────────────────────────────────────────────────────
-const linkEl = gEdges.selectAll("path").data(renderLinks).join("path")
-  .attr("class", d => {
-    let c = `link ${d.mutual ? "link-mutual" : "link-import"}`;
-    if (d._back) c += " link-back";
-    return c;
-  })
-  .attr("d", edgePath)
-  .attr("marker-end", d => `url(#a-${d.mutual ? "mut" : "imp"})`)
-  .attr("marker-start", d => d.mutual ? "url(#a-mut-rev)" : null);
-
-// ── Draw nodes ────────────────────────────────────────────────────────────────
-const nodeEl = gNodes.selectAll("g").data(nodes).join("g")
-  .attr("class", "node")
-  .attr("transform", d => `translate(${d.px},${d.py})`)
-  .on("click", (e,d) => { e.stopPropagation(); showInfo(d); })
-  .on("mouseover", showTip).on("mousemove", moveTip).on("mouseout", hideTip);
-
-// Background rect
-nodeEl.append("rect").attr("class","node-rect")
-  .attr("width", NODE_W).attr("height", NODE_H).attr("rx", NODE_R)
-  .attr("fill", d => nodeColor(d)).attr("fill-opacity",.12)
-  .attr("stroke", d => nodeColor(d)).attr("stroke-width",1.5)
-  .attr("filter","url(#shd)");
-
-// Left color stripe (group indicator)
-nodeEl.append("rect")
-  .attr("width", 4).attr("height", NODE_H - 6).attr("x", 1).attr("y", 3).attr("rx", 2)
-  .attr("fill", d => colorOf(d.group));
-
-// File name
-nodeEl.append("text").attr("class","node-label")
-  .attr("x", 12).attr("y", 14)
-  .text(d => d.name.length > 19 ? d.name.slice(0,17) + "\u2026" : d.name);
-
-// Meta (fn/cls count)
-nodeEl.append("text").attr("class","node-meta")
-  .attr("x", 12).attr("y", 26)
-  .text(d => {
-    const fn = (d.functions||[]).length, cls = (d.classes||[]).length;
-    return [fn ? `${fn} fn` : "", cls ? `${cls} cls` : ""].filter(Boolean).join(" \u00b7 ") || "\u2014";
+  // Folder panels
+  folderBgs.forEach(fg => {
+    const g = gFolders.append("g");
+    g.append("rect").attr("x", fg.x).attr("y", fg.y).attr("width", fg.w).attr("height", fg.h)
+      .attr("rx", 9).attr("fill","var(--folder-bg)").attr("stroke","var(--folder-border)").attr("stroke-width", 1.5);
+    g.append("rect").attr("x", fg.x + 10).attr("y", fg.y + 8).attr("width", 9).attr("height", 9)
+      .attr("rx", 2).attr("fill", fg.color).attr("opacity", .75);
+    const lbl = fg.label.length > 22 ? "\u2026" + fg.label.slice(-20) : fg.label;
+    g.append("text").attr("x", fg.x + 26).attr("y", fg.y + 18)
+      .attr("font-size", 9).attr("font-weight", 700).attr("font-family","'SF Mono',Consolas,monospace")
+      .attr("fill","var(--folder-label)").attr("letter-spacing", .4).text(lbl);
   });
+
+  // Edges
+  linkEl = gEdges.selectAll("path").data(renderLinks).join("path")
+    .attr("class", d => d.mutual ? "link link-mut" : d._back ? "link link-back" : "link link-fwd")
+    .attr("d", edgePath)
+    .attr("marker-end",   d => `url(#a-${d.mutual ? "mut" : d._back ? "back" : "fwd"})`)
+    .attr("marker-start", d => d.mutual ? "url(#a-mut-rev)" : null);
+
+  // Nodes
+  nodeEl = gNodes.selectAll("g").data(nodes).join("g")
+    .attr("class", "node")
+    .attr("transform", d => `translate(${d.px},${d.py})`);
+
+  // Background fill
+  nodeEl.append("rect").attr("class","node-rect")
+    .attr("width", NODE_W).attr("height", NODE_H).attr("rx", NODE_R)
+    .attr("fill", d => nodeColor(d)).attr("fill-opacity", .1)
+    .attr("stroke", d => nodeColor(d)).attr("stroke-width", 1.5)
+    .attr("filter","url(#shd)");
+
+  // Left color stripe
+  nodeEl.append("rect")
+    .attr("width", 3).attr("height", NODE_H - 10).attr("x", 2).attr("y", 5).attr("rx", 1.5)
+    .attr("fill", d => colorOf(d.group));
+
+  // File name (primary label)
+  nodeEl.append("text").attr("class","node-label")
+    .attr("x", 13).attr("y", 17)
+    .text(d => d.name.length > 22 ? d.name.slice(0, 20) + "\u2026" : d.name);
+
+  // Folder path below filename
+  nodeEl.append("text").attr("class","node-sub")
+    .attr("x", 13).attr("y", 30)
+    .text(d => {
+      const parts = d.path.split("/");
+      if (parts.length <= 1) return "";
+      const dir = parts.slice(0, -1).join("/");
+      return dir.length > 24 ? "\u2026" + dir.slice(-22) : dir;
+    });
+
+// Fn/cls count at right
+  nodeEl.append("text").attr("class","node-count")
+    .attr("x", NODE_W - 8).attr("y", 17)
+    .text(d => {
+      const fn = (d.functions || []).length, cls = (d.classes || []).length;
+      if (fn && cls) return `${fn}fn ${cls}cls`;
+      if (fn) return `${fn}fn`;
+      if (cls) return `${cls}cls`;
+      return "";
+    });
+
+  // Reattach events
+  nodeEl.on("click", (e, d) => { e.stopPropagation(); showInfo(d); })
+    .on("mouseover", showTip).on("mousemove", moveTip).on("mouseout", hideTip);
+} // end drawGraph()
+
+function rebuildGraph() {
+  closeInfo();
+  drawGraph();
+  setTimeout(fitGraph, 50);
+}
 
 // ── Auto-fit ──────────────────────────────────────────────────────────────────
 function fitGraph() {
   const bb = gMain.node().getBBox();
   if (!bb.width || !bb.height) return;
-  const pad = 50;
-  const scale = Math.min((W - pad*2) / bb.width, (H - pad*2) / bb.height, 1.2);
+  const pad = 60;
+  const scale = Math.min((W - pad * 2) / bb.width, (H - pad * 2) / bb.height, 1.2);
   const tx = (W - bb.width * scale) / 2 - bb.x * scale;
   const ty = (H - bb.height * scale) / 2 - bb.y * scale;
   svg.transition().duration(500)
     .call(zoomB.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
 }
+
+// Initial render
+drawGraph();
+svg.on("click", () => closeInfo());
 setTimeout(fitGraph, 50);
 
-// ── Color toggle ──────────────────────────────────────────────────────────────
+// ── Color mode toggle ─────────────────────────────────────────────────────────
+function updateLegend() {
+  const lf = document.getElementById("leg-folders");
+  document.getElementById("leg-heat").style.display = colorMode === "heat" ? "" : "none";
+  lf.style.display = colorMode === "folder" ? "" : "none";
+  if (colorMode === "folder") {
+    const activeGroups = [...new Set(ALL_NODES.map(d => d.group))].sort();
+    lf.innerHTML = "<h4>Folders</h4>" + activeGroups.map(g =>
+      `<div class="leg-row"><div class="leg-dot" style="background:${colorOf(g)}"></div><span>${g}</span></div>`
+    ).join("");
+  }
+}
 function toggleColor() {
   colorMode = colorMode === "heat" ? "folder" : "heat";
-  document.getElementById("btn-color").textContent = colorMode === "heat" ? "Heatmap" : "Folders";
-  document.getElementById("btn-color").classList.toggle("active", colorMode === "folder");
-  document.getElementById("leg-heat").style.display = colorMode === "heat" ? "" : "none";
-  const lf = document.getElementById("leg-folders");
-  lf.style.display = colorMode === "folder" ? "" : "none";
-  if (colorMode === "folder") lf.innerHTML = "<h4>Folders</h4>" + groups.map(g =>
-    `<div class="leg-row"><div class="leg-dot" style="background:${colorOf(g)}"></div><span>${g}</span></div>`).join("");
+  const btn = document.getElementById("btn-color");
+  btn.textContent = colorMode === "heat" ? "Folders" : "Heatmap";
+  btn.classList.toggle("active", colorMode === "heat");
+  updateLegend();
   nodeEl.select(".node-rect").transition().duration(300)
     .attr("fill", d => nodeColor(d)).attr("stroke", d => nodeColor(d));
 }
+// Set initial button/legend state
+(function(){
+  const btn = document.getElementById("btn-color");
+  btn.textContent = colorMode === "heat" ? "Folders" : "Heatmap";
+  btn.classList.toggle("active", colorMode === "heat");
+  updateLegend();
+})();
 
 // ── Tooltip ───────────────────────────────────────────────────────────────────
 function showTip(e, d) {
-  const t = document.getElementById("tooltip");
-  t.style.display = "block";
-  const hue = Math.round((1 - Math.min((d.complexity||0)/maxC,1)) * 120);
-  t.innerHTML = `<div class="tt-name">${esc(d.name)}</div>
-    <div class="tt-row">Path: <span>${esc(d.path)}</span></div>
-    <div class="tt-row">Group: <span style="color:${colorOf(d.group)}">${esc(d.group)}</span></div>
-    <div class="tt-row">Tokens: <span>${(d.tokens||0).toLocaleString()}</span>
-      \u00b7 Fn: <span>${(d.functions||[]).length}</span>
-      \u00b7 Cls: <span>${(d.classes||[]).length}</span></div>
-    <div class="tt-row">Complexity: <span style="color:hsl(${hue},70%,55%)">${d.complexity||0}</span></div>`;
+  const tip = document.getElementById("tooltip");
+  tip.style.display = "block";
+  const hue = Math.round((1 - Math.min((d.complexity || 0) / maxC, 1)) * 120);
+  const parts = d.path.split("/");
+  const dir = parts.length > 1 ? parts.slice(0, -1).join("/") + "/" : "";
+  tip.innerHTML =
+    `<div class="tt-name">${esc(d.name)}</div>` +
+    (dir ? `<div class="tt-path">${esc(dir)}</div>` : "") +
+    `<div class="tt-row">Group: <span style="color:${colorOf(d.group)}">${esc(d.group)}</span></div>` +
+    `<div class="tt-row">Tokens: <span>${(d.tokens || 0).toLocaleString()}</span>` +
+    ` \u00b7 Fn: <span>${(d.functions || []).length}</span>` +
+    ` \u00b7 Cls: <span>${(d.classes || []).length}</span></div>` +
+    `<div class="tt-row">Complexity: <span style="color:hsl(${hue},70%,55%)">${d.complexity || 0}</span></div>`;
 }
-function moveTip(e) { const t = document.getElementById("tooltip"); t.style.left=(e.clientX+14)+"px"; t.style.top=(e.clientY+14)+"px"; }
+function moveTip(e) {
+  const tip = document.getElementById("tooltip");
+  tip.style.left = (e.clientX + 14) + "px";
+  tip.style.top  = (e.clientY + 14) + "px";
+}
 function hideTip() { document.getElementById("tooltip").style.display = "none"; }
 
-// ── Import helpers ────────────────────────────────────────────────────────────
+// ── Import helpers ─────────────────────────────────────────────────────────────
 function parseImp(raw) {
   let m = raw.match(/^from\s+([\w.]+)\s+import\s+(.+)$/);
-  if (m) return {mod:m[1], syms:m[2].split(",").map(s=>s.trim()).filter(Boolean)};
-  m = raw.match(/^import\s+([\w.]+)/); if (m) return {mod:m[1], syms:[]};
-  return {mod:raw, syms:[]};
+  if (m) return {mod: m[1], syms: m[2].split(",").map(s => s.trim()).filter(Boolean)};
+  m = raw.match(/^import\s+([\w.]+)/);
+  if (m) return {mod: m[1], syms: []};
+  return {mod: raw, syms: []};
 }
 function resolveFile(mod) {
-  const base = mod.replace(/\./g,"/");
-  return ALL_NODES.find(n => n.path===base+".py"||n.path===base+"/__init__.py"
-    ||n.path.endsWith("/"+base+".py")||n.path.endsWith("/"+base+"/__init__.py"))||null;
+  const base = mod.replace(/\./g, "/");
+  return ALL_NODES.find(n =>
+    n.path === base + ".py" || n.path === base + "/__init__.py" ||
+    n.path.endsWith("/" + base + ".py") || n.path.endsWith("/" + base + "/__init__.py")
+  ) || null;
 }
 
 // ── Info panel ────────────────────────────────────────────────────────────────
 function showInfo(d) {
   const color = colorOf(d.group);
-  const parts = d.path.split("/"); const fname = parts.pop();
-  document.getElementById("i-crumb").textContent = parts.join("/") + (parts.length?"/":"");
+  const parts = d.path.split("/");
+  const fname = parts.pop();
+  document.getElementById("i-crumb").textContent = parts.join("/") + (parts.length ? "/" : "");
   document.getElementById("i-title").textContent = fname;
-  const importedBy = ALL_NODES.filter(n => n.id!==d.id && ALL_LINKS.some(l => {
-    const s=l.source?.id??l.source, t=l.target?.id??l.target;
-    return (t===d.id&&s===n.id)||(l.bidirectional&&s===d.id&&t===n.id);
+
+  const importedBy = ALL_NODES.filter(n => n.id !== d.id && ALL_LINKS.some(l => {
+    const s = l.source?.id ?? l.source, t = l.target?.id ?? l.target;
+    return (t === d.id && s === n.id) || (l.bidirectional && s === d.id && t === n.id);
   }));
-  const parsed=(d.imports||[]).map(raw=>({raw,...parseImp(raw),file:null}));
-  parsed.forEach(p=>{p.file=resolveFile(p.mod);});
-  const localImp=parsed.filter(p=>p.file), extImp=parsed.filter(p=>!p.file);
-  const fns=d.functions||[], cls=d.classes||[];
-  const hue=Math.round((1-Math.min((d.complexity||0)/maxC,1))*120);
-  const fnR=fns.length?fns.map(f=>`<div class="sym"><span class="sym-badge badge-fn">fn</span><span class="sym-name">${esc(f)}()</span></div>`).join(""):`<div class="none-msg">No functions</div>`;
-  const clR=cls.length?cls.map(c=>`<div class="sym"><span class="sym-badge badge-cls">cls</span><span class="sym-name">${esc(c)}</span></div>`).join(""):`<div class="none-msg">No classes</div>`;
-  const loR=localImp.length?localImp.map(p=>`<div class="dep-row clickable" onclick="focusNode(${p.file.id})"><em class="dep-arrow">\u2192</em><div class="dep-body"><div class="dep-file">${esc(p.file.path)}</div>${p.syms.length?`<div class="dep-syms">${esc(p.syms.slice(0,4).join(", "))}${p.syms.length>4?` +${p.syms.length-4}`:""}</div>`:""}</div></div>`).join(""):`<div class="none-msg">No local imports</div>`;
-  const exR=extImp.length?extImp.map(p=>`<div class="dep-row ext"><em class="dep-arrow">\u2192</em><div class="dep-body"><div class="dep-file">${esc(p.mod)}${p.syms.length?` \u00b7 ${esc(p.syms.slice(0,3).join(", "))}`:""}</div></div></div>`).join(""):"";
-  const rvR=importedBy.length?importedBy.map(n=>`<div class="dep-row clickable" onclick="focusNode(${n.id})"><em class="dep-arrow">\u2190</em><div class="dep-body"><div class="dep-file">${esc(n.path)}</div></div></div>`).join(""):`<div class="none-msg">Nothing imports this</div>`;
-  document.getElementById("i-scroll").innerHTML=`
+  const parsed = (d.imports || []).map(raw => ({raw, ...parseImp(raw), file: null}));
+  parsed.forEach(p => { p.file = resolveFile(p.mod); });
+  const localImp = parsed.filter(p => p.file);
+  const extImp   = parsed.filter(p => !p.file);
+  const fns = d.functions || [], cls = d.classes || [];
+  const hue = Math.round((1 - Math.min((d.complexity || 0) / maxC, 1)) * 120);
+
+  const fnR = fns.length
+    ? fns.map(f => `<div class="sym"><span class="sym-badge badge-fn">fn</span><span class="sym-name">${esc(f)}()</span></div>`).join("")
+    : `<div class="none-msg">No functions</div>`;
+  const clR = cls.length
+    ? cls.map(c => `<div class="sym"><span class="sym-badge badge-cls">cls</span><span class="sym-name">${esc(c)}</span></div>`).join("")
+    : `<div class="none-msg">No classes</div>`;
+  const loR = localImp.length
+    ? localImp.map(p => `<div class="dep-row clickable" onclick="focusNode(${p.file.id})"><em class="dep-arrow">\u2192</em><div class="dep-body"><div class="dep-file">${esc(p.file.path)}</div>${p.syms.length ? `<div class="dep-syms">${esc(p.syms.slice(0,4).join(", "))}${p.syms.length > 4 ? ` +${p.syms.length-4}` : ""}</div>` : ""}</div></div>`).join("")
+    : `<div class="none-msg">No local imports</div>`;
+  const exR = extImp.length
+    ? extImp.map(p => `<div class="dep-row ext"><em class="dep-arrow">\u2192</em><div class="dep-body"><div class="dep-file">${esc(p.mod)}${p.syms.length ? ` \u00b7 ${esc(p.syms.slice(0,3).join(", "))}` : ""}</div></div></div>`).join("")
+    : "";
+  const rvR = importedBy.length
+    ? importedBy.map(n => `<div class="dep-row clickable" onclick="focusNode(${n.id})"><em class="dep-arrow">\u2190</em><div class="dep-body"><div class="dep-file">${esc(n.path)}</div></div></div>`).join("")
+    : `<div class="none-msg">Nothing imports this</div>`;
+
+  document.getElementById("i-scroll").innerHTML = `
     <div class="i-stats">
-      <div class="i-stat"><div class="i-stat-n">${(d.tokens||0).toLocaleString()}</div><div class="i-stat-l">Tokens</div></div>
+      <div class="i-stat"><div class="i-stat-n">${(d.tokens || 0).toLocaleString()}</div><div class="i-stat-l">Tokens</div></div>
       <div class="i-stat"><div class="i-stat-n">${fns.length}</div><div class="i-stat-l">Fn</div></div>
-      <div class="i-stat"><div class="i-stat-n" style="color:hsl(${hue},70%,55%)">${d.complexity||0}</div><div class="i-stat-l">Complexity</div></div>
+      <div class="i-stat"><div class="i-stat-n" style="color:hsl(${hue},70%,55%)">${d.complexity || 0}</div><div class="i-stat-l">Complexity</div></div>
     </div>
     <div class="i-section"><div class="i-label">Module</div><span class="mod-chip" style="background:${color}20;color:${color};border:1px solid ${color}40">${esc(d.group)}</span></div>
     <div class="i-section"><div class="i-label">Functions</div>${fnR}</div>
     <div class="i-section"><div class="i-label">Classes</div>${clR}</div>
     <div class="i-section"><div class="i-label">Imports \u2014 Local (${localImp.length})</div>${loR}</div>
-    ${exR?`<div class="i-section"><div class="i-label">Imports \u2014 External</div>${exR}</div>`:""}
+    ${exR ? `<div class="i-section"><div class="i-label">Imports \u2014 External</div>${exR}</div>` : ""}
     <div class="i-section"><div class="i-label">Imported by (${importedBy.length})</div>${rvR}</div>`;
-  document.getElementById("info").style.display="flex";
-  const conn=new Set([d.id]);
-  ALL_LINKS.forEach(l=>{const s=l.source?.id??l.source,t=l.target?.id??l.target;if(s===d.id)conn.add(t);if(t===d.id)conn.add(s);});
-  nodeEl.classed("dimmed",n=>!conn.has(n.id));
-  linkEl.classed("lit",l=>{const s=l._source.id,t=l._target.id;return s===d.id||t===d.id;});
-  linkEl.attr("marker-end",l=>{const s=l._source.id,t=l._target.id;const lit=s===d.id||t===d.id;return `url(#a-${l.mutual?"mut":"imp"}${lit?"-lit":""})`;});
-  linkEl.attr("marker-start",l=>{if(!l.mutual)return null;const s=l._source.id,t=l._target.id;const lit=s===d.id||t===d.id;return `url(#a-mut-rev${lit?"-lit":""})`;});
+
+  document.getElementById("info").style.display = "flex";
+
+  const conn = new Set([d.id]);
+  ALL_LINKS.forEach(l => {
+    const s = l.source?.id ?? l.source, t = l.target?.id ?? l.target;
+    if (s === d.id) conn.add(t);
+    if (t === d.id) conn.add(s);
+  });
+  nodeEl.classed("dimmed", n => !conn.has(n.id));
+  linkEl.classed("lit", l => l._source.id === d.id || l._target.id === d.id);
+  linkEl.attr("marker-end", l => {
+    const lit = l._source.id === d.id || l._target.id === d.id;
+    const t = l.mutual ? "mut" : l._back ? "back" : "fwd";
+    return `url(#a-${t}${lit ? "-lit" : ""})`;
+  });
+  linkEl.attr("marker-start", l => {
+    if (!l.mutual) return null;
+    const lit = l._source.id === d.id || l._target.id === d.id;
+    return `url(#a-mut-rev${lit ? "-lit" : ""})`;
+  });
 }
+
 function focusNode(id) {
-  const nd=nodes.find(n=>n.id===id); if(!nd)return;
+  const nd = nodes.find(n => n.id === id);
+  if (!nd) return;
   showInfo(nd);
-  const scale=Math.max(currentTransform.k,0.8);
+  const scale = Math.max(currentTransform.k, 0.85);
   svg.transition().duration(400).call(zoomB.transform,
-    d3.zoomIdentity.translate(W/2-(nd.px+NODE_W/2)*scale,H/2-(nd.py+NODE_H/2)*scale).scale(scale));
+    d3.zoomIdentity
+      .translate(W / 2 - (nd.px + NODE_W / 2) * scale, H / 2 - (nd.py + NODE_H / 2) * scale)
+      .scale(scale));
 }
+
 function closeInfo() {
-  document.getElementById("info").style.display="none";
-  nodeEl.classed("dimmed",false); linkEl.classed("lit",false);
-  linkEl.attr("marker-end",d=>`url(#a-${d.mutual?"mut":"imp"})`);
-  linkEl.attr("marker-start",d=>d.mutual ? "url(#a-mut-rev)" : null);
+  document.getElementById("info").style.display = "none";
+  nodeEl.classed("dimmed", false);
+  linkEl.classed("lit", false);
+  linkEl.attr("marker-end",   d => `url(#a-${d.mutual ? "mut" : d._back ? "back" : "fwd"})`);
+  linkEl.attr("marker-start", d => d.mutual ? "url(#a-mut-rev)" : null);
 }
-svg.on("click",()=>closeInfo());
 
 // ── Search ────────────────────────────────────────────────────────────────────
-document.getElementById("search").addEventListener("input",function(){
-  const q=this.value.toLowerCase();
-  if(!q){nodeEl.classed("dimmed",false);return;}
-  nodeEl.classed("dimmed",d=>!d.path.toLowerCase().includes(q)&&!d.name.toLowerCase().includes(q));
+document.getElementById("search").addEventListener("input", function() {
+  const q = this.value.toLowerCase();
+  if (!q) { nodeEl.classed("dimmed", false); return; }
+  nodeEl.classed("dimmed", d => !d.path.toLowerCase().includes(q) && !d.name.toLowerCase().includes(q));
 });
 
-// ── Keyboard ──────────────────────────────────────────────────────────────────
-document.addEventListener("keydown",e=>{
-  if(e.key==="Escape")closeInfo();
-  if(e.key==="f"&&!e.ctrlKey&&!e.metaKey&&document.activeElement.id!=="search")fitGraph();
+// ── Keyboard shortcuts ────────────────────────────────────────────────────────
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape") closeInfo();
+  if (e.key === "f" && !e.ctrlKey && !e.metaKey && document.activeElement.id !== "search") fitGraph();
 });
-window.addEventListener("resize",()=>{svg.attr("width",window.innerWidth).attr("height",window.innerHeight);});
+window.addEventListener("resize", () => {
+  svg.attr("width", window.innerWidth).attr("height", window.innerHeight);
+});
 
-function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+function esc(s) {
+  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+</script>
+<script>
+(function(){
+  const t = localStorage.getItem("arkhe-theme") || "dark";
+  document.documentElement.setAttribute("data-theme", t);
+  window.addEventListener("message", function(e){
+    if (e.data && (e.data === "light" || e.data === "dark")) {
+      document.documentElement.setAttribute("data-theme", e.data);
+    }
+  });
+})();
 </script>
 </body>
 </html>

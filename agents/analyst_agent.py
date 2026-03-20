@@ -33,10 +33,9 @@ MODEL_TPM_LIMITS = {
 }
 DEFAULT_SAFE_TPM = 5000
 
-# Max files analyzed concurrently.
-# acquire_slot() in model_router.py pauses at 90% of RPM/TPM before dispatching,
-# so 3 concurrent calls are safe even on free-tier providers.
-MAX_CONCURRENT_FILES = 3
+# Concurrency cap — effectively unlimited; try_acquire_slot() is the real throttle.
+# NVIDIA leads at 200K TPM / 40 RPM; Groq/Gemini absorb overflow automatically.
+MAX_CONCURRENT_FILES = 100
 
 
 def _safe_budget(model: str) -> int:
@@ -60,10 +59,11 @@ def _build_prompt(file: dict) -> str:
 
 
 async def _analyze_file(file: dict, idx: int, sem: asyncio.Semaphore) -> dict:
-    from config.model_router import get_file_pool
+    from config.model_router import get_file_pool_cascade
     async with sem:
         prompt = _build_prompt(file)
-        pool   = get_file_pool(file["path"], file.get("tokens", 0))
+        pool   = get_file_pool_cascade(file["path"], file.get("tokens", 0))
+        logger.debug(f"[analyst] pool for {file['path']}: {len(pool)} models → {[m for _,m in pool]}")
         analysis = await llm_call_async_pool(pool, SYSTEM, prompt, max_tokens=512, role="analyst")
 
     db = get_db()

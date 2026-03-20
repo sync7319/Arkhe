@@ -154,6 +154,46 @@ async def acquire_slot(model: str, estimated_tokens: int = 0) -> None:
         break
 
 
+def try_acquire_slot(model: str, estimated_tokens: int = 0) -> bool:
+    """
+    Non-blocking capacity check + request registration.
+    Returns True and records the request if under limits.
+    Returns False immediately (no sleep) if at capacity.
+
+    Use in any path where fallback to the next model is possible.
+    Use acquire_slot() only when there is no fallback (e.g. single-model NVIDIA path).
+    """
+    limits = MODEL_LIMITS.get(model)
+    if limits is None:
+        return True  # unknown model — no proactive throttle, always allow
+
+    rpm_cap = int(limits["rpm"] * _THROTTLE_THRESHOLD)
+    tpm_cap = int(limits["tpm"] * _THROTTLE_THRESHOLD)
+    rpd_cap = int(limits["rpd"] * _THROTTLE_THRESHOLD) if "rpd" in limits else None
+    tpd_cap = int(limits["tpd"] * _THROTTLE_THRESHOLD) if "tpd" in limits else None
+
+    now = time.time()
+    u   = _get_usage(model)
+    _prune_window(u, now)
+
+    current_rpm = len(u["requests"])
+    current_tpm = sum(n for _, n in u["tokens"])
+
+    if rpd_cap is not None and u["daily_reqs"] >= rpd_cap:
+        return False
+    if tpd_cap is not None and u["daily_tokens"] >= tpd_cap:
+        return False
+    if current_rpm >= rpm_cap:
+        return False
+    if u["tokens"] and current_tpm + estimated_tokens >= tpm_cap:
+        return False
+
+    # Under limits — claim the request slot atomically
+    u["requests"].append(now)
+    u["daily_reqs"] += 1
+    return True
+
+
 def record_usage(model: str, tokens: int) -> None:
     """Record actual token count after a successful call."""
     if model not in MODEL_LIMITS:
@@ -195,23 +235,26 @@ TIER_MEDIUM_TOKENS = 8_000   # 3K-8K    → tier 3
 # ── Base pool definitions: (provider, model) ordered best → fastest ───────────
 # build_available_pools() filters to only providers with valid API keys at startup.
 _POOLS_BASE: dict[str, list[tuple[str, str]]] = {
-    # Non-code / config files — Gemini first (15K TPM vs Groq's 6K), Groq as fallback
+    # Non-code / config files — NVIDIA leads (200K TPM, 40 RPM), then Gemini, Groq
     "tier0": [
+        ("nvidia", "nvidia/llama-3.1-nemotron-ultra-253b-v1"),     # 200K TPM, 40 RPM
         ("gemini", "gemma-3-4b-it"),
         ("gemini", "gemma-3-27b-it"),
         ("groq",   "llama-3.1-8b-instant"),
         ("groq",   "allam-2-7b"),
     ],
-    # < 500 tokens — Groq first (low latency), Gemini fallback
+    # < 500 tokens — NVIDIA leads, then Groq (low latency), Gemini fallback
     "tier1": [
+        ("nvidia", "nvidia/llama-3.1-nemotron-ultra-253b-v1"),     # 200K TPM, 40 RPM
         ("groq",   "qwen/qwen3-32b"),
         ("groq",   "openai/gpt-oss-20b"),
         ("gemini", "gemma-3-4b-it"),
         ("groq",   "allam-2-7b"),
         ("groq",   "llama-3.1-8b-instant"),
     ],
-    # 500–3K tokens — capable standard models
+    # 500–3K tokens — NVIDIA leads, then capable standard models
     "tier2": [
+        ("nvidia", "nvidia/llama-3.1-nemotron-ultra-253b-v1"),     # 200K TPM, 40 RPM
         ("groq",   "moonshotai/kimi-k2-instruct"),
         ("groq",   "moonshotai/kimi-k2-instruct-0905"),
         ("groq",   "openai/gpt-oss-120b"),
@@ -219,10 +262,10 @@ _POOLS_BASE: dict[str, list[tuple[str, str]]] = {
         ("groq",   "meta-llama/llama-4-scout-17b-16e-instruct"),
         ("gemini", "gemma-3-12b-it"),
     ],
-    # 3K–8K tokens — high-context models
-    # Groq first (low latency), Gemini as high-TPM overflow (250K TPM each)
+    # 3K–8K tokens — NVIDIA leads, then high-context models
     "tier3": [
-        ("groq",   "meta-llama/llama-4-scout-17b-16e-instruct"),  # 30K TPM
+        ("nvidia", "nvidia/llama-3.1-nemotron-ultra-253b-v1"),     # 200K TPM, 40 RPM
+        ("groq",   "meta-llama/llama-4-scout-17b-16e-instruct"),   # 30K TPM
         ("groq",   "groq/compound"),                               # 70K TPM
         ("gemini", "gemma-3-27b-it"),                              # 15K TPM, 30 RPM
         ("gemini", "gemini-2.5-flash-lite"),                       # 250K TPM, 10 RPM
@@ -231,8 +274,9 @@ _POOLS_BASE: dict[str, list[tuple[str, str]]] = {
         ("groq",   "moonshotai/kimi-k2-instruct"),
         ("groq",   "moonshotai/kimi-k2-instruct-0905"),
     ],
-    # ≥ 8K tokens — max-context models, Gemini leads (250K TPM, 1M ctx)
+    # ≥ 8K tokens — NVIDIA leads (200K TPM, large ctx), Gemini as overflow
     "tier4": [
+        ("nvidia", "nvidia/llama-3.1-nemotron-ultra-253b-v1"),     # 200K TPM, 40 RPM
         ("gemini", "gemini-2.5-flash"),                            # 250K TPM, established
         ("gemini", "gemini-3-flash-preview"),                      # 250K TPM, 1M ctx window
         ("gemini", "gemini-3.1-flash-lite-preview"),               # 250K TPM, 15 RPM, 500 RPD
@@ -290,6 +334,48 @@ def get_file_pool(file_path: str, token_count: int) -> list[tuple[str, str]]:
         return _POOLS.get("tier3") or []
     else:
         return _POOLS.get("tier4") or []
+
+
+# Cascade order per primary tier: try primary first, then adjacent tiers in order.
+# If all models in the primary tier are throttled/cooling, the pool naturally
+# falls through to the next tier's models without any extra waiting.
+_TIER_CASCADE: dict[str, list[str]] = {
+    "tier0": ["tier0", "tier1", "tier2", "tier3"],
+    "tier1": ["tier1", "tier0", "tier2", "tier3"],
+    "tier2": ["tier2", "tier1", "tier3", "tier0"],
+    "tier3": ["tier3", "tier4", "tier2", "tier1", "tier0"],
+    "tier4": ["tier4", "tier3", "tier2", "tier1"],
+}
+
+
+def get_file_pool_cascade(file_path: str, token_count: int) -> list[tuple[str, str]]:
+    """
+    Return a cascaded pool for a file — primary tier first, then fallback tiers
+    in order. Deduplicates entries while preserving priority order.
+
+    This means if all tier0 models are cooling/throttled, the pool immediately
+    falls through to tier1 models, then tier2, etc. — no waiting, no wasted time.
+    """
+    ext = ("." + file_path.rsplit(".", 1)[-1].lower()) if "." in file_path else ""
+    if ext in NON_CODE_EXTENSIONS:
+        primary = "tier0"
+    elif token_count < TIER_TINY_TOKENS:
+        primary = "tier1"
+    elif token_count < TIER_SMALL_TOKENS:
+        primary = "tier2"
+    elif token_count < TIER_MEDIUM_TOKENS:
+        primary = "tier3"
+    else:
+        primary = "tier4"
+
+    seen:   set[tuple[str, str]] = set()
+    result: list[tuple[str, str]] = []
+    for tier in _TIER_CASCADE.get(primary, [primary]):
+        for entry in _POOLS.get(tier, []):
+            if entry not in seen:
+                seen.add(entry)
+                result.append(entry)
+    return result
 
 
 def get_heavy_pool() -> list[tuple[str, str]]:
@@ -416,6 +502,38 @@ def get_chain(provider: str, preferred: str) -> list[str]:
     if preferred in chain:
         return chain          # start from best (index 0), not from preferred
     return [preferred] + chain  # custom override: try it first, then full chain
+
+
+def is_at_capacity(model: str, estimated_tokens: int = 0) -> bool:
+    """
+    Non-blocking capacity check — returns True if acquire_slot would pause right now.
+    Used by llm_call_async_pool to skip throttled models and fall through to the next.
+    """
+    limits = MODEL_LIMITS.get(model)
+    if limits is None:
+        return False
+
+    rpm_cap = int(limits["rpm"] * _THROTTLE_THRESHOLD)
+    tpm_cap = int(limits["tpm"] * _THROTTLE_THRESHOLD)
+    rpd_cap = int(limits["rpd"] * _THROTTLE_THRESHOLD) if "rpd" in limits else None
+    tpd_cap = int(limits["tpd"] * _THROTTLE_THRESHOLD) if "tpd" in limits else None
+
+    now = time.time()
+    u   = _get_usage(model)
+    _prune_window(u, now)
+
+    current_rpm = len(u["requests"])
+    current_tpm = sum(n for _, n in u["tokens"])
+
+    if rpd_cap is not None and u["daily_reqs"] >= rpd_cap:
+        return True
+    if tpd_cap is not None and u["daily_tokens"] >= tpd_cap:
+        return True
+    if current_rpm >= rpm_cap:
+        return True
+    if u["tokens"] and current_tpm + estimated_tokens >= tpm_cap:
+        return True
+    return False
 
 
 def status() -> dict[str, list[dict]]:

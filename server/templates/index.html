@@ -653,26 +653,18 @@ arkhe ./my-project --refactor</pre>
       });
       const data = await res.json();
       if (!res.ok) { showError(data.error || "Something went wrong."); resetBtn(); return; }
-      localStorage.setItem("arkhe-active-job", JSON.stringify({ jobId: data.job_id, url, stepIdx: 0 }));
+      localStorage.setItem("arkhe-active-job", JSON.stringify({ jobId: data.job_id, url }));
       pollStatus(data.job_id);
     } catch (e) { showError("Network error — please try again."); resetBtn(); }
   }
 
-  function pollStatus(jobId, startStep = 0) {
-    let stepIdx = startStep; setProgress(stepIdx);
+  function pollStatus(jobId) {
     const btn = document.getElementById("analyze-btn");
     btn.disabled = true; btn.textContent = "Analyzing...";
     document.getElementById("status-bar").style.display = "block";
+    setProgress(0);
 
     pollInterval = setInterval(async () => {
-      stepIdx = Math.min(stepIdx + 1, STEPS.length - 1);
-      setProgress(stepIdx);
-      // Persist step so resume starts close to where we left off
-      const saved = JSON.parse(localStorage.getItem("arkhe-active-job") || "{}");
-      if (saved.jobId === jobId) {
-        saved.stepIdx = stepIdx;
-        localStorage.setItem("arkhe-active-job", JSON.stringify(saved));
-      }
       try {
         const res  = await fetch(`/status/${jobId}`);
         const data = await res.json();
@@ -686,9 +678,13 @@ arkhe ./my-project --refactor</pre>
           localStorage.removeItem("arkhe-active-job");
           showError(data.error || "Pipeline failed.");
           resetBtn();
+        } else {
+          // Use real step from server
+          const step = data.step ?? 0;
+          setProgress(Math.min(step, STEPS.length - 1));
         }
       } catch (e) { /* keep polling */ }
-    }, 3000);
+    }, 2000);
   }
 
   // On page load, resume any active job
@@ -699,7 +695,7 @@ arkhe ./my-project --refactor</pre>
     fetch(`/status/${saved.jobId}`).then(r => r.json()).then(data => {
       if (data.status === "running" || data.status === "pending") {
         if (saved.url) document.getElementById("repo-url").value = saved.url;
-        pollStatus(saved.jobId, saved.stepIdx || 0);
+        pollStatus(saved.jobId);
       } else {
         localStorage.removeItem("arkhe-active-job");
       }

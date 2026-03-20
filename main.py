@@ -62,7 +62,7 @@ def _write_scaffolds(scaffolds: dict[str, str], repo_path: str) -> list[str]:
     return written
 
 
-async def run(repo_path: str, fmt: str, refactor: bool = False):
+async def run(repo_path: str, fmt: str, refactor: bool = False, progress_cb=None):
     from config.settings import (
         REFACTOR_ENABLED,
         CODEBASE_MAP_ENABLED, DEPENDENCY_MAP_ENABLED, EXECUTIVE_REPORT_ENABLED,
@@ -87,14 +87,20 @@ async def run(repo_path: str, fmt: str, refactor: bool = False):
         "nvidia":    NVIDIA_API_KEY,
     })
 
+    def _progress(step: int, label: str):
+        if progress_cb:
+            progress_cb(step, label)
+
     with Progress(SpinnerColumn(), TextColumn("{task.description}"), console=console) as p:
 
         # ── Scan ──────────────────────────────────────────────────────────────
+        _progress(1, "Scanning files...")
         t = p.add_task("Scanning repository...", total=None)
         files = scan(repo_path)
         p.update(t, description=f"[green]Scanned {len(files)} files[/green]", completed=True)
 
         # ── Parse ─────────────────────────────────────────────────────────────
+        _progress(2, "Parsing AST structure...")
         t = p.add_task("Parsing AST structure...", total=None)
         modules = parse_modules(files)
         p.update(t, description=f"[green]Parsed {len(modules)} modules[/green]", completed=True)
@@ -108,16 +114,19 @@ async def run(repo_path: str, fmt: str, refactor: bool = False):
             p.update(t, description=f"[green]Refactored {len(refactored)} files → {clone_path}[/green]", completed=True)
 
         # ── Analyze ───────────────────────────────────────────────────────────
+        _progress(3, "Analyzing with AI...")
         t = p.add_task("Analyzing with AI subagents...", total=None)
         reports = await analyze_parallel(modules)
         p.update(t, description=f"[green]{len(reports)} file(s) analyzed[/green]", completed=True)
 
         # ── Synthesize ────────────────────────────────────────────────────────
+        _progress(4, "Synthesizing codebase map...")
         t = p.add_task("Synthesizing final map...", total=None)
         codebase_map = await synthesize(reports, files)
         p.update(t, description="[green]Map synthesized[/green]", completed=True)
 
         # ── Build dependency graph ────────────────────────────────────────────
+        _progress(5, "Building dependency graph...")
         graph = build_graph(modules)
 
         # ── JSON format exit ─────────────────────────────────────────────────

@@ -41,6 +41,7 @@ def scan(repo_path: str) -> list:
         dirnames[:] = [
             d for d in dirnames
             if d not in IGNORE_DIRS
+            and not d.startswith(".")
             and not spec.match_file(os.path.relpath(os.path.join(dirpath, d), repo_path))
         ]
 

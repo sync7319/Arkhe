@@ -183,10 +183,11 @@ MAX_FILE_TOKENS      = 50_000
 IGNORE_DIRS = {
     "node_modules", ".git", "__pycache__", ".venv", "venv",
     "dist", "build", ".next", "coverage", ".pytest_cache",
+    ".arkhe_cache", "docs", "tests_generated",
 }
 IGNORE_EXTENSIONS = {
     ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico",
     ".woff", ".woff2", ".ttf", ".eot", ".mp4", ".mp3",
     ".zip", ".tar", ".gz", ".lock", ".bin", ".exe", ".pyc",
-    ".docx", ".xlsx", ".pdf", ".env",
+    ".docx", ".xlsx", ".pdf", ".env", ".db",
 }

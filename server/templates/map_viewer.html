@@ -109,9 +109,72 @@
 </div>
 
 <script>
+  // CSS to inject into the iframe for light mode (covers already-generated files)
+  const LIGHT_CSS = `
+    body{background:#f8fafc!important;color:#0f172a!important}
+    #header{background:#fff!important;border-color:#e2e8f0!important}
+    #search{background:#f1f5f9!important;border-color:#e2e8f0!important;color:#0f172a!important}
+    #search::placeholder{color:#94a3b8!important}
+    .ctrl-btn{background:#fff!important;border-color:#e2e8f0!important;color:#475569!important}
+    .ctrl-btn:hover{background:#f1f5f9!important;color:#0f172a!important}
+    .ctrl-btn.active{background:#2563eb!important;color:#fff!important;border-color:#2563eb!important}
+    #stats{color:#64748b!important}
+    #logo{color:#2563eb!important}
+    #logo-sub{color:#94a3b8!important}
+    #legend,#info,#tooltip{background:#fff!important;border-color:#e2e8f0!important;box-shadow:0 4px 24px rgba(0,0,0,.08)!important}
+    .leg-sep{border-color:#e2e8f0!important}
+    .leg-row,.leg-link{color:#475569!important}
+    h4{color:#64748b!important}
+    .leg-gradient-labels span{color:#94a3b8!important}
+    svg{background:#f8fafc!important}
+    .node-label{fill:#1e293b!important}
+    .node-meta{fill:#64748b!important}
+    .col-header{fill:#94a3b8!important}
+    .col-line{stroke:#f1f5f9!important}
+    .i-head{border-color:#e2e8f0!important}
+    .i-crumb{color:#94a3b8!important}
+    .i-title{color:#1e293b!important}
+    .i-close{color:#94a3b8!important}
+    .i-close:hover{color:#1e293b!important;background:#f1f5f9!important}
+    .i-stat{background:#f1f5f9!important;border-color:#e2e8f0!important}
+    .i-stat-n{color:#1e293b!important}
+    .i-stat-l{color:#64748b!important}
+    .i-label{color:#64748b!important}
+    .i-label::after{background:#e2e8f0!important}
+    .sym:hover{background:#f1f5f9!important}
+    .sym-name{color:#475569!important}
+    .dep-row{color:#64748b!important}
+    .dep-row.ext{color:#94a3b8!important}
+    .dep-arrow{color:#94a3b8!important}
+    .none-msg{color:#cbd5e1!important}
+    .tt-name{color:#1e293b!important}
+    .tt-row{color:#64748b!important}
+    .tt-row span{color:#475569!important}
+    .link-import{stroke:#94a3b8!important}
+    .link-import.lit{stroke:#2563eb!important}
+  `;
+
+  function applyThemeToFrame(theme) {
+    const frame = document.getElementById("map-frame");
+    if (!frame) return;
+    try {
+      const fd = frame.contentDocument;
+      if (!fd || !fd.head) return;
+      fd.documentElement.setAttribute("data-theme", theme);
+      let el = fd.getElementById("ark-theme-inject");
+      if (!el) {
+        el = fd.createElement("style");
+        el.id = "ark-theme-inject";
+        fd.head.appendChild(el);
+      }
+      el.textContent = theme === "light" ? LIGHT_CSS : "";
+    } catch (e) { /* cross-origin or not ready */ }
+  }
+
   (function () {
     const stored = localStorage.getItem("arkhe-theme") || "dark";
     document.documentElement.setAttribute("data-theme", stored);
+
     function syncLabel() {
       const t = document.documentElement.getAttribute("data-theme");
       const icon = document.getElementById("t-icon");
@@ -120,14 +183,20 @@
       if (t === "dark") { icon.textContent = "☀️"; label.textContent = "Light"; }
       else              { icon.textContent = "🌙"; label.textContent = "Dark"; }
     }
+
     document.addEventListener("DOMContentLoaded", () => {
       syncLabel();
+      // Apply theme once iframe has loaded
+      document.getElementById("map-frame").addEventListener("load", () => {
+        applyThemeToFrame(localStorage.getItem("arkhe-theme") || "dark");
+      });
       document.getElementById("theme-toggle").addEventListener("click", () => {
         const cur  = document.documentElement.getAttribute("data-theme");
         const next = cur === "dark" ? "light" : "dark";
         document.documentElement.setAttribute("data-theme", next);
         localStorage.setItem("arkhe-theme", next);
         syncLabel();
+        applyThemeToFrame(next);
       });
     });
   })();

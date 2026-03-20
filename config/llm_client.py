@@ -118,7 +118,7 @@ def llm_call(role: str, system: str, user_prompt: str, max_tokens: int = 4096) -
 
 async def llm_call_async(role: str, system: str, user_prompt: str, max_tokens: int = 4096) -> str:
     from config.settings import get_user_chain
-    from config.model_router import get_chain, is_cooling, mark_cooling
+    from config.model_router import get_chain, is_cooling, mark_cooling, try_acquire_slot
 
     user_chain = get_user_chain()
     if user_chain:
@@ -131,32 +131,50 @@ async def llm_call_async(role: str, system: str, user_prompt: str, max_tokens: i
     chain               = get_chain(provider, preferred)
     rate_limit_exc      = _rate_limit_exceptions(provider)
     transient_exc       = _transient_exceptions(provider)
+    estimated           = (len(system) + len(user_prompt)) // 4
 
-    for model in chain:
-        if is_cooling(model):
-            logger.debug(f"[{role}] {model} cooling — skipping")
-            continue
-        logger.debug(f"[{role}] provider={provider} model={model}")
+    while True:
+        any_attempted    = False
+        any_at_capacity  = False
 
-        for attempt in range(1, MAX_RETRIES + 1):
-            try:
-                return await _dispatch_async(provider, model, api_key, system, user_prompt, max_tokens)
-            except rate_limit_exc as e:
-                mark_cooling(model, provider)
-                logger.warning(f"[{role}] Rate limit on {model} — falling back")
-                break  # try next model in chain
-            except transient_exc as e:
-                if attempt == MAX_RETRIES:
-                    logger.warning(f"[{role}] {model} failed after {MAX_RETRIES} transient errors — falling back")
-                    break
-                wait = RETRY_BACKOFF * attempt
-                logger.warning(f"[{role}] Transient error attempt {attempt}: {e}. Retrying in {wait}s...")
-                await asyncio.sleep(wait)
-            except Exception as e:
-                logger.error(f"[{role}] Non-retryable error on {model}: {e}")
-                raise
+        for model in chain:
+            if is_cooling(model):
+                logger.debug(f"[{role}] {model} cooling — skipping")
+                continue
+            if not try_acquire_slot(model, estimated):
+                logger.debug(f"[{role}] {model} at capacity — skipping")
+                any_at_capacity = True
+                continue
 
-    raise RuntimeError(f"[{role}] All models for '{provider}' are rate-limited or failed")
+            any_attempted = True
+            logger.debug(f"[{role}] provider={provider} model={model}")
+
+            for attempt in range(1, MAX_RETRIES + 1):
+                try:
+                    return await _dispatch_async(provider, model, api_key, system, user_prompt, max_tokens)
+                except rate_limit_exc as e:
+                    mark_cooling(model, provider)
+                    logger.warning(f"[{role}] Rate limit on {model} — falling back")
+                    break  # try next model in chain
+                except transient_exc as e:
+                    if attempt == MAX_RETRIES:
+                        logger.warning(f"[{role}] {model} failed after {MAX_RETRIES} transient errors — falling back")
+                        break
+                    wait = RETRY_BACKOFF * attempt
+                    logger.warning(f"[{role}] Transient error attempt {attempt}: {e}. Retrying in {wait}s...")
+                    await asyncio.sleep(wait)
+                except Exception as e:
+                    logger.error(f"[{role}] Non-retryable error on {model}: {e}")
+                    raise
+
+        if not any_attempted and any_at_capacity:
+            # All non-cooling models throttled — wait for the rate window to clear
+            logger.warning(f"[{role}] All models at capacity — waiting 15s")
+            await asyncio.sleep(15)
+        elif not any_attempted:
+            raise RuntimeError(f"[{role}] All models for '{provider}' are cooling or failed")
+        else:
+            raise RuntimeError(f"[{role}] All models for '{provider}' are rate-limited or failed")
 
 
 async def _call_user_chain(
@@ -167,36 +185,53 @@ async def _call_user_chain(
     role: str,
 ) -> str:
     """BYOK mode — iterate user-defined (provider, model, api_key) list with cooldown fallback."""
-    from config.model_router import is_cooling, mark_cooling
+    from config.model_router import is_cooling, mark_cooling, try_acquire_slot
 
-    for provider, model, api_key in chain:
-        if is_cooling(model):
-            logger.debug(f"[{role}] {model} cooling — skipping")
-            continue
-        logger.debug(f"[{role}] user-chain: provider={provider} model={model}")
+    estimated = (len(system) + len(user_prompt)) // 4
 
-        rate_limit_exc = _rate_limit_exceptions(provider)
-        transient_exc  = _transient_exceptions(provider)
+    while True:
+        any_attempted   = False
+        any_at_capacity = False
 
-        for attempt in range(1, MAX_RETRIES + 1):
-            try:
-                return await _dispatch_async(provider, model, api_key, system, user_prompt, max_tokens)
-            except rate_limit_exc:
-                mark_cooling(model, provider)
-                logger.warning(f"[{role}] Rate limit on {model} — trying next in ARKHE_CHAIN")
-                break
-            except transient_exc as e:
-                if attempt == MAX_RETRIES:
-                    logger.warning(f"[{role}] {model} failed after {MAX_RETRIES} transient errors — trying next")
+        for provider, model, api_key in chain:
+            if is_cooling(model):
+                logger.debug(f"[{role}] {model} cooling — skipping")
+                continue
+            if not try_acquire_slot(model, estimated):
+                logger.debug(f"[{role}] {model} at capacity — skipping")
+                any_at_capacity = True
+                continue
+
+            any_attempted  = True
+            rate_limit_exc = _rate_limit_exceptions(provider)
+            transient_exc  = _transient_exceptions(provider)
+            logger.debug(f"[{role}] user-chain: provider={provider} model={model}")
+
+            for attempt in range(1, MAX_RETRIES + 1):
+                try:
+                    return await _dispatch_async(provider, model, api_key, system, user_prompt, max_tokens)
+                except rate_limit_exc:
+                    mark_cooling(model, provider)
+                    logger.warning(f"[{role}] Rate limit on {model} — trying next in ARKHE_CHAIN")
                     break
-                wait = RETRY_BACKOFF * attempt
-                logger.warning(f"[{role}] Transient error attempt {attempt}: {e}. Retrying in {wait}s...")
-                await asyncio.sleep(wait)
-            except Exception as e:
-                logger.error(f"[{role}] Non-retryable error on {model}: {e}")
-                raise
+                except transient_exc as e:
+                    if attempt == MAX_RETRIES:
+                        logger.warning(f"[{role}] {model} failed after {MAX_RETRIES} transient errors — trying next")
+                        break
+                    wait = RETRY_BACKOFF * attempt
+                    logger.warning(f"[{role}] Transient error attempt {attempt}: {e}. Retrying in {wait}s...")
+                    await asyncio.sleep(wait)
+                except Exception as e:
+                    logger.error(f"[{role}] Non-retryable error on {model}: {e}")
+                    raise
 
-    raise RuntimeError(f"[{role}] All models in ARKHE_CHAIN are rate-limited or failed")
+        if not any_attempted and any_at_capacity:
+            logger.warning(f"[{role}] All ARKHE_CHAIN models at capacity — waiting 15s")
+            await asyncio.sleep(15)
+        elif not any_attempted:
+            raise RuntimeError(f"[{role}] All models in ARKHE_CHAIN are cooling or failed")
+        else:
+            raise RuntimeError(f"[{role}] All models in ARKHE_CHAIN are rate-limited or failed")
 
 
 # ── Sync call implementations ────────────────────────────────────────────────
@@ -285,14 +320,7 @@ def _call_openai(api_key, model, system, prompt, max_tokens):
 # ── Async call implementations ───────────────────────────────────────────────
 
 async def _call_groq_async(api_key, model, system, prompt, max_tokens):
-    from config.model_router import acquire_slot, record_usage
-
-    estimated = (len(system) + len(prompt)) // 4
-    try:
-        await acquire_slot(model, estimated)
-    except RuntimeError as e:
-        from groq import RateLimitError
-        raise RateLimitError(message=str(e), response=None, body=None) from e
+    from config.model_router import record_usage
 
     client   = _get_groq_async_client(api_key)
     response = await client.chat.completions.create(
@@ -315,15 +343,7 @@ async def _call_groq_async(api_key, model, system, prompt, max_tokens):
 
 async def _call_gemini_async(api_key, model, system, prompt, max_tokens):
     from google.genai import types
-    from config.model_router import acquire_slot, record_usage
-
-    # Rough token estimate for throttle pre-check (chars / 4 ≈ tokens)
-    estimated = (len(system) + len(prompt)) // 4
-    try:
-        await acquire_slot(model, estimated)
-    except RuntimeError as e:
-        # Daily budget exhausted — convert to rate-limit sentinel so router falls back
-        raise _GeminiRateLimitError(str(e)) from e
+    from config.model_router import record_usage
 
     # Gemma models don't support system_instruction — prepend to user prompt instead
     is_gemma = model.startswith("gemma-")
@@ -413,18 +433,26 @@ async def llm_call_async_explicit(
     When all models in the chain are cooling, waits for the soonest one to recover
     and retries rather than failing immediately.
     """
-    from config.model_router import get_chain, is_cooling, mark_cooling, cooling_remaining
+    from config.model_router import get_chain, is_cooling, mark_cooling, cooling_remaining, try_acquire_slot
     api_key        = get_api_key(provider)
     chain          = get_chain(provider, model)
     rate_limit_exc = _rate_limit_exceptions(provider)
     transient_exc  = _transient_exceptions(provider)
+    estimated      = (len(system) + len(user_prompt)) // 4
 
     while True:
-        attempted_any = False
+        attempted_any   = False
+        any_at_capacity = False
+
         for m in chain:
             if is_cooling(m):
                 logger.debug(f"[explicit] {m} cooling — skipping")
                 continue
+            if not try_acquire_slot(m, estimated):
+                logger.debug(f"[explicit] {m} at capacity — skipping")
+                any_at_capacity = True
+                continue
+
             attempted_any = True
             logger.debug(f"[explicit] provider={provider} model={m}")
 
@@ -447,7 +475,10 @@ async def llm_call_async_explicit(
                     logger.error(f"[explicit] Non-retryable error on {m}: {e}")
                     raise
 
-        if not attempted_any:
+        if not attempted_any and any_at_capacity:
+            logger.info(f"[explicit] All models at capacity — waiting 15s for rate window")
+            await asyncio.sleep(15)
+        elif not attempted_any:
             # All models cooling — wait for the soonest to recover then retry
             wait = min((cooling_remaining(m) for m in chain), default=0) + 5
             logger.info(f"[explicit] All models cooling — waiting {wait}s for recovery")
@@ -457,14 +488,7 @@ async def llm_call_async_explicit(
 # ── Dispatch helper ───────────────────────────────────────────────────────────
 
 async def _call_nvidia_async(api_key, model, system, prompt, max_tokens):
-    from config.model_router import acquire_slot, record_usage
-
-    estimated = (len(system) + len(prompt)) // 4
-    try:
-        await acquire_slot(model, estimated)
-    except RuntimeError as e:
-        from openai import RateLimitError
-        raise RateLimitError(message=str(e), response=None, body=None) from e
+    from config.model_router import record_usage
 
     client   = _get_nvidia_async_client(api_key)
     response = await client.chat.completions.create(
@@ -584,20 +608,33 @@ async def llm_call_async_pool(
 ) -> str:
     """
     Try models from a cross-provider pool in priority order.
-    Skips cooling models, falls back on rate limits, waits if all are cooling.
+    Skips cooling models and throttled models (at RPM/TPM capacity), falls back
+    on rate limits, waits if all models are unavailable.
     Pool entries are (provider, model) tuples pre-built by model_router.
     """
-    from config.model_router import is_cooling, mark_cooling, cooling_remaining
+    from config.model_router import is_cooling, try_acquire_slot, mark_cooling, cooling_remaining
 
     if not pool:
         raise RuntimeError("Empty model pool — no API keys configured for this tier. Check your .env.")
 
+    # Rough token estimate for capacity pre-check (chars / 4 ≈ tokens)
+    estimated = (len(system) + len(user_prompt)) // 4
+
     while True:
-        attempted_any = False
+        attempted_any   = False
+        any_at_capacity = False   # at least one non-cooling model skipped due to capacity
+
         for provider, model in pool:
             if is_cooling(model):
                 logger.debug(f"[{role}] {model} cooling — skipping")
                 continue
+
+            # Atomic non-blocking check + slot claim — skip immediately if at capacity
+            if not try_acquire_slot(model, estimated):
+                logger.debug(f"[{role}] {model} at capacity — skipping to next model")
+                any_at_capacity = True
+                continue
+
             try:
                 api_key = get_api_key(provider)
             except ValueError:
@@ -633,6 +670,12 @@ async def llm_call_async_pool(
                     raise
 
         if not attempted_any:
-            wait = min((cooling_remaining(m) for _, m in pool), default=0) + 5
-            logger.info(f"[{role}] All models cooling — waiting {wait}s for recovery")
-            await asyncio.sleep(wait)
+            if any_at_capacity:
+                # All non-cooling models are at RPM/TPM capacity — wait for the window to clear
+                logger.info(f"[{role}] All models at capacity — waiting 15s for rate window")
+                await asyncio.sleep(15)
+            else:
+                # All models are cooling — wait for the soonest cooldown to expire
+                wait = min((cooling_remaining(m) for _, m in pool), default=0) + 5
+                logger.info(f"[{role}] All models cooling — waiting {wait}s for recovery")
+                await asyncio.sleep(wait)
