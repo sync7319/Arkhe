@@ -45,13 +45,16 @@ async def generate_report(
     Generate the executive Word report.
     Returns (report_text, provider, model) — provider/model logged by caller.
     """
-    # Executive report uses Gemini 2.5 Flash (250K TPM — handles large prompts in
-    # one shot). Falls back to Flash Lite if the daily limit (20 RPD) is exhausted.
-    # These models are reserved exclusively for this agent — nothing else uses them.
-    provider = "gemini"
-    model    = "gemini-2.5-flash"
-
+    from config.settings import EXECUTIVE_PROVIDER, EXECUTIVE_MODELS, EXPENSIVE_MODELS_ALLOWED, COMPLEXITY_THRESHOLD_TOKENS
+    provider = EXECUTIVE_PROVIDER
     total_tokens = sum(f.get("tokens", 0) for f in files)
+    if EXPENSIVE_MODELS_ALLOWED and provider in EXECUTIVE_MODELS:
+        size = "large" if total_tokens >= COMPLEXITY_THRESHOLD_TOKENS else "small"
+        model = EXECUTIVE_MODELS[provider][size]
+    else:
+        from config.settings import CHEAP_MODELS
+        model = CHEAP_MODELS.get(provider, {}).get("report", "nvidia/llama-3.1-nemotron-ultra-253b-v1")
+
     file_summary = "\n".join(
         f"- {f['path']} ({f.get('tokens', 0)} tokens)" for f in files
     )

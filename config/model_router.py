@@ -64,7 +64,7 @@ MODEL_LIMITS: dict[str, dict[str, int]] = {
 
 # Pause when usage hits this fraction of any limit, then recheck
 _THROTTLE_THRESHOLD = 0.80
-_THROTTLE_PAUSE     = 10  # seconds to wait before rechecking
+_THROTTLE_PAUSE     = 5   # seconds to wait before rechecking
 
 # ── Per-model usage state (in-memory sliding windows) ────────────────────────
 _usage: dict[str, dict] = {}
@@ -202,6 +202,59 @@ def record_usage(model: str, tokens: int) -> None:
     now = time.time()
     u["tokens"].append((now, tokens))
     u["daily_tokens"] += tokens
+
+
+def time_until_slot_opens(model: str, estimated_tokens: int = 0) -> float:
+    """
+    Precise wait-time calculation from the sliding window.
+
+    Returns:
+        0.0          — capacity available right now
+        float('inf') — daily limit exhausted, skip this model
+        positive float — exact seconds until the next slot opens
+    """
+    limits = MODEL_LIMITS.get(model)
+    if limits is None:
+        return 0.0  # unknown model — no throttle, fire immediately
+
+    rpm_cap = int(limits["rpm"] * _THROTTLE_THRESHOLD)
+    tpm_cap = int(limits["tpm"] * _THROTTLE_THRESHOLD)
+    rpd_cap = int(limits["rpd"] * _THROTTLE_THRESHOLD) if "rpd" in limits else None
+    tpd_cap = int(limits["tpd"] * _THROTTLE_THRESHOLD) if "tpd" in limits else None
+
+    now = time.time()
+    u   = _get_usage(model)
+    _prune_window(u, now)
+
+    # Daily limits exhausted — no point waiting
+    if rpd_cap is not None and u["daily_reqs"] >= rpd_cap:
+        return float("inf")
+    if tpd_cap is not None and u["daily_tokens"] >= tpd_cap:
+        return float("inf")
+
+    wait = 0.0
+
+    # RPM: if at cap, oldest request falls out of the 60s window
+    current_rpm = len(u["requests"])
+    if current_rpm >= rpm_cap:
+        oldest = min(u["requests"])
+        rpm_wait = (oldest + 60.0) - now
+        wait = max(wait, rpm_wait)
+
+    # TPM: find when enough tokens expire from the window
+    current_tpm = sum(n for _, n in u["tokens"])
+    if u["tokens"] and current_tpm + estimated_tokens >= tpm_cap:
+        sorted_tokens = sorted(u["tokens"], key=lambda x: x[0])
+        tokens_to_free = (current_tpm + estimated_tokens) - tpm_cap + 1
+        freed = 0
+        for ts, count in sorted_tokens:
+            freed += count
+            if freed >= tokens_to_free:
+                tpm_wait = (ts + 60.0) - now
+                wait = max(wait, tpm_wait)
+                break
+
+    return max(0.0, wait)
 
 
 # ── File extensions routed to the fastest model tier ─────────────────────────

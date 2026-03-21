@@ -31,10 +31,18 @@ from fastapi.templating import Jinja2Templates
 from scripts.clone_repo import CloneError, clone_repo
 
 logger = logging.getLogger("arkhe.server")
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler(str(Path(__file__).parent / "server.log"), mode="w"),
+    ],
+)
 logging.getLogger("arkhe.llm").setLevel(logging.DEBUG)
 logging.getLogger("arkhe.router").setLevel(logging.DEBUG)
 logging.getLogger("arkhe.analyst").setLevel(logging.DEBUG)
+logging.getLogger("arkhe.dispatcher").setLevel(logging.DEBUG)
 
 app = FastAPI(title="Arkhe", docs_url=None, redoc_url=None)
 
@@ -77,6 +85,7 @@ OUTPUT_FILES = [
     ("DEAD_CODE_REPORT.md",  "Dead Code Report",    "markdown"),
     ("TEST_GAP_REPORT.md",   "Test Gap Report",     "markdown"),
     ("PR_IMPACT.md",         "PR Impact Report",    "markdown"),
+    ("REFACTORED_CODE.zip",  "Refactored Code",     "zip"),
 ]
 
 
@@ -94,6 +103,7 @@ def _apply_options(options: dict) -> None:
         "test_scaffolding":   "TEST_SCAFFOLDING_ENABLED",
         "complexity_heatmap": "COMPLEXITY_HEATMAP_ENABLED",
         "pr_analysis":        "PR_ANALYSIS_ENABLED",
+        "refactor":           "REFACTOR_ENABLED",
     }
     for key, attr in flag_map.items():
         if key in options:
@@ -110,6 +120,21 @@ async def _run_pipeline(job_id: str, url: str, options: dict) -> None:
     persistent_cache = _repo_cache_dir(url)
     _apply_options(options)
 
+    # Ensure model pools are built before the pipeline runs
+    from config.settings import GROQ_API_KEY, GEMINI_API_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY, NVIDIA_API_KEY
+    from config.model_router import build_available_pools
+    logger.info(f"[pipeline] API keys present: groq={'yes' if GROQ_API_KEY else 'no'}, gemini={'yes' if GEMINI_API_KEY else 'no'}, nvidia={'yes' if NVIDIA_API_KEY else 'no'}, anthropic={'yes' if ANTHROPIC_API_KEY else 'no'}")
+    build_available_pools({
+        "groq":      GROQ_API_KEY,
+        "gemini":    GEMINI_API_KEY,
+        "anthropic": ANTHROPIC_API_KEY,
+        "openai":    OPENAI_API_KEY,
+        "nvidia":    NVIDIA_API_KEY,
+    })
+
+    from config.dispatcher import start_dispatcher
+    await start_dispatcher()
+
     try:
         def _step(step: int, label: str) -> None:
             if job_id in jobs:
@@ -124,9 +149,12 @@ async def _run_pipeline(job_id: str, url: str, options: dict) -> None:
                 shutil.copy2(cached_db, temp_cache / "arkhe.db")
                 logger.info(f"[job {job_id}] restored cache from previous run")
 
+            import config.settings as _s
+            refactor_enabled = _s.REFACTOR_ENABLED
+
             try:
                 from main import run as arkhe_run
-                await arkhe_run(repo_path, fmt="default", refactor=False, progress_cb=_step)
+                await arkhe_run(repo_path, fmt="default", refactor=refactor_enabled, progress_cb=_step)
             finally:
                 live_db = temp_cache / "arkhe.db"
                 if live_db.exists():
@@ -143,6 +171,19 @@ async def _run_pipeline(job_id: str, url: str, options: dict) -> None:
                         dst.write_bytes(src.read_bytes())
                         outputs.append({"filename": filename, "label": label, "kind": kind})
 
+            # Zip refactored code if refactor was enabled
+            if refactor_enabled:
+                import zipfile
+                refactored_dir = Path(repo_path + "_refactored")
+                if refactored_dir.exists():
+                    zip_path = job_results_dir / "REFACTORED_CODE.zip"
+                    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+                        for file in refactored_dir.rglob("*"):
+                            if file.is_file():
+                                zf.write(file, file.relative_to(refactored_dir))
+                    outputs.append({"filename": "REFACTORED_CODE.zip", "label": "Refactored Code", "kind": "zip"})
+                    logger.info(f"[job {job_id}] zipped refactored code → {zip_path}")
+
             jobs[job_id]["outputs"] = outputs
             jobs[job_id]["status"]  = JobStatus.COMPLETE
             logger.info(f"[job {job_id}] complete — {len(outputs)} output(s)")
@@ -152,21 +193,27 @@ async def _run_pipeline(job_id: str, url: str, options: dict) -> None:
         jobs[job_id]["error"]  = str(e)
         logger.error(f"[job {job_id}] clone error: {e}")
     except RuntimeError as e:
+        import traceback
+        with open(str(SERVER_DIR / "error.log"), "a") as f:
+            f.write(f"\n[JOB {job_id}] RuntimeError: {e}\n")
+            traceback.print_exc(file=f)
         err = str(e)
         if "rate-limited or failed" in err or "All models" in err:
-            from config.model_router import COOLDOWN_SECONDS
-            retry_mins = COOLDOWN_SECONDS // 60
             jobs[job_id]["status"] = JobStatus.ERROR
             jobs[job_id]["error"]  = (
-                f"All AI models are currently rate-limited. "
-                f"Your progress has been saved — resubmit the same URL in "
-                f"~{retry_mins} minutes and it will resume from where it stopped."
+                "All AI models are currently rate-limited. "
+                "Your progress has been saved — resubmit the same URL in "
+                "a few minutes and it will resume from where it stopped."
             )
         else:
             jobs[job_id]["status"] = JobStatus.ERROR
             jobs[job_id]["error"]  = f"Pipeline error: {err[:300]}"
         logger.error(f"[job {job_id}] runtime error: {e}")
     except Exception as e:
+        import traceback
+        with open(str(SERVER_DIR / "error.log"), "a") as f:
+            f.write(f"\n[JOB {job_id}] Exception: {type(e).__name__}: {e}\n")
+            traceback.print_exc(file=f)
         jobs[job_id]["status"] = JobStatus.ERROR
         jobs[job_id]["error"]  = f"Unexpected error: {str(e)[:300]}"
         logger.exception(f"[job {job_id}] pipeline error")

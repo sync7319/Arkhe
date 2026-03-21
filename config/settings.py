@@ -54,6 +54,7 @@ CHEAP_MODELS = {
     "groq":      {"traversal": "openai/gpt-oss-20b",  "report": "llama-3.1-8b-instant", "refactor": "llama-3.1-8b-instant"},
     "gemini":    {"traversal": "gemma-3-27b-it",       "report": "gemma-3-27b-it",       "refactor": "gemma-3-27b-it"},
     "anthropic": {"traversal": "claude-haiku-4-5",     "report": "claude-haiku-4-5",     "refactor": "claude-haiku-4-5"},
+    "nvidia":    {"traversal": "nvidia/llama-3.1-nemotron-ultra-253b-v1", "report": "nvidia/llama-3.1-nemotron-ultra-253b-v1", "refactor": "nvidia/llama-3.1-nemotron-ultra-253b-v1"},
 }
 
 # ── Premium models (used for report synthesis when EXPENSIVE=true) ───────────────────────
@@ -62,6 +63,7 @@ PREMIUM_MODELS = {
     "groq":      {"report": "llama-3.3-70b-versatile"},
     "gemini":    {"report": "gemma-3-27b-it"},
     "anthropic": {"report": "claude-sonnet-4-6"},
+    "nvidia":    {"report": "nvidia/llama-3.1-nemotron-ultra-253b-v1"},
 }
 
 # ── Executive report models (only when EXPENSIVE=true) ───────────────────────────────────
@@ -71,6 +73,7 @@ EXECUTIVE_MODELS = {
     "anthropic": {"large": "claude-opus-4-6",         "small": "claude-sonnet-4-6"},
     "groq":      {"large": "llama-3.3-70b-versatile", "small": "llama-3.3-70b-versatile"},
     "gemini":    {"large": "gemma-3-27b-it",           "small": "gemma-3-27b-it"},
+    "nvidia":    {"large": "nvidia/llama-3.1-nemotron-ultra-253b-v1", "small": "nvidia/llama-3.1-nemotron-ultra-253b-v1"},
 }
 
 VALID_PROVIDERS = {"groq", "gemini", "anthropic", "openai", "nvidia"}

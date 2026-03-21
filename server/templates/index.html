@@ -429,6 +429,15 @@
           </label>
         </div>
       </div>
+      <div class="options-group">
+        <div class="options-group-label">Code Improvement</div>
+        <div class="options-grid">
+          <label class="opt-item">
+            <input type="checkbox" id="opt-refactor" />
+            <label for="opt-refactor">Refactor &amp; Document <span class="opt-badge ai">AI</span></label>
+          </label>
+        </div>
+      </div>
     </div>
 
     <div class="status-bar" id="status-bar">
@@ -620,6 +629,7 @@ arkhe ./my-project --refactor</pre>
       test_gap:           document.getElementById("opt-test-gap").checked,
       test_scaffolding:   document.getElementById("opt-test-scaffolding").checked,
       pr_analysis:        document.getElementById("opt-pr-analysis").checked,
+      refactor:           document.getElementById("opt-refactor").checked,
     };
   }
 

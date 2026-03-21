@@ -87,6 +87,9 @@ async def run(repo_path: str, fmt: str, refactor: bool = False, progress_cb=None
         "nvidia":    NVIDIA_API_KEY,
     })
 
+    from config.dispatcher import start_dispatcher
+    await start_dispatcher()
+
     def _progress(step: int, label: str):
         if progress_cb:
             progress_cb(step, label)

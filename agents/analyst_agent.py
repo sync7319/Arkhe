@@ -33,9 +33,10 @@ MODEL_TPM_LIMITS = {
 }
 DEFAULT_SAFE_TPM = 5000
 
-# Concurrency cap — effectively unlimited; try_acquire_slot() is the real throttle.
-# NVIDIA leads at 200K TPM / 40 RPM; Groq/Gemini absorb overflow automatically.
-MAX_CONCURRENT_FILES = 100
+# No artificial concurrency cap — try_acquire_slot() in model_router is the real gate.
+# It tracks RPM/TPM sliding windows and blocks when at capacity, so all files can
+# queue up and fire as soon as a slot opens. Maximizes throughput automatically.
+MAX_CONCURRENT_FILES = 200
 
 
 def _safe_budget(model: str) -> int:
@@ -63,8 +64,18 @@ async def _analyze_file(file: dict, idx: int, sem: asyncio.Semaphore) -> dict:
     async with sem:
         prompt = _build_prompt(file)
         pool   = get_file_pool_cascade(file["path"], file.get("tokens", 0))
-        logger.debug(f"[analyst] pool for {file['path']}: {len(pool)} models → {[m for _,m in pool]}")
-        analysis = await llm_call_async_pool(pool, SYSTEM, prompt, max_tokens=512, role="analyst")
+        print(f"[ANALYST] {file['path']}: pool has {len(pool)} models → {[m for _,m in pool[:3]]}", flush=True)
+        if not pool:
+            raise RuntimeError(f"Empty pool for {file['path']}")
+        try:
+            analysis = await llm_call_async_pool(pool, SYSTEM, prompt, max_tokens=512, role="analyst")
+        except Exception as e:
+            import traceback
+            with open("server/error.log", "a") as f:
+                f.write(f"\n[ANALYST] {file['path']}: {type(e).__name__}: {e}\n")
+                f.write(f"  pool: {[(p,m) for p,m in pool[:3]]}\n")
+                traceback.print_exc(file=f)
+            raise
 
     db = get_db()
     db.save_analysis(file["path"], file["content_hash"], analysis)

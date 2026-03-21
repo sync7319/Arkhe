@@ -607,75 +607,8 @@ async def llm_call_async_pool(
     role: str = "pool",
 ) -> str:
     """
-    Try models from a cross-provider pool in priority order.
-    Skips cooling models and throttled models (at RPM/TPM capacity), falls back
-    on rate limits, waits if all models are unavailable.
-    Pool entries are (provider, model) tuples pre-built by model_router.
+    Queue-based dispatcher — requests fire at the exact moment capacity opens.
+    Never gives up. Never polls. Zero wasted slots.
     """
-    from config.model_router import is_cooling, try_acquire_slot, mark_cooling, cooling_remaining
-
-    if not pool:
-        raise RuntimeError("Empty model pool — no API keys configured for this tier. Check your .env.")
-
-    # Rough token estimate for capacity pre-check (chars / 4 ≈ tokens)
-    estimated = (len(system) + len(user_prompt)) // 4
-
-    while True:
-        attempted_any   = False
-        any_at_capacity = False   # at least one non-cooling model skipped due to capacity
-
-        for provider, model in pool:
-            if is_cooling(model):
-                logger.debug(f"[{role}] {model} cooling — skipping")
-                continue
-
-            # Atomic non-blocking check + slot claim — skip immediately if at capacity
-            if not try_acquire_slot(model, estimated):
-                logger.debug(f"[{role}] {model} at capacity — skipping to next model")
-                any_at_capacity = True
-                continue
-
-            try:
-                api_key = get_api_key(provider)
-            except ValueError:
-                logger.warning(f"[{role}] No API key for {provider} — skipping {model}")
-                continue
-
-            rate_limit_exc = _rate_limit_exceptions(provider)
-            transient_exc  = _transient_exceptions(provider)
-            attempted_any  = True
-            logger.debug(f"[{role}] provider={provider} model={model}")
-
-            for attempt in range(1, MAX_RETRIES + 1):
-                try:
-                    return await _dispatch_async(provider, model, api_key, system, user_prompt, max_tokens)
-                except rate_limit_exc:
-                    mark_cooling(model, provider)
-                    logger.warning(f"[{role}] Rate limit on {model} — falling back")
-                    break
-                except transient_exc as e:
-                    if attempt == MAX_RETRIES:
-                        logger.warning(f"[{role}] {model} failed after {MAX_RETRIES} retries — falling back")
-                        break
-                    await asyncio.sleep(RETRY_BACKOFF * attempt)
-                except Exception as e:
-                    err = str(e)
-                    if "404" in err or "NOT_FOUND" in err:
-                        logger.warning(f"[{role}] {model} not found (404) — skipping")
-                        break
-                    if "NVIDIA_EMPTY_CONTENT" in err:
-                        logger.warning(f"[{role}] {model} returned empty — falling back")
-                        break
-                    logger.error(f"[{role}] Non-retryable error on {model}: {e}")
-                    raise
-
-        if not attempted_any:
-            if any_at_capacity:
-                # All non-cooling models are at RPM/TPM capacity — wait for the window to clear
-                logger.info(f"[{role}] All models at capacity — waiting 15s for rate window")
-                await asyncio.sleep(15)
-            else:
-                # All models are cooling — wait for the soonest cooldown to expire
-                wait = min((cooling_remaining(m) for _, m in pool), default=0) + 5
-                logger.info(f"[{role}] All models cooling — waiting {wait}s for recovery")
-                await asyncio.sleep(wait)
+    from config.dispatcher import get_dispatcher
+    return await get_dispatcher().submit(pool, system, user_prompt, max_tokens, role)
