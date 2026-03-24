@@ -365,6 +365,16 @@ async def context_query(job_id: str, request: Request):
     body   = await request.json()
     task   = (body.get("task") or "").strip().lower()
     budget = int(body.get("budget") or 8000)
+    # Optional: filter by file extension(s), e.g. ["py", ".py"] or ".py,.ts"
+    exts_raw = body.get("exts") or body.get("extensions") or ""
+    if isinstance(exts_raw, list):
+        filter_exts = {("." + e.lstrip(".").lower()) for e in exts_raw if e}
+    elif exts_raw:
+        filter_exts = {("." + e.strip().lstrip(".").lower()) for e in str(exts_raw).split(",") if e.strip()}
+    else:
+        filter_exts = set()
+    # Optional: filter by path prefix, e.g. "agents/" or "src/components"
+    path_prefix = (body.get("path") or "").strip().rstrip("/")
 
     job_dir  = RESULTS_DIR / job_id
     ctx_path = job_dir / "CONTEXT_INDEX.json"
@@ -375,6 +385,12 @@ async def context_query(job_id: str, request: Request):
 
     ctx   = json.loads(ctx_path.read_text())
     files = ctx["files"]
+
+    # Apply extension and path filters
+    if filter_exts:
+        files = [f for f in files if any(f["path"].lower().endswith(e) for e in filter_exts)]
+    if path_prefix:
+        files = [f for f in files if f["path"].startswith(path_prefix)]
 
     # Load graph once; used for both centrality and import-chain boost
     graph_data: dict = {}
@@ -471,6 +487,24 @@ async def context_query(job_id: str, request: Request):
         "tokens_estimated": min(tokens_used, budget),
         "results":         selected,
     })
+
+
+@app.get("/context/{job_id}", response_class=JSONResponse)
+async def context_query_get(
+    job_id: str,
+    task: str = "",
+    budget: int = 8000,
+    exts: str = "",
+    path: str = "",
+    request: Request = None,
+):
+    """GET version of context query — same logic, accepts query params instead of JSON body.
+    Usage: GET /context/{job_id}?task=fix+auth+bug&budget=16000&exts=.py,.ts&path=agents/
+    """
+    class _FakeRequest:
+        async def json(self_):
+            return {"task": task, "budget": budget, "exts": exts, "path": path}
+    return await context_query(job_id, _FakeRequest())
 
 
 @app.get("/context/{job_id}/view", response_class=HTMLResponse)

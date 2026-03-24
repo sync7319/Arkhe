@@ -218,7 +218,7 @@
     <textarea id="task-input" placeholder="e.g. fix the authentication bug in the login flow&#10;e.g. add rate limiting to the API client&#10;e.g. understand how the dependency graph is built"></textarea>
     <div class="controls-row">
       <div class="budget-group">
-        <span class="budget-label">Token budget:</span>
+        <span class="budget-label">Budget:</span>
         <select class="budget-select" id="budget-select">
           <option value="4000">4k</option>
           <option value="8000" selected>8k</option>
@@ -227,6 +227,22 @@
           <option value="64000">64k</option>
           <option value="128000">128k</option>
         </select>
+      </div>
+      <div class="budget-group">
+        <span class="budget-label">Extensions:</span>
+        <input type="text" id="ext-filter" placeholder=".py,.ts (all)" style="
+          background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+          padding: 0.48rem 0.65rem; font-size: 0.82rem; color: var(--text);
+          outline: none; width: 130px;
+        " />
+      </div>
+      <div class="budget-group">
+        <span class="budget-label">Path:</span>
+        <input type="text" id="path-filter" placeholder="agents/ (all)" style="
+          background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+          padding: 0.48rem 0.65rem; font-size: 0.82rem; color: var(--text);
+          outline: none; width: 120px;
+        " />
       </div>
       <button class="btn-find" id="find-btn" onclick="findContext()">Find Context</button>
     </div>
@@ -289,6 +305,8 @@
   async function findContext() {
     const task   = document.getElementById("task-input").value.trim();
     const budget = parseInt(document.getElementById("budget-select").value);
+    const exts   = document.getElementById("ext-filter").value.trim();
+    const path   = document.getElementById("path-filter").value.trim();
     const btn    = document.getElementById("find-btn");
 
     if (!task) { document.getElementById("task-input").focus(); return; }
@@ -301,7 +319,7 @@
       const res = await fetch(`/context/${JOB_ID}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ task, budget }),
+        body: JSON.stringify({ task, budget, exts, path }),
       });
       const data = await res.json();
       if (data.error) {

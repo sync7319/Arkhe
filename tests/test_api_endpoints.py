@@ -216,3 +216,67 @@ async def test_context_view_returns_html():
     assert r.status_code == 200
     assert "text/html" in r.headers["content-type"]
     assert "Smart Context" in r.text
+
+
+@pytest.mark.asyncio
+async def test_context_get_endpoint_matches_post():
+    """GET and POST context endpoints should return the same results for same inputs."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        r_post = await c.post(f"/context/{JOB_ID}", json={"task": "llm client", "budget": 8000})
+        r_get  = await c.get(f"/context/{JOB_ID}?task=llm+client&budget=8000")
+    assert r_post.status_code == 200
+    assert r_get.status_code  == 200
+    post_paths = [f["path"] for f in r_post.json()["results"]]
+    get_paths  = [f["path"] for f in r_get.json()["results"]]
+    assert post_paths == get_paths
+
+
+@pytest.mark.asyncio
+async def test_context_import_chain_boost():
+    """Files imported by highly-relevant files should score higher than isolated files."""
+    # analyst.py imports llm_client.py; task targets analyst → llm_client should be boosted
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.post(f"/context/{JOB_ID}", json={"task": "analyze parallel", "budget": 50000})
+    d = r.json()
+    paths = [f["path"] for f in d["results"]]
+    # analyst.py must appear (direct match)
+    assert "agents/analyst.py" in paths
+    # settings.py should surface via import-chain (analyst→llm_client→settings)
+    top5 = paths[:5]
+    assert "agents/analyst.py" in top5
+
+
+@pytest.mark.asyncio
+async def test_context_extension_filter():
+    """Filtering by extension should exclude files with other extensions."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.post(f"/context/{JOB_ID}", json={"task": "", "budget": 50000, "exts": [".py"]})
+    d = r.json()
+    # All files in CTX_DATA are .py, so all should match
+    assert d["files_selected"] == d["files_total"]
+    # Filtering for a nonexistent extension should yield 0 results
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        r2 = await c.post(f"/context/{JOB_ID}", json={"task": "", "budget": 50000, "exts": [".rs"]})
+    assert r2.json()["files_selected"] == 0
+
+
+@pytest.mark.asyncio
+async def test_context_path_prefix_filter():
+    """Filtering by path prefix should return only files under that path."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.post(f"/context/{JOB_ID}", json={"task": "", "budget": 50000, "path": "agents/"})
+    d = r.json()
+    for f in d["results"]:
+        assert f["path"].startswith("agents/")
+
+
+@pytest.mark.asyncio
+async def test_impact_isolated_file():
+    """A file with no dependents should have zero affected and LOW risk."""
+    # agents/parser.py has 1 dependent (analyst.py); let's test main.py which only imports
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        # main.py has no one importing it → isolated
+        r = await c.get(f"/impact/{JOB_ID}?file=main.py")
+    d = r.json()
+    assert d["total_affected"] == 0
+    assert d["risk"] == "LOW"

@@ -229,6 +229,8 @@
       </div>
       <ul class="tier-features">
         <li><span class="check">✓</span> Codebase map + dependency graph</li>
+        <li><span class="check">✓</span> Blast radius explorer</li>
+        <li><span class="check">✓</span> Smart context API (/context)</li>
         <li><span class="check">✓</span> Security audit (OWASP Top 10)</li>
         <li><span class="check">✓</span> Dead code detection</li>
         <li><span class="check">✓</span> Complexity heatmap</li>
@@ -311,6 +313,14 @@
   <div class="faq-item">
     <div class="faq-q">Is my code sent to Arkhe servers?</div>
     <div class="faq-a">On the web tier, your repo is cloned to an ephemeral container, analyzed, then deleted. We don't store your source code. The CLI runs entirely on your machine — nothing leaves unless you call an LLM API.</div>
+  </div>
+  <div class="faq-item">
+    <div class="faq-q">What is the /context endpoint and who is it for?</div>
+    <div class="faq-a">After analyzing a repo, Arkhe exposes a <code>POST /context/{job_id}</code> API. Give it a task description and a token budget — it returns the most relevant files ranked by relevance, truncated to fit. Built for AI coding agents (Claude Code, Copilot, Cursor) to stop wasting 70% of their context window on irrelevant files.</div>
+  </div>
+  <div class="faq-item">
+    <div class="faq-q">What is "blast radius" analysis?</div>
+    <div class="faq-a">The <code>GET /impact/{job_id}?file=path</code> endpoint traces every file that depends on the given file — directly and transitively across the full AST-parsed dependency graph. It answers "what breaks if I change this?" with a depth map, risk level, and copy-paste Markdown report. Unlike IDE "find references," this is graph traversal, not symbol search — it catches indirect dependencies too.</div>
   </div>
 </div>
 

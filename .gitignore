@@ -17,6 +17,9 @@ build/
 docs/
 tests_generated/
 server/cache/
+server/results/
+server/server.log
+server/error.log
 *_refactored/
 
 # Arkhe cache (future — resumable pipeline)
