@@ -206,6 +206,7 @@
     <span>Results</span>
     <span>/</span>
     <span>{{ job_id }}</span>
+    <span style="margin-left:auto"><a href="/debug/{{ job_id }}" style="color:var(--text-3);font-size:0.75rem;opacity:0.6" target="_blank">debug ↗</a></span>
   </div>
 
   {% if job.status == "pending" or job.status == "running" %}

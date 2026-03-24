@@ -14,6 +14,8 @@ Endpoints:
   GET  /impact/{job_id}?file=path     — transitive blast radius query
   GET  /impact/{job_id}/view          — interactive blast radius explorer UI
   GET  /_health                       — health check
+  GET  /debug                         — inspector: list all jobs (ARKHE_DEBUG=false to disable)
+  GET  /debug/{job_id}                — inspector: all outputs + graph nodes + server log tail
 
 Run locally:
   uv run uvicorn server.app:app --reload --port 8000
@@ -37,6 +39,9 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from scripts.clone_repo import CloneError, clone_repo
+
+# ── Debug inspector — set ARKHE_DEBUG=false to disable completely ─────────────
+DEBUG_MODE = os.getenv("ARKHE_DEBUG", "true").lower() != "false"
 
 logger = logging.getLogger("arkhe.server")
 logging.basicConfig(
@@ -561,25 +566,38 @@ async def context_query(job_id: str, request: Request):
         cls_text   = " ".join(f.get("classes",   [])).replace("_", " ").lower()
         return set((path_lower + " " + fn_text + " " + cls_text).split())
 
-    def score_file(f: dict) -> float:
+    def score_file(f: dict) -> tuple[float, list[str]]:
+        """Returns (score, match_reasons) — reasons are the matched keywords/phrases."""
         sym_words = _symbol_words(f)
         snippet   = (f.get("snippet") or "").lower()
+        reasons: list[str] = []
 
         if task_words:
-            exact     = len(task_words & sym_words) * 3.0
-            # Partial: for each task word, credit 0.5 if it partially matches ANY symbol word
-            # (capped at 1 match per task word to prevent inflation from files with many symbols)
-            partial   = sum(0.5 for tw in task_words if any(tw in w or w in tw for w in sym_words))
-            phrase    = sum(2.0 for bg in task_bigrams if bg in (f["path"].lower() + " " + snippet))
-            snip_hits = sum(1 for tw in task_words if tw in snippet) * 1.0
-            kw_score  = exact + partial + phrase + snip_hits
+            exact_hits = task_words & sym_words
+            exact      = len(exact_hits) * 3.0
+            reasons.extend(sorted(exact_hits)[:4])
+
+            partial_hits = {tw for tw in task_words if tw not in exact_hits and any(tw in w or w in tw for w in sym_words)}
+            partial      = len(partial_hits) * 0.5
+
+            phrase_hits = {bg for bg in task_bigrams if bg in (f["path"].lower() + " " + snippet)}
+            phrase       = len(phrase_hits) * 2.0
+            reasons.extend(sorted(phrase_hits)[:2])
+
+            snip_hits = {tw for tw in task_words if tw not in exact_hits and tw in snippet}
+            snip_score = len(snip_hits) * 1.0
+            reasons.extend(sorted(snip_hits - partial_hits)[:2])
+
+            kw_score  = exact + partial + phrase + snip_score
         else:
             kw_score = 0.0
 
         central = math.log1p(centrality.get(f["path"], 0)) * 2.0
-        return kw_score + central
+        return kw_score + central, list(dict.fromkeys(reasons))  # dedup, preserve order
 
-    raw_scores = {f["path"]: score_file(f) for f in files}
+    score_results = {f["path"]: score_file(f) for f in files}
+    raw_scores    = {path: s for path, (s, _) in score_results.items()}
+    raw_reasons   = {path: r for path, (_, r) in score_results.items()}
 
     # Import-chain boost: high-scoring file's dependencies get a 25% score bump
     # so the files a relevant file depends on also surface (they're needed to understand it)
@@ -599,14 +617,18 @@ async def context_query(job_id: str, request: Request):
     scored.sort(key=lambda x: x[0], reverse=True)
 
     # Greedily select files within budget
-    selected   = []
+    selected    = []
     tokens_used = 0
     for score, f in scored:
         if tokens_used >= budget:
             break
         ft = max(f.get("tokens", 100), 1)
         tokens_used += ft
-        selected.append({"score": round(score, 2), **f})
+        selected.append({
+            "score":   round(score, 2),
+            "reasons": raw_reasons.get(f["path"], []),
+            **f,
+        })
 
     # Truncate snippets proportionally if over budget
     total_tokens = sum(max(f.get("tokens", 100), 1) for f in selected)
@@ -615,6 +637,11 @@ async def context_query(job_id: str, request: Request):
         for f in selected:
             snippet = f.get("snippet", "")
             f["snippet"] = snippet[:int(len(snippet) * scale)]
+
+    # Annotate each file with its share of the budget (for UI visualisation)
+    effective_total = max(total_tokens, 1)
+    for f in selected:
+        f["tokens_pct"] = round(max(f.get("tokens", 100), 1) / effective_total * 100, 1)
 
     return JSONResponse({
         "task":            task,
@@ -889,3 +916,88 @@ async def graph_stats(job_id: str):
 @app.get("/_health")
 async def health():
     return {"status": "ok"}
+
+
+# ── Debug inspector routes (ARKHE_DEBUG=false to remove) ─────────────────────
+
+def _debug_guard():
+    if not DEBUG_MODE:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Not found")
+
+
+@app.get("/debug", response_class=HTMLResponse)
+async def debug_index(request: Request):
+    """List all jobs currently on disk."""
+    _debug_guard()
+    all_jobs = []
+    for job_dir in sorted(RESULTS_DIR.iterdir(), key=lambda d: d.stat().st_mtime, reverse=True):
+        if not job_dir.is_dir():
+            continue
+        job_id = job_dir.name
+        job = jobs.get(job_id) or _reconstruct_job_from_disk(job_id)
+        if job:
+            all_jobs.append({"job_id": job_id, "url": job.get("url", ""), "status": job.get("status", "?")})
+    return templates.TemplateResponse(request, "debug_index.html", {"jobs": all_jobs})
+
+
+@app.get("/debug/{job_id}", response_class=HTMLResponse)
+async def debug_job(request: Request, job_id: str):
+    """Full inspector: all output files + every graph node with blast radius link."""
+    _debug_guard()
+    job_dir = RESULTS_DIR / job_id
+    if not job_dir.exists():
+        return HTMLResponse("<h2>Job not found.</h2>", status_code=404)
+
+    job = jobs.get(job_id) or _reconstruct_job_from_disk(job_id)
+
+    # Collect all readable output files
+    output_sections = []
+    for filename, label, kind in OUTPUT_FILES:
+        path = job_dir / filename
+        if not path.exists():
+            continue
+        if kind in ("markdown", "json"):
+            try:
+                content = path.read_text(encoding="utf-8", errors="replace")
+            except Exception:
+                content = "(unreadable)"
+        elif kind == "html":
+            content = f"[HTML file — open /results/{job_id}/view/{filename}]"
+        elif kind == "docx":
+            content = f"[DOCX file — download at /results/{job_id}/{filename}]"
+        else:
+            content = f"[Binary file — {kind}]"
+        output_sections.append({"filename": filename, "label": label, "kind": kind, "content": content})
+
+    # Load graph nodes for blast-radius list
+    graph_nodes = []
+    grp_path = job_dir / "GRAPH.json"
+    if grp_path.exists():
+        try:
+            g = json.loads(grp_path.read_text())
+            graph_nodes = sorted(
+                [{"path": n["path"], "tokens": n.get("tokens", 0), "complexity": n.get("complexity", 0)}
+                 for n in g.get("nodes", [])],
+                key=lambda n: n["path"]
+            )
+        except Exception:
+            pass
+
+    # Read server.log tail (last 200 lines)
+    log_tail = ""
+    log_path = SERVER_DIR / "server.log"
+    if log_path.exists():
+        try:
+            lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
+            log_tail = "\n".join(lines[-200:])
+        except Exception:
+            log_tail = "(unreadable)"
+
+    return templates.TemplateResponse(request, "debug_job.html", {
+        "job_id":        job_id,
+        "job_url":       (job or {}).get("url", ""),
+        "output_sections": output_sections,
+        "graph_nodes":   graph_nodes,
+        "log_tail":      log_tail,
+    })

@@ -203,6 +203,34 @@ async def test_context_results_have_score():
 
 
 @pytest.mark.asyncio
+async def test_context_results_have_reasons():
+    """Each result should include a 'reasons' list of matched keywords."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.post(f"/context/{JOB_ID}", json={"task": "llm client analyze", "budget": 50000})
+    assert r.status_code == 200
+    results = r.json()["results"]
+    assert results, "Expected at least one result"
+    for f in results:
+        assert "reasons" in f, f"'reasons' missing from {f.get('path')}"
+        assert isinstance(f["reasons"], list)
+
+
+@pytest.mark.asyncio
+async def test_context_results_have_tokens_pct():
+    """Each result should include 'tokens_pct' summing to roughly 100."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.post(f"/context/{JOB_ID}", json={"task": "analyze", "budget": 50000})
+    assert r.status_code == 200
+    results = r.json()["results"]
+    assert results
+    for f in results:
+        assert "tokens_pct" in f, f"'tokens_pct' missing from {f.get('path')}"
+        assert 0.0 <= f["tokens_pct"] <= 100.0
+    total_pct = sum(f["tokens_pct"] for f in results)
+    assert 95.0 <= total_pct <= 105.0, f"tokens_pct sum {total_pct} out of expected range"
+
+
+@pytest.mark.asyncio
 async def test_context_missing_index_returns_404():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         r = await c.post("/context/nonexistentjob", json={"task": "something", "budget": 8000})
