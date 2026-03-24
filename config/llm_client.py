@@ -517,16 +517,19 @@ async def _call_nvidia_async(api_key, model, system, prompt, max_tokens):
 
 async def _dispatch_async(provider, model, api_key, system, prompt, max_tokens):
     if provider == "groq":
-        return await _call_groq_async(api_key, model, system, prompt, max_tokens)
+        raw = await _call_groq_async(api_key, model, system, prompt, max_tokens)
     elif provider == "gemini":
-        return await _call_gemini_async(api_key, model, system, prompt, max_tokens)
+        raw = await _call_gemini_async(api_key, model, system, prompt, max_tokens)
     elif provider == "anthropic":
-        return await _call_anthropic_async(api_key, model, system, prompt, max_tokens)
+        raw = await _call_anthropic_async(api_key, model, system, prompt, max_tokens)
     elif provider == "openai":
-        return await _call_openai_async(api_key, model, system, prompt, max_tokens)
+        raw = await _call_openai_async(api_key, model, system, prompt, max_tokens)
     elif provider == "nvidia":
-        return await _call_nvidia_async(api_key, model, system, prompt, max_tokens)
-    raise ValueError(f"Unknown provider: '{provider}'. Valid: groq | gemini | anthropic | openai | nvidia")
+        raw = await _call_nvidia_async(api_key, model, system, prompt, max_tokens)
+    else:
+        raise ValueError(f"Unknown provider: '{provider}'. Valid: groq | gemini | anthropic | openai | nvidia")
+    # Strip Nemotron/DeepSeek chain-of-thought blocks before returning
+    return _strip_think_blocks(raw)
 
 
 # ── Exception helpers ─────────────────────────────────────────────────────────
@@ -599,6 +602,15 @@ def _transient_exceptions(provider: str) -> tuple:
     return (ConnectionError, TimeoutError)
 
 
+import re as _re
+_THINK_BLOCK = _re.compile(r"<think>.*?</think>", _re.DOTALL | _re.IGNORECASE)
+
+
+def _strip_think_blocks(text: str) -> str:
+    """Remove Nemotron/DeepSeek chain-of-thought <think> blocks from LLM output."""
+    return _THINK_BLOCK.sub("", text).strip()
+
+
 async def llm_call_async_pool(
     pool: list[tuple[str, str]],
     system: str,
@@ -611,4 +623,5 @@ async def llm_call_async_pool(
     Never gives up. Never polls. Zero wasted slots.
     """
     from config.dispatcher import get_dispatcher
-    return await get_dispatcher().submit(pool, system, user_prompt, max_tokens, role)
+    result = await get_dispatcher().submit(pool, system, user_prompt, max_tokens, role)
+    return _strip_think_blocks(result)
