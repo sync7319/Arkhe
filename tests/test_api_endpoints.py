@@ -280,3 +280,127 @@ async def test_impact_isolated_file():
     d = r.json()
     assert d["total_affected"] == 0
     assert d["risk"] == "LOW"
+
+
+@pytest.mark.asyncio
+async def test_impact_affected_includes_complexity():
+    """Each affected file in the response should include tokens and complexity fields."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.get(f"/impact/{JOB_ID}?file=config/settings.py")
+    d = r.json()
+    assert "complexity" in d
+    assert "total_complexity" in d
+    for a in d["affected"]:
+        assert "tokens" in a
+        assert "complexity" in a
+
+
+@pytest.mark.asyncio
+async def test_impact_bidirectional_forward_deps():
+    """Bidirectional links should appear in direct_deps in both directions."""
+    import json
+    from server.app import RESULTS_DIR
+
+    # Patch GRAPH with a bidirectional link: main ↔ settings
+    job_dir = RESULTS_DIR / JOB_ID
+    graph_bi = {
+        "nodes": [
+            {"id": 0, "path": "main.py",            "tokens": 500, "functions": [], "classes": [], "complexity": 10},
+            {"id": 1, "path": "config/settings.py", "tokens": 300, "functions": [], "classes": [], "complexity": 5},
+        ],
+        "links": [{"source": 0, "target": 1, "bidirectional": True}],
+    }
+    (job_dir / "GRAPH.json").write_text(json.dumps(graph_bi))
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        r_main     = await c.get(f"/impact/{JOB_ID}?file=main.py")
+        r_settings = await c.get(f"/impact/{JOB_ID}?file=config/settings.py")
+
+    # main.py → imports settings (forward dep), affected by settings changes (reverse)
+    assert "config/settings.py" in r_main.json()["direct_deps"]
+    # settings.py → imports main (bidirectional = mutual), main is a direct dep
+    assert "main.py" in r_settings.json()["direct_deps"]
+
+    # Both should see each other as affected (mutual dependency)
+    assert any(a["path"] == "config/settings.py" for a in r_main.json()["affected"])
+    assert any(a["path"] == "main.py" for a in r_settings.json()["affected"])
+
+    # Restore original graph for subsequent tests
+    (job_dir / "GRAPH.json").write_text(json.dumps(GRAPH_DATA))
+
+
+# ── /graph/{job_id}/stats ─────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_graph_stats_basic():
+    """Stats endpoint should return file/edge counts and hub info."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.get(f"/graph/{JOB_ID}/stats")
+    assert r.status_code == 200
+    d = r.json()
+    assert d["total_files"] == 5
+    assert d["total_edges"] == 4
+    assert "hubs" in d
+    assert "isolated" in d
+    assert "circular_count" in d
+
+
+@pytest.mark.asyncio
+async def test_graph_stats_hub_is_settings():
+    """config/settings.py is imported by 2 files — should be the top hub."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.get(f"/graph/{JOB_ID}/stats")
+    d = r.json()
+    assert d["hubs"][0]["path"] == "config/settings.py"
+    assert d["hubs"][0]["in_degree"] == 2
+
+
+@pytest.mark.asyncio
+async def test_graph_stats_isolated_is_empty():
+    """In our test graph every file has at least one edge — no isolated nodes."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.get(f"/graph/{JOB_ID}/stats")
+    d = r.json()
+    assert d["isolated_count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_graph_stats_no_cycles():
+    """Test graph is a DAG — no circular dependencies."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.get(f"/graph/{JOB_ID}/stats")
+    assert r.json()["circular_count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_graph_stats_detects_cycle():
+    """A graph with A→B→A should report at least 1 circular dependency."""
+    import json
+    from server.app import RESULTS_DIR
+
+    job_dir = RESULTS_DIR / JOB_ID
+    graph_cycle = {
+        "nodes": [
+            {"id": 0, "path": "a.py", "tokens": 100, "functions": [], "classes": [], "complexity": 5},
+            {"id": 1, "path": "b.py", "tokens": 100, "functions": [], "classes": [], "complexity": 5},
+        ],
+        "links": [
+            {"source": 0, "target": 1, "bidirectional": False},
+            {"source": 1, "target": 0, "bidirectional": False},
+        ],
+    }
+    (job_dir / "GRAPH.json").write_text(json.dumps(graph_cycle))
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.get(f"/graph/{JOB_ID}/stats")
+    assert r.json()["circular_count"] >= 1
+
+    # Restore
+    (job_dir / "GRAPH.json").write_text(json.dumps(GRAPH_DATA))
+
+
+@pytest.mark.asyncio
+async def test_graph_stats_missing_returns_404():
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.get("/graph/nonexistentjob/stats")
+    assert r.status_code == 404

@@ -186,11 +186,18 @@
       else              { icon.textContent = "🌙"; label.textContent = "Dark"; }
     }
 
+    const JOB_ID = "{{ job_id }}";
+
     document.addEventListener("DOMContentLoaded", () => {
       syncLabel();
-      // Apply theme once iframe has loaded
+      // Apply theme + inject job_id once iframe has loaded
       document.getElementById("map-frame").addEventListener("load", () => {
         applyThemeToFrame(localStorage.getItem("arkhe-theme") || "dark");
+        // Inject job_id so the map can link to blast radius explorer
+        try {
+          const fd = document.getElementById("map-frame").contentDocument;
+          if (fd) fd._arkheJobId = JOB_ID;
+        } catch (e) {}
       });
       document.getElementById("theme-toggle").addEventListener("click", () => {
         const cur  = document.documentElement.getAttribute("data-theme");

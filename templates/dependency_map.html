@@ -623,12 +623,27 @@ function showInfo(d) {
     ? importedBy.map(n => `<div class="dep-row clickable" onclick="focusNode(${n.id})"><em class="dep-arrow">\u2190</em><div class="dep-body"><div class="dep-file">${esc(n.path)}</div></div></div>`).join("")
     : `<div class="none-msg">Nothing imports this</div>`;
 
+  // Add blast radius link if we're embedded in the map_viewer (job_id available)
+  const jobId = (typeof document._arkheJobId !== "undefined") ? document._arkheJobId : null;
+  const blastBtn = jobId
+    ? `<div class="i-section" style="margin-top:0.5rem">
+        <a href="/impact/${jobId}/view#${encodeURIComponent(d.path)}"
+           target="_parent"
+           style="display:inline-flex;align-items:center;gap:0.4rem;font-size:0.78rem;font-weight:600;
+                  padding:0.35rem 0.85rem;border-radius:6px;text-decoration:none;
+                  background:rgba(99,102,241,0.12);color:#818cf8;border:1px solid rgba(99,102,241,0.3);">
+          💥 Blast Radius
+        </a>
+       </div>`
+    : "";
+
   document.getElementById("i-scroll").innerHTML = `
     <div class="i-stats">
       <div class="i-stat"><div class="i-stat-n">${(d.tokens || 0).toLocaleString()}</div><div class="i-stat-l">Tokens</div></div>
       <div class="i-stat"><div class="i-stat-n">${fns.length}</div><div class="i-stat-l">Fn</div></div>
       <div class="i-stat"><div class="i-stat-n" style="color:hsl(${hue},70%,55%)">${d.complexity || 0}</div><div class="i-stat-l">Complexity</div></div>
     </div>
+    ${blastBtn}
     <div class="i-section"><div class="i-label">Module</div><span class="mod-chip" style="background:${color}20;color:${color};border:1px solid ${color}40">${esc(d.group)}</span></div>
     <div class="i-section"><div class="i-label">Functions</div>${fnR}</div>
     <div class="i-section"><div class="i-label">Classes</div>${clR}</div>

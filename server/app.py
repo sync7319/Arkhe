@@ -432,7 +432,9 @@ async def context_query(job_id: str, request: Request):
 
         if task_words:
             exact     = len(task_words & sym_words) * 3.0
-            partial   = sum(1 for tw in task_words for w in sym_words if tw in w or w in tw) * 0.5
+            # Partial: for each task word, credit 0.5 if it partially matches ANY symbol word
+            # (capped at 1 match per task word to prevent inflation from files with many symbols)
+            partial   = sum(0.5 for tw in task_words if any(tw in w or w in tw for w in sym_words))
             phrase    = sum(2.0 for bg in task_bigrams if bg in (f["path"].lower() + " " + snippet))
             snip_hits = sum(1 for tw in task_words if tw in snippet) * 1.0
             kw_score  = exact + partial + phrase + snip_hits
@@ -574,41 +576,65 @@ async def impact_query(job_id: str, file: str = ""):
                 depth_map[importer_id] = depth_map[current] + 1
                 queue.append(importer_id)
 
-    # Forward deps (what this file imports)
+    # Forward deps (what this file imports), including bidirectional links
     forward: dict[int, list[int]] = {}
     for link in links:
         forward.setdefault(link["source"], []).append(link["target"])
+        if link.get("bidirectional"):
+            forward.setdefault(link["target"], []).append(link["source"])
     direct_deps = [id_to_path[i] for i in forward.get(target_id, []) if i in id_to_path]
 
+    # Build per-node metadata (complexity, tokens) for affected file details
+    id_to_node = {n["id"]: n for n in nodes}
+
     affected = sorted(
-        [{"path": id_to_path[i], "depth": depth_map[i], "direct": depth_map[i] == 1} for i in visited],
+        [
+            {
+                "path":       id_to_path[i],
+                "depth":      depth_map[i],
+                "direct":     depth_map[i] == 1,
+                "tokens":     id_to_node.get(i, {}).get("tokens", 0),
+                "complexity": id_to_node.get(i, {}).get("complexity", 0),
+            }
+            for i in visited
+        ],
         key=lambda x: (x["depth"], x["path"]),
     )
 
     direct_count     = sum(1 for a in affected if a["direct"])
     transitive_count = len(affected) - direct_count
 
+    # Risk: count-based + complexity-weighted
+    total_complexity = sum(a.get("complexity", 0) for a in affected)
+    target_complexity = id_to_node.get(target_id, {}).get("complexity", 0)
+    complexity_score = (total_complexity + target_complexity) / 100.0
+
     if not affected:
         risk, risk_reason = "LOW", "No other files depend on this one — isolated change."
-    elif len(affected) <= 3:
+    elif len(affected) <= 3 and complexity_score < 5:
         risk, risk_reason = "LOW", f"{len(affected)} file(s) affected — small blast radius."
-    elif len(affected) <= 10:
+    elif len(affected) <= 10 and complexity_score < 20:
         risk, risk_reason = "MEDIUM", f"{len(affected)} file(s) affected including {transitive_count} transitive."
     else:
-        risk, risk_reason = "HIGH", f"{len(affected)} file(s) affected — this is a central hub."
+        risk, risk_reason = "HIGH", (
+            f"{len(affected)} file(s) affected — this is a central hub. "
+            f"Complexity score: {round(complexity_score, 1)}."
+        )
 
-    target_node = next((n for n in nodes if n["id"] == target_id), {})
+    target_node = id_to_node.get(target_id, {})
 
     return JSONResponse({
         "file":             target_path,
         "functions":        target_node.get("functions", []),
         "classes":          target_node.get("classes", []),
         "tokens":           target_node.get("tokens", 0),
+        "complexity":       target_node.get("complexity", 0),
         "direct_deps":      direct_deps,
         "affected":         affected,
         "direct_count":     direct_count,
         "transitive_count": transitive_count,
         "total_affected":   len(affected),
+        "total_complexity": total_complexity,
         "risk":             risk,
         "risk_reason":      risk_reason,
     })
@@ -622,6 +648,106 @@ async def impact_view(request: Request, job_id: str):
     return templates.TemplateResponse(request, "impact.html", {
         "job_id":  job_id,
         "job_url": job.get("url", ""),
+    })
+
+
+@app.get("/graph/{job_id}/stats", response_class=JSONResponse)
+async def graph_stats(job_id: str):
+    """Return high-level graph analytics: hub files, isolated nodes, circular deps, degree distribution."""
+    import json
+
+    grp_path = RESULTS_DIR / job_id / "GRAPH.json"
+    if not grp_path.exists():
+        return JSONResponse({"error": "Graph data not available"}, status_code=404)
+
+    graph = json.loads(grp_path.read_text())
+    nodes = graph.get("nodes", [])
+    links = graph.get("links", [])
+
+    id_to_path = {n["id"]: n["path"] for n in nodes}
+
+    # Degree counts
+    in_degree:  dict[int, int] = {n["id"]: 0 for n in nodes}
+    out_degree: dict[int, int] = {n["id"]: 0 for n in nodes}
+    adjacency:  dict[int, list[int]] = {n["id"]: [] for n in nodes}  # forward edges for cycle detection
+
+    for link in links:
+        src, tgt = link["source"], link["target"]
+        out_degree[src] = out_degree.get(src, 0) + 1
+        in_degree[tgt]  = in_degree.get(tgt, 0) + 1
+        adjacency.setdefault(src, []).append(tgt)
+        if link.get("bidirectional"):
+            out_degree[tgt] = out_degree.get(tgt, 0) + 1
+            in_degree[src]  = in_degree.get(src, 0) + 1
+            adjacency.setdefault(tgt, []).append(src)
+
+    # Hub files — top 5 by in-degree (most imported)
+    sorted_by_indegree = sorted(nodes, key=lambda n: in_degree.get(n["id"], 0), reverse=True)
+    hubs = [
+        {
+            "path":       n["path"],
+            "in_degree":  in_degree.get(n["id"], 0),
+            "out_degree": out_degree.get(n["id"], 0),
+            "tokens":     n.get("tokens", 0),
+            "complexity": n.get("complexity", 0),
+        }
+        for n in sorted_by_indegree[:5]
+        if in_degree.get(n["id"], 0) > 0
+    ]
+
+    # Isolated files — neither imports nor imported
+    isolated = [
+        n["path"] for n in nodes
+        if in_degree.get(n["id"], 0) == 0 and out_degree.get(n["id"], 0) == 0
+    ]
+
+    # Leaf files — import nothing (out_degree == 0) but are imported
+    leaves = [
+        n["path"] for n in nodes
+        if out_degree.get(n["id"], 0) == 0 and in_degree.get(n["id"], 0) > 0
+    ]
+
+    # Circular dependency detection via DFS
+    WHITE, GRAY, BLACK = 0, 1, 2
+    color = {n["id"]: WHITE for n in nodes}
+    cycles_found = 0
+    cycle_examples: list[str] = []
+
+    def _dfs(v: int, path: list[int]) -> None:
+        nonlocal cycles_found
+        color[v] = GRAY
+        for w in adjacency.get(v, []):
+            if color[w] == GRAY:
+                cycles_found += 1
+                if len(cycle_examples) < 3:
+                    loop_start = path.index(w)
+                    cycle_path = [id_to_path.get(x, str(x)) for x in path[loop_start:]] + [id_to_path.get(w, str(w))]
+                    cycle_examples.append(" → ".join(cycle_path))
+            elif color[w] == WHITE:
+                _dfs(w, path + [w])
+        color[v] = BLACK
+
+    for n in nodes:
+        if color[n["id"]] == WHITE:
+            _dfs(n["id"], [n["id"]])
+
+    total_tokens     = sum(n.get("tokens", 0) for n in nodes)
+    total_complexity = sum(n.get("complexity", 0) for n in nodes)
+    avg_in_degree    = round(sum(in_degree.values()) / max(len(nodes), 1), 2)
+
+    return JSONResponse({
+        "total_files":      len(nodes),
+        "total_edges":      len(links),
+        "avg_in_degree":    avg_in_degree,
+        "total_tokens":     total_tokens,
+        "total_complexity": total_complexity,
+        "hub_count":        len(hubs),
+        "hubs":             hubs,
+        "isolated_count":   len(isolated),
+        "isolated":         isolated[:10],
+        "leaf_count":       len(leaves),
+        "circular_count":   cycles_found,
+        "cycle_examples":   cycle_examples,
     })
 
 
