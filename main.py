@@ -4,6 +4,15 @@ Usage: python main.py [repo_path] [--format json]
 
 Feature toggles live in options.env.
 API keys and provider selection live in .env.
+
+Pipeline (optimized for minimum LLM idle time):
+  Phase 1 — Scan + Parse (sequential, no choice)
+  Phase 2 — Static work right after parse (graph, dead code, test gap — zero LLM cost,
+             all complete in <1s. No reason to wait until after synthesis.)
+  Phase 3 — Analyze (LLM, all files concurrent via dispatcher)
+  Phase 4 — Synthesize + Security + PR analysis + Scaffolds (all concurrent)
+  Phase 5 — Executive report (needs codebase_map from Phase 4)
+  Phase 6 — Write outputs + save snapshot
 """
 import argparse
 import asyncio
@@ -106,19 +115,19 @@ async def run(repo_path: str, fmt: str, refactor: bool = False, progress_cb=None
 
     with Progress(SpinnerColumn(), TextColumn("{task.description}"), console=console) as p:
 
-        # ── Scan ──────────────────────────────────────────────────────────────
+        # ── Phase 1: Scan ─────────────────────────────────────────────────────
         _progress(1, "Scanning files...")
         t = p.add_task("Scanning repository...", total=None)
         files = scan(repo_path)
         p.update(t, description=f"[green]Scanned {len(files)} files[/green]", completed=True)
 
-        # ── Parse ─────────────────────────────────────────────────────────────
+        # ── Phase 1: Parse ────────────────────────────────────────────────────
         _progress(2, "Parsing AST structure...")
         t = p.add_task("Parsing AST structure...", total=None)
         modules = parse_modules(files)
         p.update(t, description=f"[green]Parsed {len(modules)} modules[/green]", completed=True)
 
-        # ── Refactor (optional) ───────────────────────────────────────────────
+        # ── Refactor (optional, must happen before analysis to use refactored content) ─
         clone_path = None
         if refactor:
             t = p.add_task("Refactoring files (doc + style pass)...", total=None)
@@ -126,98 +135,149 @@ async def run(repo_path: str, fmt: str, refactor: bool = False, progress_cb=None
             clone_path = write_clone(repo_path, refactored)
             p.update(t, description=f"[green]Refactored {len(refactored)} files → {clone_path}[/green]", completed=True)
 
-        # ── Analyze ───────────────────────────────────────────────────────────
-        _progress(3, "Analyzing with AI...")
-        t = p.add_task("Analyzing with AI subagents...", total=None)
-        reports = await analyze_parallel(modules)
-        p.update(t, description=f"[green]{len(reports)} file(s) analyzed[/green]", completed=True)
+        # ── Phase 2: Static work — immediately after parse, zero LLM cost ────
+        # build_graph, GRAPH.json, CONTEXT_INDEX.json, dead code, test gap all
+        # only need `modules`. Running them NOW (before analyze) means:
+        #   • blast radius / context picker are available as soon as the job ends
+        #   • static reports don't queue behind the LLM analyze + synthesize wait
+        _progress(3, "Building graph & static analyses...")
 
-        # ── Synthesize ────────────────────────────────────────────────────────
-        _progress(4, "Synthesizing codebase map...")
-        t = p.add_task("Synthesizing final map...", total=None)
-        codebase_map = await synthesize(reports, files)
-        p.update(t, description="[green]Map synthesized[/green]", completed=True)
-
-        # ── Build dependency graph ────────────────────────────────────────────
-        _progress(5, "Building dependency graph...")
+        t_graph = p.add_task("Building dependency graph...", total=None)
         graph = build_graph(modules)
-
-        # ── Save graph + context index (always, zero LLM cost) ───────────────
         _write_json(graph, repo_path, "GRAPH.json")
         context_index = {
             "files": [
                 {
-                    "path": m["path"].replace("\\", "/"),
-                    "tokens": m.get("tokens", 0),
+                    "path":      m["path"].replace("\\", "/"),
+                    "tokens":    m.get("tokens", 0),
                     "functions": m.get("structure", {}).get("functions", []),
-                    "classes": m.get("structure", {}).get("classes", []),
-                    "imports": m.get("structure", {}).get("imports", []),
-                    "snippet": m.get("content", "")[:1500],
+                    "classes":   m.get("structure", {}).get("classes", []),
+                    "imports":   m.get("structure", {}).get("imports", []),
+                    "snippet":   m.get("content", "")[:1500],
                 }
                 for m in modules
             ]
         }
         _write_json(context_index, repo_path, "CONTEXT_INDEX.json")
+        p.update(t_graph, description="[green]Dependency graph built + saved[/green]", completed=True)
 
-        # ── JSON format exit ─────────────────────────────────────────────────
+        dead_code_result = test_gap_coverage = None
+
+        if DEAD_CODE_DETECTION_ENABLED:
+            t = p.add_task("Detecting dead code...", total=None)
+            dead_code_result = detect_dead_code(modules)
+            dead_path = _write_md(format_dead_code_report(dead_code_result), repo_path, "DEAD_CODE_REPORT.md")
+            p.update(t, description=f"[green]Dead code: {dead_code_result['total_dead']} symbols flagged[/green]", completed=True)
+
+        if TEST_GAP_ANALYSIS_ENABLED:
+            t = p.add_task("Analysing test coverage gaps...", total=None)
+            test_gap_coverage = find_coverage_gaps(modules)
+            _write_md(format_test_gap_report(test_gap_coverage), repo_path, "TEST_GAP_REPORT.md")
+            pct = test_gap_coverage["stats"]["pct_covered"]
+            p.update(t, description=f"[green]Test gap: {pct}% covered[/green]", completed=True)
+
+        # ── Phase 3: LLM analysis (main bottleneck — all files concurrent) ────
+        _progress(4, "Analyzing with AI...")
+        t = p.add_task("Analyzing with AI subagents...", total=None)
+        reports = await analyze_parallel(modules)
+        p.update(t, description=f"[green]{len(reports)} file(s) analyzed[/green]", completed=True)
+
+        # ── JSON format exit (early, before synthesis) ────────────────────────
         if fmt == "json":
             t = p.add_task("Writing JSON output...", total=None)
-            out_path = write_json_map(codebase_map, graph, files, reports, repo_path)
+            out_path = write_json_map({}, graph, files, reports, repo_path)
             p.update(t, description=f"[green]Written to {out_path}[/green]", completed=True)
             console.rule()
             console.print(f"[bold green]Arkhe complete.[/bold green]")
             console.print(f"  JSON output -> [cyan]{out_path}[/cyan]")
             return
 
-        # ── Static analyses (zero LLM cost) ──────────────────────────────────
-        dead_code_report = test_gap_coverage = None
+        # ── Phase 4: Concurrent LLM tasks ─────────────────────────────────────
+        # Synthesize, security audit, PR analysis, and test scaffolds all run
+        # at the same time. The dispatcher shares the NVIDIA/Groq/Gemini capacity
+        # across all of them — zero idle time while one waits for another.
+        _progress(5, "Synthesizing + parallel analyses...")
 
-        if DEAD_CODE_DETECTION_ENABLED:
-            t = p.add_task("Detecting dead code...", total=None)
-            result      = detect_dead_code(modules)
-            dead_path   = _write_md(format_dead_code_report(result), repo_path, "DEAD_CODE_REPORT.md")
-            dead_code_report = dead_path
-            p.update(t, description=f"[green]Dead code: {result['total_dead']} symbols flagged → {dead_path}[/green]", completed=True)
+        t_synth = p.add_task("Synthesizing codebase map...", total=None)
+        t_sec   = p.add_task("Running security audit...", total=None) if SECURITY_AUDIT_ENABLED else None
+        t_pr    = p.add_task(f"Analysing PR impact vs {PR_BASE_BRANCH}...", total=None) if PR_ANALYSIS_ENABLED else None
+        has_scaffolds = TEST_SCAFFOLDING_ENABLED and test_gap_coverage and test_gap_coverage.get("gaps")
+        t_scaf  = p.add_task("Generating test scaffolds...", total=None) if has_scaffolds else None
 
-        if TEST_GAP_ANALYSIS_ENABLED:
-            t = p.add_task("Analysing test coverage gaps...", total=None)
-            coverage         = find_coverage_gaps(modules)
-            gap_path         = _write_md(format_test_gap_report(coverage), repo_path, "TEST_GAP_REPORT.md")
-            test_gap_coverage = coverage
-            pct = coverage["stats"]["pct_covered"]
-            p.update(t, description=f"[green]Test gap: {pct}% covered → {gap_path}[/green]", completed=True)
+        async def _do_synthesize():
+            return await synthesize(reports, files)
 
-            if TEST_SCAFFOLDING_ENABLED and coverage["gaps"]:
-                t = p.add_task("Generating test scaffolds...", total=None)
-                scaffolds   = await generate_scaffolds(modules, coverage["gaps"])
-                scaffold_paths = _write_scaffolds(scaffolds, repo_path)
-                p.update(t, description=f"[green]{len(scaffold_paths)} scaffold(s) written → tests_generated/[/green]", completed=True)
+        async def _do_security():
+            if not SECURITY_AUDIT_ENABLED:
+                return None
+            try:
+                return await run_security_audit(modules)
+            except Exception as e:
+                return e
 
-        # ── LLM-powered optional analyses ─────────────────────────────────────
-        security_path = impact_path = None
+        async def _do_pr():
+            if not PR_ANALYSIS_ENABLED:
+                return None
+            try:
+                return await analyze_impact(modules, graph, reports, repo_path, PR_BASE_BRANCH)
+            except Exception as e:
+                return e
 
+        async def _do_scaffolds():
+            if not has_scaffolds:
+                return {}
+            try:
+                return await generate_scaffolds(modules, test_gap_coverage["gaps"])
+            except Exception as e:
+                return e
+
+        synth_res, sec_res, pr_res, scaf_res = await asyncio.gather(
+            _do_synthesize(),
+            _do_security(),
+            _do_pr(),
+            _do_scaffolds(),
+            return_exceptions=True,
+        )
+
+        # Unpack synthesis
+        if isinstance(synth_res, Exception):
+            p.update(t_synth, description=f"[red]Synthesis failed — {str(synth_res)[:80]}[/red]", completed=True)
+            raise synth_res
+        codebase_map = synth_res
+        p.update(t_synth, description="[green]Map synthesized[/green]", completed=True)
+
+        # Unpack security
+        security_path = None
         if SECURITY_AUDIT_ENABLED:
-            t = p.add_task("Running security audit...", total=None)
-            try:
-                audit_text  = await run_security_audit(modules)
-                security_path = _write_md(audit_text, repo_path, "SECURITY_REPORT.md")
-                p.update(t, description=f"[green]Security report → {security_path}[/green]", completed=True)
-            except Exception as e:
-                p.update(t, description=f"[yellow]Security audit skipped — {str(e)[:80]}[/yellow]", completed=True)
+            if isinstance(sec_res, Exception):
+                p.update(t_sec, description=f"[yellow]Security audit skipped — {str(sec_res)[:80]}[/yellow]", completed=True)
+            elif sec_res:
+                security_path = _write_md(sec_res, repo_path, "SECURITY_REPORT.md")
+                p.update(t_sec, description=f"[green]Security report written[/green]", completed=True)
 
+        # Unpack PR analysis
+        impact_path = None
         if PR_ANALYSIS_ENABLED:
-            t = p.add_task(f"Analysing PR impact vs {PR_BASE_BRANCH}...", total=None)
-            try:
-                impact = await analyze_impact(modules, graph, reports, repo_path, PR_BASE_BRANCH)
-                if impact:
-                    impact_path = _write_md(format_impact_report(impact), repo_path, "PR_IMPACT.md")
-                    p.update(t, description=f"[green]Impact: {len(impact['changed'])} changed, {sum(len(v) for v in impact['affected'].values())} affected → {impact_path}[/green]", completed=True)
-                else:
-                    p.update(t, description="[yellow]No changed files detected vs base branch[/yellow]", completed=True)
-            except Exception as e:
-                p.update(t, description=f"[yellow]PR analysis skipped — {str(e)[:80]}[/yellow]", completed=True)
+            if isinstance(pr_res, Exception):
+                p.update(t_pr, description=f"[yellow]PR analysis skipped — {str(pr_res)[:80]}[/yellow]", completed=True)
+            elif pr_res:
+                impact_path = _write_md(format_impact_report(pr_res), repo_path, "PR_IMPACT.md")
+                p.update(t_pr, description=f"[green]Impact: {len(pr_res['changed'])} changed[/green]", completed=True)
+            else:
+                if t_pr:
+                    p.update(t_pr, description="[yellow]No changed files vs base branch[/yellow]", completed=True)
 
-        # ── Core outputs ──────────────────────────────────────────────────────
+        # Unpack scaffolds
+        if has_scaffolds:
+            if isinstance(scaf_res, Exception):
+                p.update(t_scaf, description=f"[yellow]Scaffolds skipped — {str(scaf_res)[:60]}[/yellow]", completed=True)
+            elif scaf_res:
+                scaffold_paths = _write_scaffolds(scaf_res, repo_path)
+                p.update(t_scaf, description=f"[green]{len(scaffold_paths)} scaffold(s) written[/green]", completed=True)
+
+        # ── Phase 5: Core outputs + executive report ──────────────────────────
+        _progress(6, "Writing outputs...")
+
         map_path = viz_path = report_path = None
 
         if CODEBASE_MAP_ENABLED:
@@ -252,8 +312,8 @@ async def run(repo_path: str, fmt: str, refactor: bool = False, progress_cb=None
         console.print(f"  Executive report  -> [cyan]{report_path}[/cyan]")
     if clone_path:
         console.print(f"  Refactored clone  -> [cyan]{clone_path}[/cyan]")
-    if dead_code_report:
-        console.print(f"  Dead code report  -> [cyan]{dead_code_report}[/cyan]")
+    if dead_code_result:
+        console.print(f"  Dead code report  -> [cyan]{os.path.join(repo_path, 'docs', 'DEAD_CODE_REPORT.md')}[/cyan]")
     if test_gap_coverage:
         console.print(f"  Test gap report   -> [cyan]{os.path.join(repo_path, 'docs', 'TEST_GAP_REPORT.md')}[/cyan]")
     if security_path:
