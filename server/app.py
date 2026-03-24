@@ -9,6 +9,10 @@ Endpoints:
   GET  /results/{job_id}/view/{file}  — dedicated viewer (map or report)
   GET  /results/{job_id}/{file}       — serve raw output file (for download/iframe)
   GET  /pricing                       — pricing page
+  POST /context/{job_id}              — smart file ranking: task + budget → ranked files
+  GET  /context/{job_id}/view         — interactive context picker UI
+  GET  /impact/{job_id}?file=path     — transitive blast radius query
+  GET  /impact/{job_id}/view          — interactive blast radius explorer UI
   GET  /_health                       — health check
 
 Run locally:
@@ -86,7 +90,12 @@ OUTPUT_FILES = [
     ("TEST_GAP_REPORT.md",   "Test Gap Report",     "markdown"),
     ("PR_IMPACT.md",         "PR Impact Report",    "markdown"),
     ("REFACTORED_CODE.zip",  "Refactored Code",     "zip"),
+    ("GRAPH.json",           "Dependency Graph Data","json"),
+    ("CONTEXT_INDEX.json",   "Context Index",        "json"),
 ]
+
+# Files that are internal data (not shown in results UI as downloads)
+_INTERNAL_FILES = {"GRAPH.json", "CONTEXT_INDEX.json"}
 
 
 # ── Options → settings patch ──────────────────────────────────────────────────
@@ -169,7 +178,9 @@ async def _run_pipeline(job_id: str, url: str, options: dict) -> None:
                     if src.exists():
                         dst = job_results_dir / filename
                         dst.write_bytes(src.read_bytes())
-                        outputs.append({"filename": filename, "label": label, "kind": kind})
+                        # Internal data files are copied but not shown in UI
+                        if filename not in _INTERNAL_FILES:
+                            outputs.append({"filename": filename, "label": label, "kind": kind})
 
             # Zip refactored code if refactor was enabled
             if refactor_enabled:
@@ -223,12 +234,12 @@ async def _run_pipeline(job_id: str, url: str, options: dict) -> None:
 
 @app.get("/", response_class=HTMLResponse)
 async def landing(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+    return templates.TemplateResponse(request, "index.html")
 
 
 @app.get("/pricing", response_class=HTMLResponse)
 async def pricing(request: Request):
-    return templates.TemplateResponse("pricing.html", {"request": request})
+    return templates.TemplateResponse(request, "pricing.html")
 
 
 @app.post("/analyze")
@@ -292,10 +303,9 @@ async def results(request: Request, job_id: str):
     job = jobs.get(job_id) or _reconstruct_job_from_disk(job_id)
     if not job:
         return HTMLResponse("<h2>Job not found.</h2>", status_code=404)
-    return templates.TemplateResponse("results.html", {
-        "request": request,
-        "job_id":  job_id,
-        "job":     job,
+    return templates.TemplateResponse(request, "results.html", {
+        "job_id": job_id,
+        "job":    job,
     })
 
 
@@ -315,21 +325,19 @@ async def view_output(request: Request, job_id: str, filename: str):
 
     if filename.endswith(".html"):
         # Dependency map — full-screen iframe viewer
-        return templates.TemplateResponse("map_viewer.html", {
-            "request": request,
+        return templates.TemplateResponse(request, "map_viewer.html", {
             "job_id":  job_id,
             "job_url": job_url,
         })
 
     if filename.endswith(".md"):
         content = path.read_text(encoding="utf-8", errors="replace")
-        return templates.TemplateResponse("report_viewer.html", {
-            "request": request,
-            "job_id":  job_id,
+        return templates.TemplateResponse(request, "report_viewer.html", {
+            "job_id":   job_id,
             "filename": filename,
-            "label":   label,
-            "content": content,
-            "job_url": job_url,
+            "label":    label,
+            "content":  content,
+            "job_url":  job_url,
         })
 
     # Fallback for any other type — serve directly
@@ -345,6 +353,242 @@ async def serve_file(job_id: str, filename: str):
     if not path.exists():
         return JSONResponse({"error": "File not found"}, status_code=404)
     return FileResponse(str(path))
+
+
+# ── Context endpoint — smart file ranking for AI agents ──────────────────────
+
+@app.post("/context/{job_id}")
+async def context_query(job_id: str, request: Request):
+    import json
+    import math
+
+    body   = await request.json()
+    task   = (body.get("task") or "").strip().lower()
+    budget = int(body.get("budget") or 8000)
+
+    job_dir  = RESULTS_DIR / job_id
+    ctx_path = job_dir / "CONTEXT_INDEX.json"
+    grp_path = job_dir / "GRAPH.json"
+
+    if not ctx_path.exists():
+        return JSONResponse({"error": "Context index not available — run analysis first"}, status_code=404)
+
+    ctx   = json.loads(ctx_path.read_text())
+    files = ctx["files"]
+
+    # Load graph once; used for both centrality and import-chain boost
+    graph_data: dict = {}
+    if grp_path.exists():
+        graph_data = json.loads(grp_path.read_text())
+
+    # Build reverse dep count (in-degree centrality) from graph
+    centrality: dict[str, int] = {}
+    _id_to_path: dict[int, str] = {}
+    _path_to_id: dict[str, int] = {}
+    _forward:    dict[int, list[int]] = {}
+    if graph_data:
+        _id_to_path = {n["id"]: n["path"] for n in graph_data.get("nodes", [])}
+        _path_to_id = {n["path"]: n["id"] for n in graph_data.get("nodes", [])}
+        for link in graph_data.get("links", []):
+            tgt = _id_to_path.get(link["target"], "")
+            if tgt:
+                centrality[tgt] = centrality.get(tgt, 0) + 1
+            if link.get("bidirectional"):
+                src = _id_to_path.get(link["source"], "")
+                if src:
+                    centrality[src] = centrality.get(src, 0) + 1
+            _forward.setdefault(link["source"], []).append(link["target"])
+
+    # Score each file by relevance to task
+    task_words = set(task.split()) if task else set()
+    task_list  = task.split()
+    task_bigrams = {f"{task_list[i]} {task_list[i+1]}" for i in range(len(task_list) - 1)}
+
+    def _symbol_words(f: dict) -> set[str]:
+        path_lower = f["path"].replace("/", " ").replace("_", " ").replace(".", " ").lower()
+        fn_text    = " ".join(f.get("functions", [])).replace("_", " ").lower()
+        cls_text   = " ".join(f.get("classes",   [])).replace("_", " ").lower()
+        return set((path_lower + " " + fn_text + " " + cls_text).split())
+
+    def score_file(f: dict) -> float:
+        sym_words = _symbol_words(f)
+        snippet   = (f.get("snippet") or "").lower()
+
+        if task_words:
+            exact     = len(task_words & sym_words) * 3.0
+            partial   = sum(1 for tw in task_words for w in sym_words if tw in w or w in tw) * 0.5
+            phrase    = sum(2.0 for bg in task_bigrams if bg in (f["path"].lower() + " " + snippet))
+            snip_hits = sum(1 for tw in task_words if tw in snippet) * 1.0
+            kw_score  = exact + partial + phrase + snip_hits
+        else:
+            kw_score = 0.0
+
+        central = math.log1p(centrality.get(f["path"], 0)) * 2.0
+        return kw_score + central
+
+    raw_scores = {f["path"]: score_file(f) for f in files}
+
+    # Import-chain boost: high-scoring file's dependencies get a 25% score bump
+    # so the files a relevant file depends on also surface (they're needed to understand it)
+    if task_words and graph_data:
+        for f in files:
+            fid = _path_to_id.get(f["path"])
+            if fid is None:
+                continue
+            parent_score = raw_scores.get(f["path"], 0)
+            if parent_score > 1.0:
+                for dep_id in _forward.get(fid, []):
+                    dep_path = _id_to_path.get(dep_id, "")
+                    if dep_path and dep_path in raw_scores:
+                        raw_scores[dep_path] += parent_score * 0.25
+
+    scored = [(raw_scores[f["path"]], f) for f in files]
+    scored.sort(key=lambda x: x[0], reverse=True)
+
+    # Greedily select files within budget
+    selected   = []
+    tokens_used = 0
+    for score, f in scored:
+        if tokens_used >= budget:
+            break
+        ft = max(f.get("tokens", 100), 1)
+        tokens_used += ft
+        selected.append({"score": round(score, 2), **f})
+
+    # Truncate snippets proportionally if over budget
+    total_tokens = sum(max(f.get("tokens", 100), 1) for f in selected)
+    if total_tokens > budget and selected:
+        scale = budget / total_tokens
+        for f in selected:
+            snippet = f.get("snippet", "")
+            f["snippet"] = snippet[:int(len(snippet) * scale)]
+
+    return JSONResponse({
+        "task":            task,
+        "budget":          budget,
+        "files_total":     len(files),
+        "files_selected":  len(selected),
+        "tokens_estimated": min(tokens_used, budget),
+        "results":         selected,
+    })
+
+
+@app.get("/context/{job_id}/view", response_class=HTMLResponse)
+async def context_view(request: Request, job_id: str):
+    job = jobs.get(job_id) or _reconstruct_job_from_disk(job_id)
+    if not job:
+        return HTMLResponse("<h2>Job not found.</h2>", status_code=404)
+    return templates.TemplateResponse(request, "context.html", {
+        "job_id":  job_id,
+        "job_url": job.get("url", ""),
+    })
+
+
+# ── Impact endpoint — transitive blast radius ────────────────────────────────
+
+@app.get("/impact/{job_id}", response_class=JSONResponse)
+async def impact_query(job_id: str, file: str = ""):
+    import json
+
+    job_dir  = RESULTS_DIR / job_id
+    grp_path = job_dir / "GRAPH.json"
+
+    if not grp_path.exists():
+        return JSONResponse({"error": "Graph data not available — run analysis first"}, status_code=404)
+
+    graph = json.loads(grp_path.read_text())
+    nodes = graph.get("nodes", [])
+    links = graph.get("links", [])
+
+    if not file:
+        return JSONResponse({
+            "nodes": [{"id": n["id"], "path": n["path"], "tokens": n.get("tokens", 0)} for n in nodes]
+        })
+
+    id_to_path = {n["id"]: n["path"] for n in nodes}
+    path_to_id = {n["path"]: n["id"] for n in nodes}
+
+    # Fuzzy path match
+    target_path = file
+    if target_path not in path_to_id:
+        matches = [p for p in path_to_id if file in p or p.endswith(file)]
+        if matches:
+            target_path = matches[0]
+        else:
+            return JSONResponse({"error": f"File not found: {file}"}, status_code=404)
+
+    target_id = path_to_id[target_path]
+
+    # Build reverse map: id → list of ids that import it
+    reverse: dict[int, list[int]] = {}
+    for link in links:
+        src, tgt = link["source"], link["target"]
+        reverse.setdefault(tgt, []).append(src)
+        if link.get("bidirectional"):
+            reverse.setdefault(src, []).append(tgt)
+
+    # BFS for transitive dependents
+    visited: set[int]       = set()
+    depth_map: dict[int, int] = {target_id: 0}
+    queue                   = [target_id]
+
+    while queue:
+        current = queue.pop(0)
+        for importer_id in reverse.get(current, []):
+            if importer_id not in visited and importer_id != target_id:
+                visited.add(importer_id)
+                depth_map[importer_id] = depth_map[current] + 1
+                queue.append(importer_id)
+
+    # Forward deps (what this file imports)
+    forward: dict[int, list[int]] = {}
+    for link in links:
+        forward.setdefault(link["source"], []).append(link["target"])
+    direct_deps = [id_to_path[i] for i in forward.get(target_id, []) if i in id_to_path]
+
+    affected = sorted(
+        [{"path": id_to_path[i], "depth": depth_map[i], "direct": depth_map[i] == 1} for i in visited],
+        key=lambda x: (x["depth"], x["path"]),
+    )
+
+    direct_count     = sum(1 for a in affected if a["direct"])
+    transitive_count = len(affected) - direct_count
+
+    if not affected:
+        risk, risk_reason = "LOW", "No other files depend on this one — isolated change."
+    elif len(affected) <= 3:
+        risk, risk_reason = "LOW", f"{len(affected)} file(s) affected — small blast radius."
+    elif len(affected) <= 10:
+        risk, risk_reason = "MEDIUM", f"{len(affected)} file(s) affected including {transitive_count} transitive."
+    else:
+        risk, risk_reason = "HIGH", f"{len(affected)} file(s) affected — this is a central hub."
+
+    target_node = next((n for n in nodes if n["id"] == target_id), {})
+
+    return JSONResponse({
+        "file":             target_path,
+        "functions":        target_node.get("functions", []),
+        "classes":          target_node.get("classes", []),
+        "tokens":           target_node.get("tokens", 0),
+        "direct_deps":      direct_deps,
+        "affected":         affected,
+        "direct_count":     direct_count,
+        "transitive_count": transitive_count,
+        "total_affected":   len(affected),
+        "risk":             risk,
+        "risk_reason":      risk_reason,
+    })
+
+
+@app.get("/impact/{job_id}/view", response_class=HTMLResponse)
+async def impact_view(request: Request, job_id: str):
+    job = jobs.get(job_id) or _reconstruct_job_from_disk(job_id)
+    if not job:
+        return HTMLResponse("<h2>Job not found.</h2>", status_code=404)
+    return templates.TemplateResponse(request, "impact.html", {
+        "job_id":  job_id,
+        "job_url": job.get("url", ""),
+    })
 
 
 @app.get("/_health")

@@ -49,6 +49,16 @@ def _write_md(content: str, repo_path: str, filename: str) -> str:
     return path
 
 
+def _write_json(data: dict, repo_path: str, filename: str) -> str:
+    import json
+    out_dir = os.path.join(repo_path, "docs")
+    os.makedirs(out_dir, exist_ok=True)
+    path = os.path.join(out_dir, filename)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f)
+    return path
+
+
 def _write_scaffolds(scaffolds: dict[str, str], repo_path: str) -> list[str]:
     out_dir = os.path.join(repo_path, "tests_generated")
     os.makedirs(out_dir, exist_ok=True)
@@ -131,6 +141,23 @@ async def run(repo_path: str, fmt: str, refactor: bool = False, progress_cb=None
         # ── Build dependency graph ────────────────────────────────────────────
         _progress(5, "Building dependency graph...")
         graph = build_graph(modules)
+
+        # ── Save graph + context index (always, zero LLM cost) ───────────────
+        _write_json(graph, repo_path, "GRAPH.json")
+        context_index = {
+            "files": [
+                {
+                    "path": m["path"].replace("\\", "/"),
+                    "tokens": m.get("tokens", 0),
+                    "functions": m.get("structure", {}).get("functions", []),
+                    "classes": m.get("structure", {}).get("classes", []),
+                    "imports": m.get("structure", {}).get("imports", []),
+                    "snippet": m.get("content", "")[:1500],
+                }
+                for m in modules
+            ]
+        }
+        _write_json(context_index, repo_path, "CONTEXT_INDEX.json")
 
         # ── JSON format exit ─────────────────────────────────────────────────
         if fmt == "json":

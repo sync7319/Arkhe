@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Blast Radius — Arkhe</title>
+  <link rel="stylesheet" href="/static/arkhe.css" />
+  <style>
+    .page-wrap {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 5rem 2rem 4rem;
+    }
+    .breadcrumb {
+      display: flex; align-items: center; gap: 0.5rem;
+      font-size: 0.8rem; color: var(--text-3); margin-bottom: 2rem;
+    }
+    .breadcrumb a { color: var(--text-3); text-decoration: none; }
+    .breadcrumb a:hover { color: var(--text-2); }
+
+    .page-header { margin-bottom: 2rem; }
+    .page-header h1 {
+      font-size: clamp(1.5rem, 3vw, 2.25rem);
+      font-weight: 800; letter-spacing: -1px; color: var(--text);
+      margin-bottom: 0.4rem;
+    }
+    .page-header p { font-size: 0.9rem; color: var(--text-2); line-height: 1.6; }
+
+    /* Two-panel layout */
+    .panels {
+      display: grid;
+      grid-template-columns: 300px 1fr;
+      gap: 1.25rem;
+      align-items: start;
+    }
+    @media (max-width: 768px) {
+      .panels { grid-template-columns: 1fr; }
+    }
+
+    /* File picker */
+    .file-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      position: sticky;
+      top: 72px;
+      max-height: calc(100vh - 90px);
+      display: flex;
+      flex-direction: column;
+    }
+    .file-search {
+      padding: 0.75rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .file-search input {
+      width: 100%; background: var(--bg);
+      border: 1px solid var(--border); border-radius: 7px;
+      padding: 0.55rem 0.75rem; font-size: 0.82rem;
+      color: var(--text); outline: none;
+    }
+    .file-search input::placeholder { color: var(--text-3); }
+    .file-search input:focus { border-color: var(--accent); }
+    .file-list {
+      overflow-y: auto; flex: 1;
+      max-height: calc(100vh - 180px);
+    }
+    .file-item {
+      padding: 0.55rem 0.85rem;
+      font-size: 0.78rem; font-family: "SF Mono", Menlo, monospace;
+      color: var(--text-2); cursor: pointer;
+      border-bottom: 1px solid var(--border);
+      transition: background 0.1s, color 0.1s;
+      word-break: break-all;
+    }
+    .file-item:hover { background: var(--surface-hi); color: var(--text); }
+    .file-item.active { background: var(--accent-bg); color: var(--accent-hi); border-left: 3px solid var(--accent); }
+
+    /* Results panel */
+    .result-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 2rem;
+      min-height: 400px;
+    }
+    .empty-state {
+      text-align: center; padding: 4rem 2rem;
+    }
+    .empty-state h3 { font-size: 1.15rem; font-weight: 700; color: var(--text); margin-bottom: 0.5rem; }
+    .empty-state p { font-size: 0.875rem; color: var(--text-2); line-height: 1.6; max-width: 400px; margin: 0 auto; }
+
+    /* Impact result styles */
+    .impact-file-path {
+      font-family: "SF Mono", Menlo, monospace;
+      font-size: 1.05rem; font-weight: 700; color: var(--text);
+      margin-bottom: 0.75rem; word-break: break-all;
+    }
+    .impact-meta {
+      display: flex; flex-wrap: wrap; gap: 0.75rem;
+      margin-bottom: 1.5rem;
+    }
+    .meta-badge {
+      font-size: 0.72rem; font-weight: 600;
+      padding: 0.2rem 0.6rem; border-radius: 5px;
+      background: var(--surface-hi); color: var(--text-2);
+    }
+
+    /* Risk badge */
+    .risk-bar {
+      display: flex; align-items: center; gap: 0.75rem;
+      padding: 0.85rem 1rem;
+      border-radius: 10px; margin-bottom: 1.5rem;
+    }
+    .risk-bar.low    { background: rgba(74,222,128,0.08); border: 1px solid rgba(74,222,128,0.25); }
+    .risk-bar.medium { background: rgba(251,191,36,0.08); border: 1px solid rgba(251,191,36,0.25); }
+    .risk-bar.high   { background: rgba(248,113,113,0.08); border: 1px solid rgba(248,113,113,0.25); }
+    .risk-label {
+      font-size: 0.75rem; font-weight: 800; text-transform: uppercase;
+      letter-spacing: 0.5px; padding: 0.15rem 0.5rem; border-radius: 4px;
+    }
+    .risk-bar.low .risk-label    { background: #4ade80; color: #052e16; }
+    .risk-bar.medium .risk-label { background: #fbbf24; color: #451a03; }
+    .risk-bar.high .risk-label   { background: #f87171; color: #450a0a; }
+    .risk-reason { font-size: 0.85rem; color: var(--text-2); }
+
+    /* Stats row */
+    .stats-row {
+      display: flex; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap;
+    }
+    .stat-card {
+      flex: 1; min-width: 120px;
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 10px; padding: 1rem; text-align: center;
+    }
+    .stat-num { font-size: 1.75rem; font-weight: 800; color: var(--text); }
+    .stat-label { font-size: 0.72rem; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 0.2rem; }
+
+    /* Dep lists */
+    .dep-section { margin-bottom: 1.5rem; }
+    .dep-section h4 {
+      font-size: 0.78rem; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.5px;
+      color: var(--text-3); margin-bottom: 0.6rem;
+      padding-bottom: 0.4rem; border-bottom: 1px solid var(--border);
+    }
+    .dep-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0.4rem 0.6rem; border-radius: 6px;
+      font-size: 0.82rem; font-family: "SF Mono", Menlo, monospace;
+      color: var(--text-2); cursor: pointer;
+      transition: background 0.1s;
+    }
+    .dep-item:hover { background: var(--surface-hi); color: var(--text); }
+    .dep-depth {
+      font-size: 0.65rem; font-weight: 700;
+      padding: 0.1rem 0.4rem; border-radius: 4px;
+      background: var(--surface-hi); color: var(--text-3);
+    }
+    .dep-item.direct .dep-depth { background: var(--accent-bg); color: var(--accent-hi); }
+    .dep-none { font-size: 0.82rem; color: var(--text-3); font-style: italic; padding: 0.4rem 0; }
+
+    /* Copy button */
+    .copy-bar {
+      display: flex; justify-content: flex-end; gap: 0.5rem;
+      margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border);
+    }
+    .btn-copy {
+      background: var(--surface-hi); border: 1px solid var(--border-hi);
+      color: var(--text-2); font-size: 0.78rem; font-weight: 600;
+      padding: 0.4rem 0.85rem; border-radius: 6px; cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+    .btn-copy:hover { background: var(--accent-bg); color: var(--accent-hi); }
+  </style>
+</head>
+<body>
+
+<nav class="ark-nav">
+  <a class="ark-logo" href="/">Arkhe<span>.</span></a>
+  <div class="ark-nav-right">
+    <a href="/results/{{ job_id }}">Results</a>
+    <a href="/pricing">Pricing</a>
+    <button class="theme-toggle" id="theme-toggle">
+      <span class="t-icon" id="t-icon"></span>
+      <span id="t-label">Light</span>
+    </button>
+  </div>
+</nav>
+
+<div class="page-wrap">
+
+  <div class="breadcrumb">
+    <a href="/">Home</a><span>/</span>
+    <a href="/results/{{ job_id }}">Results</a><span>/</span>
+    <span>Blast Radius</span>
+  </div>
+
+  <div class="page-header">
+    <h1>Blast Radius Explorer</h1>
+    <p>Select any file to see what breaks if you change it. Arkhe traces every direct and transitive dependent across the full dependency graph — deterministic, not guessed.</p>
+  </div>
+
+  <div class="panels">
+    <!-- Left: file picker -->
+    <div class="file-panel">
+      <div class="file-search">
+        <input type="text" id="file-search" placeholder="Search files..." />
+      </div>
+      <div class="file-list" id="file-list">
+        <div style="padding:1rem;text-align:center;color:var(--text-3);font-size:0.82rem">Loading files...</div>
+      </div>
+    </div>
+
+    <!-- Right: impact result -->
+    <div class="result-panel" id="result-panel">
+      <div class="empty-state" id="empty-state">
+        <h3>Select a file</h3>
+        <p>Click any file in the list to see its full blast radius — every file that depends on it, directly and transitively.</p>
+      </div>
+      <div id="impact-result" style="display:none"></div>
+    </div>
+  </div>
+
+</div>
+
+<footer class="ark-footer">
+  <a class="ark-footer-logo" href="/">Arkhe<span>.</span></a>
+  <div class="ark-footer-links">
+    <a href="/results/{{ job_id }}">Results</a>
+    <a href="/">Home</a>
+  </div>
+</footer>
+
+<script>
+  // Theme
+  (function () {
+    const stored = localStorage.getItem("arkhe-theme") || "dark";
+    document.documentElement.setAttribute("data-theme", stored);
+    function sync() {
+      const t = document.documentElement.getAttribute("data-theme");
+      const i = document.getElementById("t-icon"), l = document.getElementById("t-label");
+      if (!i) return;
+      i.textContent = t === "dark" ? "\u2600\uFE0F" : "\uD83C\uDF19";
+      l.textContent = t === "dark" ? "Light" : "Dark";
+    }
+    document.addEventListener("DOMContentLoaded", () => {
+      sync();
+      document.getElementById("theme-toggle").addEventListener("click", () => {
+        const cur = document.documentElement.getAttribute("data-theme");
+        const next = cur === "dark" ? "light" : "dark";
+        document.documentElement.setAttribute("data-theme", next);
+        localStorage.setItem("arkhe-theme", next);
+        sync();
+      });
+    });
+  })();
+
+  const JOB_ID = "{{ job_id }}";
+  let allFiles = [];
+
+  // Load file list
+  document.addEventListener("DOMContentLoaded", async () => {
+    try {
+      const res = await fetch(`/impact/${JOB_ID}`);
+      const data = await res.json();
+      allFiles = (data.nodes || []).sort((a, b) => a.path.localeCompare(b.path));
+      renderFileList(allFiles);
+    } catch (e) {
+      document.getElementById("file-list").innerHTML =
+        '<div style="padding:1rem;color:#f87171;font-size:0.82rem">Failed to load files. Run analysis first.</div>';
+    }
+
+    document.getElementById("file-search").addEventListener("input", (e) => {
+      const q = e.target.value.toLowerCase();
+      renderFileList(allFiles.filter(f => f.path.toLowerCase().includes(q)));
+    });
+  });
+
+  function renderFileList(files) {
+    const el = document.getElementById("file-list");
+    if (!files.length) {
+      el.innerHTML = '<div style="padding:1rem;color:var(--text-3);font-size:0.82rem">No files match.</div>';
+      return;
+    }
+    el.innerHTML = files.map(f =>
+      `<div class="file-item" data-path="${f.path}" onclick="selectFile('${f.path.replace(/'/g, "\\'")}')">${f.path}</div>`
+    ).join("");
+  }
+
+  async function selectFile(path) {
+    // Highlight
+    document.querySelectorAll(".file-item").forEach(el => {
+      el.classList.toggle("active", el.dataset.path === path);
+    });
+
+    document.getElementById("empty-state").style.display = "none";
+    const resultEl = document.getElementById("impact-result");
+    resultEl.style.display = "block";
+    resultEl.innerHTML = '<div style="display:flex;align-items:center;gap:0.6rem;color:var(--text-2);font-size:0.85rem"><div class="ark-spinner"></div>Tracing dependencies...</div>';
+
+    try {
+      const res = await fetch(`/impact/${JOB_ID}?file=${encodeURIComponent(path)}`);
+      const d = await res.json();
+      if (d.error) { resultEl.innerHTML = `<div style="color:#f87171">${d.error}</div>`; return; }
+      renderImpact(d);
+    } catch (e) {
+      resultEl.innerHTML = '<div style="color:#f87171">Request failed.</div>';
+    }
+  }
+
+  function renderImpact(d) {
+    const riskClass = d.risk.toLowerCase();
+    const directAffected = d.affected.filter(a => a.direct);
+    const transitiveAffected = d.affected.filter(a => !a.direct);
+
+    let html = `
+      <div class="copy-bar">
+        <button class="btn-copy" onclick="copyMarkdown()">Copy as Markdown</button>
+      </div>
+
+      <div class="impact-file-path">${d.file}</div>
+      <div class="impact-meta">
+        <span class="meta-badge">${d.tokens.toLocaleString()} tokens</span>
+        <span class="meta-badge">${d.functions.length} function(s)</span>
+        <span class="meta-badge">${d.classes.length} class(es)</span>
+      </div>
+
+      <div class="risk-bar ${riskClass}">
+        <span class="risk-label">${d.risk}</span>
+        <span class="risk-reason">${d.risk_reason}</span>
+      </div>
+
+      <div class="stats-row">
+        <div class="stat-card">
+          <div class="stat-num">${d.direct_count}</div>
+          <div class="stat-label">Direct</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-num">${d.transitive_count}</div>
+          <div class="stat-label">Transitive</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-num">${d.total_affected}</div>
+          <div class="stat-label">Total Affected</div>
+        </div>
+      </div>
+    `;
+
+    // Direct dependents
+    html += '<div class="dep-section"><h4>Direct Dependents (depth 1)</h4>';
+    if (directAffected.length) {
+      html += directAffected.map(a =>
+        `<div class="dep-item direct" onclick="selectFile('${a.path.replace(/'/g, "\\'")}')">
+          <span>${a.path}</span>
+          <span class="dep-depth">depth ${a.depth}</span>
+        </div>`
+      ).join("");
+    } else {
+      html += '<div class="dep-none">No files directly import this one.</div>';
+    }
+    html += '</div>';
+
+    // Transitive dependents
+    html += '<div class="dep-section"><h4>Transitive Dependents</h4>';
+    if (transitiveAffected.length) {
+      html += transitiveAffected.map(a =>
+        `<div class="dep-item" onclick="selectFile('${a.path.replace(/'/g, "\\'")}')">
+          <span>${a.path}</span>
+          <span class="dep-depth">depth ${a.depth}</span>
+        </div>`
+      ).join("");
+    } else {
+      html += '<div class="dep-none">No transitive dependents.</div>';
+    }
+    html += '</div>';
+
+    // This file depends on
+    html += '<div class="dep-section"><h4>This File Depends On</h4>';
+    if (d.direct_deps.length) {
+      html += d.direct_deps.map(p =>
+        `<div class="dep-item" onclick="selectFile('${p.replace(/'/g, "\\'")}')"><span>${p}</span></div>`
+      ).join("");
+    } else {
+      html += '<div class="dep-none">No local dependencies.</div>';
+    }
+    html += '</div>';
+
+    // Store for copy
+    window._lastImpact = d;
+    document.getElementById("impact-result").innerHTML = html;
+  }
+
+  function copyMarkdown() {
+    const d = window._lastImpact;
+    if (!d) return;
+    const direct = d.affected.filter(a => a.direct).map(a => `- \`${a.path}\``).join("\n") || "- _None_";
+    const transitive = d.affected.filter(a => !a.direct).map(a => `- \`${a.path}\` (depth ${a.depth})`).join("\n") || "- _None_";
+    const deps = d.direct_deps.map(p => `- \`${p}\``).join("\n") || "- _None_";
+
+    const md = `# Blast Radius: \`${d.file}\`
+
+**Risk:** ${d.risk} — ${d.risk_reason}
+**Tokens:** ${d.tokens} | **Functions:** ${d.functions.length} | **Classes:** ${d.classes.length}
+
+## Direct Dependents (${d.direct_count})
+${direct}
+
+## Transitive Dependents (${d.transitive_count})
+${transitive}
+
+## This File Depends On
+${deps}
+
+---
+_Generated by [Arkhe](https://github.com/sync7319/Arkhe)_
+`;
+    navigator.clipboard.writeText(md).then(() => {
+      const btn = document.querySelector(".btn-copy");
+      btn.textContent = "Copied!";
+      setTimeout(() => btn.textContent = "Copy as Markdown", 1500);
+    });
+  }
+</script>
+
+</body>
+</html>

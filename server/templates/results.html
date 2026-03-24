@@ -311,6 +311,35 @@
     {% endfor %}
   </div>
 
+  <!-- Interactive tools -->
+  <div style="margin-top: 2.5rem">
+    <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--accent-hi);margin-bottom:0.85rem">Interactive Tools</div>
+    <div class="outputs-grid">
+      <div class="output-card">
+        <div class="oc-header">
+          <div class="oc-icon">💥</div>
+          <span class="oc-type-badge">LIVE</span>
+        </div>
+        <div class="oc-title">Blast Radius Explorer</div>
+        <div class="oc-desc">Select any file and see every dependent — directly and transitively. Know the impact before you edit.</div>
+        <div class="oc-actions">
+          <a class="oc-btn-view" href="/impact/{{ job_id }}/view">Explore Impact</a>
+        </div>
+      </div>
+      <div class="output-card">
+        <div class="oc-header">
+          <div class="oc-icon">🎯</div>
+          <span class="oc-type-badge">LIVE</span>
+        </div>
+        <div class="oc-title">Smart Context Picker</div>
+        <div class="oc-desc">Describe your task. Arkhe ranks the most relevant files and fits them to your AI token budget.</div>
+        <div class="oc-actions">
+          <a class="oc-btn-view" href="/context/{{ job_id }}/view">Pick Context</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="new-analysis"><a href="/">← Analyze another repo</a></div>
 
   {% endif %}

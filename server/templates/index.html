@@ -357,8 +357,8 @@
   </h1>
 
   <p class="hero-sub">
-    Paste any GitHub or GitLab URL. Arkhe maps every dependency,
-    audits security, and writes your architecture docs — automatically.
+    Paste any GitHub or GitLab URL. Arkhe maps every dependency, answers
+    "what breaks if I change this?", and packs the right files into any AI context window.
   </p>
 
   <div class="provider-pills">
@@ -470,20 +470,32 @@
 <section class="ark-section">
   <p class="section-eyebrow">What Arkhe produces</p>
   <h2 class="section-h2">Every output you need,<br>generated automatically.</h2>
-  <p class="section-sub">One URL. Six professional documents ready to share.</p>
+  <p class="section-sub">One URL. Six outputs — starting with the two things every AI coding tool gets wrong.</p>
 
   <div class="ark-grid ark-grid-3">
     <div class="ark-cell">
-      <div class="output-icon-lg">📄</div>
-      <div class="output-name">Codebase Map</div>
-      <div class="output-desc">AI narrative covering architecture, data flows, module roles, and gotchas.</div>
-      <div class="output-tag ai">AI · Markdown</div>
+      <div class="output-icon-lg">💥</div>
+      <div class="output-name">Blast Radius Explorer</div>
+      <div class="output-desc">"What breaks if I change this?" — transitive impact across the full dependency graph. Every direct and indirect dependent, instantly.</div>
+      <div class="output-tag">Free · Interactive</div>
+    </div>
+    <div class="ark-cell">
+      <div class="output-icon-lg">🎯</div>
+      <div class="output-name">Smart Context Picker</div>
+      <div class="output-desc">Describe your task. Arkhe ranks the most relevant files and fits them to your token budget. Stop stuffing AI agents with irrelevant code.</div>
+      <div class="output-tag">Free · API</div>
     </div>
     <div class="ark-cell">
       <div class="output-icon-lg">🕸</div>
       <div class="output-name">Dependency Graph</div>
-      <div class="output-desc">Interactive D3.js visualization of every file and its import relationships.</div>
+      <div class="output-desc">Interactive D3.js visualization of every file and its import relationships. AST-parsed — not guessed.</div>
       <div class="output-tag">Free · HTML</div>
+    </div>
+    <div class="ark-cell">
+      <div class="output-icon-lg">📄</div>
+      <div class="output-name">Codebase Map</div>
+      <div class="output-desc">AI narrative covering architecture, data flows, module roles, and gotchas. Auto-regenerated on every PR.</div>
+      <div class="output-tag ai">AI · Markdown</div>
     </div>
     <div class="ark-cell">
       <div class="output-icon-lg">🔒</div>
@@ -492,23 +504,84 @@
       <div class="output-tag ai">AI · Markdown</div>
     </div>
     <div class="ark-cell">
-      <div class="output-icon-lg">🧹</div>
-      <div class="output-name">Dead Code Report</div>
-      <div class="output-desc">Static detection of functions and classes defined but never referenced.</div>
-      <div class="output-tag">Free · Markdown</div>
-    </div>
-    <div class="ark-cell">
-      <div class="output-icon-lg">🧪</div>
-      <div class="output-name">Test Gap Analysis</div>
-      <div class="output-desc">Maps every public function with no test coverage. Generates pytest stubs.</div>
-      <div class="output-tag ai">AI · Markdown</div>
-    </div>
-    <div class="ark-cell">
       <div class="output-icon-lg">📊</div>
       <div class="output-name">Executive Report</div>
       <div class="output-desc">Stakeholder-ready Word document: strengths, risks, and recommendations.</div>
       <div class="output-tag ai">AI · Word</div>
     </div>
+  </div>
+</section>
+
+<!-- BYOK / Self-hostable / Enterprise -->
+<section class="ark-section">
+  <p class="section-eyebrow">Enterprise-ready</p>
+  <h2 class="section-h2">Your code never leaves<br>your infrastructure.</h2>
+  <p class="section-sub">The only codebase intelligence tool built for teams that can't send their code to external APIs.</p>
+
+  <div class="ark-grid ark-grid-3">
+    <div class="ark-cell">
+      <div class="output-icon-lg">🔑</div>
+      <div class="output-name">Bring Your Own Keys</div>
+      <div class="output-desc">Plug in your Groq, Gemini, Anthropic, or OpenAI API keys. We never store or proxy them. Groq and Gemini free tiers work out of the box — most users pay $0.</div>
+      <div class="output-tag">BYOK</div>
+    </div>
+    <div class="ark-cell">
+      <div class="output-icon-lg">🏠</div>
+      <div class="output-name">Fully Self-Hostable</div>
+      <div class="output-desc">One command install. Run on your laptop, your server, or air-gapped behind a firewall. Banks, defense contractors, healthcare — your code stays yours.</div>
+      <div class="output-tag">On-Prem</div>
+    </div>
+    <div class="ark-cell">
+      <div class="output-icon-lg">💡</div>
+      <div class="output-name">Zero Vendor Lock-In</div>
+      <div class="output-desc">Swap LLM providers in one line. Every output is plain Markdown, HTML, or Word — no proprietary format. MIT license. Fork it, host it, own it.</div>
+      <div class="output-tag">MIT License</div>
+    </div>
+  </div>
+
+  <div style="margin-top:2.5rem;max-width:720px;margin-left:auto;margin-right:auto">
+    <table style="width:100%;border-collapse:collapse;font-size:0.875rem">
+      <thead>
+        <tr style="border-bottom:1px solid var(--border)">
+          <th style="text-align:left;padding:0.6rem 1rem;color:var(--text-3);font-weight:600;font-size:0.75rem;text-transform:uppercase;letter-spacing:.5px">Feature</th>
+          <th style="text-align:center;padding:0.6rem 1rem;color:var(--accent-hi);font-weight:700">Arkhe</th>
+          <th style="text-align:center;padding:0.6rem 1rem;color:var(--text-3);font-weight:600">Greptile</th>
+          <th style="text-align:center;padding:0.6rem 1rem;color:var(--text-3);font-weight:600">Sourcegraph</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr style="border-bottom:1px solid var(--border)">
+          <td style="padding:0.65rem 1rem;color:var(--text-2)">Self-hostable</td>
+          <td style="text-align:center;padding:0.65rem 1rem;color:#4ade80;font-weight:700">Yes</td>
+          <td style="text-align:center;padding:0.65rem 1rem;color:#f87171">No</td>
+          <td style="text-align:center;padding:0.65rem 1rem;color:var(--text-3)">$$$</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--border)">
+          <td style="padding:0.65rem 1rem;color:var(--text-2)">Bring Your Own Keys</td>
+          <td style="text-align:center;padding:0.65rem 1rem;color:#4ade80;font-weight:700">Yes</td>
+          <td style="text-align:center;padding:0.65rem 1rem;color:#f87171">No</td>
+          <td style="text-align:center;padding:0.65rem 1rem;color:#f87171">No</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--border)">
+          <td style="padding:0.65rem 1rem;color:var(--text-2)">Free tier</td>
+          <td style="text-align:center;padding:0.65rem 1rem;color:#4ade80;font-weight:700">Yes</td>
+          <td style="text-align:center;padding:0.65rem 1rem;color:var(--text-3)">Limited</td>
+          <td style="text-align:center;padding:0.65rem 1rem;color:#f87171">No</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--border)">
+          <td style="padding:0.65rem 1rem;color:var(--text-2)">AST-parsed dep graph</td>
+          <td style="text-align:center;padding:0.65rem 1rem;color:#4ade80;font-weight:700">Yes</td>
+          <td style="text-align:center;padding:0.65rem 1rem;color:#f87171">No</td>
+          <td style="text-align:center;padding:0.65rem 1rem;color:#4ade80">Yes</td>
+        </tr>
+        <tr>
+          <td style="padding:0.65rem 1rem;color:var(--text-2)">Open source (MIT)</td>
+          <td style="text-align:center;padding:0.65rem 1rem;color:#4ade80;font-weight:700">Yes</td>
+          <td style="text-align:center;padding:0.65rem 1rem;color:#f87171">No</td>
+          <td style="text-align:center;padding:0.65rem 1rem;color:#f87171">No</td>
+        </tr>
+      </tbody>
+    </table>
   </div>
 </section>
 
