@@ -55,24 +55,31 @@ def _build_reference_index(modules: list[dict]) -> dict[str, set[str]]:
 
     references: dict[str, set[str]] = {}
     for symbol, defining_path in definitions:
-        pattern = re.compile(rf"\b{re.escape(symbol)}\b")
-        # For private symbols (_-prefixed), a call within the defining file counts as a reference.
-        # Public symbols must be referenced from ANOTHER file to be considered live.
+        pattern    = re.compile(rf"\b{re.escape(symbol)}\b")
         is_private = symbol.startswith("_") and not symbol.startswith("__")
-        refs = {
+
+        # Check cross-file references (always)
+        cross_file_refs = {
             path for path, content in content_by_path.items()
-            if (path != defining_path or is_private) and pattern.search(content)
+            if path != defining_path and pattern.search(content)
         }
-        # For private symbols: subtract definition-line hits — we want actual call sites.
-        # A pattern match that IS the definition line itself (def _foo) doesn't count.
-        if is_private:
-            own_content = content_by_path.get(defining_path, "")
-            # Count occurrences beyond the definition line
-            call_count = len(pattern.findall(own_content))
-            # "def symbol" or "async def symbol" is the definition — subtract 1
-            if call_count <= 1:
-                refs.discard(defining_path)
-        references[symbol] = refs
+
+        if cross_file_refs:
+            references[symbol] = cross_file_refs
+            continue
+
+        # No cross-file refs — check within-file usage (call site beyond definition)
+        own_content   = content_by_path.get(defining_path, "")
+        all_matches   = len(pattern.findall(own_content))
+        # Each "def symbol" / "class symbol" counts as 1 definition occurrence
+        def_count     = len(re.findall(rf"\b(?:def|class)\s+{re.escape(symbol)}\b", own_content))
+        call_sites    = all_matches - def_count
+
+        if is_private or call_sites > 0:
+            # Private symbol used internally, or public symbol called within own file
+            references[symbol] = {defining_path}
+        else:
+            references[symbol] = set()
 
     return references
 
