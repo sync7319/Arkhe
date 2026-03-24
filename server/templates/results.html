@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Arkhe — Results</title>
+  <link rel="stylesheet" href="/static/arkhe.css" />
+  <style>
+    .page-wrap {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 7rem 2rem 5rem;
+    }
+
+    /* ── Breadcrumb ── */
+    .breadcrumb {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.8rem;
+      color: var(--text-3);
+      margin-bottom: 2.5rem;
+    }
+    .breadcrumb a { color: var(--text-3); text-decoration: none; }
+    .breadcrumb a:hover { color: var(--text-2); }
+    .breadcrumb span { color: var(--text-3); }
+
+    /* ── Header ── */
+    .results-header { margin-bottom: 3rem; }
+    .results-header h1 {
+      font-size: clamp(1.75rem, 3.5vw, 2.5rem);
+      font-weight: 800;
+      letter-spacing: -1px;
+      color: var(--text);
+      margin-bottom: 0.5rem;
+    }
+    .results-meta {
+      font-size: 0.85rem;
+      color: var(--text-3);
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+    .results-meta .repo-url {
+      color: var(--accent-hi);
+      font-weight: 500;
+    }
+    .results-meta .dot { color: var(--text-3); }
+
+    /* ── Pending state ── */
+    .pending-wrap {
+      text-align: center;
+      padding: 5rem 2rem;
+    }
+    .pending-spinner {
+      width: 44px; height: 44px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: ark-spin 0.8s linear infinite;
+      margin: 0 auto 1.5rem;
+    }
+    .pending-wrap h2 {
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 0.5rem;
+    }
+    .pending-wrap p {
+      font-size: 0.9rem;
+      color: var(--text-2);
+      line-height: 1.6;
+    }
+
+    /* ── Error state ── */
+    .error-wrap {
+      border: 1px solid rgba(239,68,68,0.35);
+      background: rgba(239,68,68,0.05);
+      border-radius: 12px;
+      padding: 2rem;
+    }
+    .error-wrap h2 { color: #f87171; margin-bottom: 0.5rem; font-size: 1.1rem; }
+    .error-wrap p  { font-size: 0.875rem; color: var(--text-2); line-height: 1.6; }
+
+    /* ── Output cards ── */
+    .outputs-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 1rem;
+    }
+    @media (max-width: 600px) { .outputs-grid { grid-template-columns: 1fr; } }
+
+    .output-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 1.75rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .output-card:hover { border-color: var(--border-hi); background: var(--surface-hi); }
+
+    .oc-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 1rem;
+    }
+    .oc-icon {
+      width: 40px; height: 40px;
+      background: var(--accent-bg);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.1rem;
+      flex-shrink: 0;
+    }
+    .oc-type-badge {
+      font-size: 0.68rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 0.2rem 0.55rem;
+      border-radius: 4px;
+      background: var(--surface-hi);
+      color: var(--text-3);
+    }
+    .oc-title {
+      font-size: 1rem;
+      font-weight: 700;
+      letter-spacing: -0.2px;
+      color: var(--text);
+      margin-bottom: 0.4rem;
+    }
+    .oc-desc {
+      font-size: 0.825rem;
+      color: var(--text-2);
+      line-height: 1.55;
+      flex: 1;
+    }
+    .oc-actions {
+      display: flex;
+      gap: 0.6rem;
+      margin-top: 1.5rem;
+    }
+    .oc-actions a {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-size: 0.82rem;
+      font-weight: 600;
+      padding: 0.45rem 1rem;
+      border-radius: 7px;
+      text-decoration: none;
+      transition: background 0.15s, filter 0.15s;
+      white-space: nowrap;
+    }
+    .oc-btn-view {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+    }
+    .oc-btn-view:hover { filter: brightness(1.1); }
+    .oc-btn-dl {
+      background: transparent;
+      color: var(--accent-hi);
+      border: 1px solid var(--border-hi);
+    }
+    .oc-btn-dl:hover { background: var(--accent-bg); }
+
+    .new-analysis {
+      margin-top: 3rem;
+      text-align: center;
+    }
+    .new-analysis a {
+      font-size: 0.875rem;
+      color: var(--text-3);
+      text-decoration: none;
+    }
+    .new-analysis a:hover { color: var(--text-2); }
+  </style>
+</head>
+<body>
+
+<nav class="ark-nav">
+  <a class="ark-logo" href="/">Arkhe<span>.</span></a>
+  <div class="ark-nav-right">
+    <a href="/pricing">Pricing</a>
+    <a href="https://github.com/sync7319/Arkhe" target="_blank">GitHub</a>
+    <button class="theme-toggle" id="theme-toggle">
+      <span class="t-icon" id="t-icon">☀️</span>
+      <span id="t-label">Light</span>
+    </button>
+  </div>
+</nav>
+
+<div class="page-wrap">
+
+  <div class="breadcrumb">
+    <a href="/">Home</a>
+    <span>/</span>
+    <span>Results</span>
+    <span>/</span>
+    <span>{{ job_id }}</span>
+    <span style="margin-left:auto"><a href="/debug/{{ job_id }}" style="color:var(--text-3);font-size:0.75rem;opacity:0.6" target="_blank">debug ↗</a></span>
+  </div>
+
+  {% if job.status == "pending" or job.status == "running" %}
+
+  <div class="results-header">
+    <h1>Analysis in progress</h1>
+    <div class="results-meta">
+      <span class="repo-url">{{ job.url }}</span>
+    </div>
+  </div>
+
+  <div class="pending-wrap" id="pending-card">
+    <div class="pending-spinner"></div>
+    <h2>Running pipeline</h2>
+    <p id="status-text">Connecting...</p>
+  </div>
+
+  <script>
+    const JOB_ID = "{{ job_id }}";
+    const es = new EventSource(`/stream/${JOB_ID}`);
+    es.onmessage = (e) => {
+      const data = JSON.parse(e.data);
+      if (data.status === "complete") {
+        es.close();
+        window.location.reload();
+      } else if (data.status === "error") {
+        es.close();
+        const isRateLimit = (data.error || "").toLowerCase().includes("rate");
+        const retryHtml = isRateLimit
+          ? `<a href="/" style="display:inline-block;margin-top:1rem;padding:0.5rem 1.2rem;
+              background:var(--accent);color:#fff;border-radius:8px;text-decoration:none;
+              font-weight:600;font-size:0.875rem">← Retry (cache will resume)</a>`
+          : `<a href="/" style="display:inline-block;margin-top:1rem;padding:0.5rem 1.2rem;
+              background:var(--surface-hi);color:var(--text-2);border:1px solid var(--border);
+              border-radius:8px;text-decoration:none;font-weight:600;font-size:0.875rem">← Try another repo</a>`;
+        document.getElementById("pending-card").innerHTML =
+          `<h2 style="color:#f87171">Pipeline failed</h2>
+           <p style="color:var(--text-2);max-width:480px;margin:0.75rem auto">${data.error || "Unknown error"}</p>
+           ${retryHtml}`;
+      } else if (data.step_label) {
+        document.getElementById("status-text").textContent = data.step_label;
+      }
+    };
+    es.onerror = () => {
+      document.getElementById("status-text").textContent = "Reconnecting...";
+    };
+  </script>
+
+  {% elif job.status == "error" %}
+
+  <div class="results-header">
+    <h1>Something went wrong</h1>
+  </div>
+  <div class="error-wrap">
+    <h2>Pipeline Error</h2>
+    <p>{{ job.error or "Unknown error" }}</p>
+    {% if "rate" in (job.error or "").lower() %}
+    <p style="margin-top:0.75rem;font-size:0.85rem;color:var(--text-3)">
+      The pipeline cache is intact — retry and it will resume from where it stopped.
+    </p>
+    {% endif %}
+  </div>
+  <div class="new-analysis"><a href="/">← Try another repo</a></div>
+
+  {% else %}
+
+  <div class="results-header">
+    <h1>Analysis complete</h1>
+    <div class="results-meta">
+      {% if job.url %}<span class="repo-url">{{ job.url }}</span><span class="dot">·</span>{% endif %}
+      <span>{{ job.outputs | length }} output(s)</span>
+      <span class="dot">·</span>
+      <span id="job-age"></span>
+    </div>
+  </div>
+
+  <div class="outputs-grid">
+    {% for output in job.outputs %}
+    <div class="output-card">
+      <div class="oc-header">
+        <div class="oc-icon">
+          {% if output.kind == "html" %}🕸
+          {% elif output.kind == "docx" %}📊
+          {% elif output.filename == "SECURITY_REPORT.md" %}🔒
+          {% elif output.filename == "DEAD_CODE_REPORT.md" %}🧹
+          {% elif output.filename == "TEST_GAP_REPORT.md" %}🧪
+          {% elif output.filename == "PR_IMPACT.md" %}⚡
+          {% else %}📄{% endif %}
+        </div>
+        <span class="oc-type-badge">{{ output.kind | upper }}</span>
+      </div>
+      <div class="oc-title">{{ output.label }}</div>
+      <div class="oc-desc">
+        {% if output.filename == "CODEBASE_MAP.md" %}Architecture, data flows, module guide, and codebase gotchas.
+        {% elif output.filename == "DEPENDENCY_MAP.html" %}Interactive D3.js graph of every file and its dependencies.
+        {% elif output.filename == "SECURITY_REPORT.md" %}OWASP Top 10 scan: hardcoded secrets, injection risks, weak crypto.
+        {% elif output.filename == "DEAD_CODE_REPORT.md" %}Functions and classes defined but never referenced in the codebase.
+        {% elif output.filename == "TEST_GAP_REPORT.md" %}Public functions with no test coverage. Includes pytest stubs.
+        {% elif output.filename == "PR_IMPACT.md" %}Blast radius of changed files and downstream dependencies.
+        {% elif output.filename == "EXECUTIVE_REPORT.docx" %}Stakeholder-ready Word document: strengths, risks, recommendations.
+        {% else %}Generated output file.{% endif %}
+      </div>
+      <div class="oc-actions">
+        {% if output.kind == "html" %}
+          <a class="oc-btn-view" href="/results/{{ job_id }}/view/{{ output.filename }}">Open Map</a>
+        {% elif output.kind == "docx" %}
+          <a class="oc-btn-dl" href="/results/{{ job_id }}/{{ output.filename }}" download>Download .docx</a>
+        {% else %}
+          <a class="oc-btn-view" href="/results/{{ job_id }}/view/{{ output.filename }}">View Report</a>
+          <a class="oc-btn-dl"  href="/results/{{ job_id }}/{{ output.filename }}" download>Download</a>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- Interactive tools -->
+  <div style="margin-top: 2.5rem">
+    <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--accent-hi);margin-bottom:0.85rem">Interactive Tools</div>
+    <div class="outputs-grid">
+      <div class="output-card">
+        <div class="oc-header">
+          <div class="oc-icon">💥</div>
+          <span class="oc-type-badge">LIVE</span>
+        </div>
+        <div class="oc-title">Blast Radius Explorer</div>
+        <div class="oc-desc">Select any file and see every dependent — directly and transitively. Know the impact before you edit.</div>
+        <div class="oc-actions">
+          <a class="oc-btn-view" href="/impact/{{ job_id }}/view">Explore Impact</a>
+        </div>
+      </div>
+      <div class="output-card">
+        <div class="oc-header">
+          <div class="oc-icon">🎯</div>
+          <span class="oc-type-badge">LIVE</span>
+        </div>
+        <div class="oc-title">Smart Context Picker</div>
+        <div class="oc-desc">Describe your task. Arkhe ranks the most relevant files and fits them to your AI token budget.</div>
+        <div class="oc-actions">
+          <a class="oc-btn-view" href="/context/{{ job_id }}/view">Pick Context</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Graph stats card (fetched async — only shown if GRAPH.json available) -->
+  <div id="graph-stats-section" style="margin-top:2.5rem;display:none">
+    <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--accent-hi);margin-bottom:0.85rem">Codebase Intelligence</div>
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:1.5rem 2rem">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:1.25rem 2rem;margin-bottom:1.5rem" id="stats-grid"></div>
+      <div id="stats-hubs" style="display:none">
+        <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text-3);margin-bottom:0.6rem">Top Hub Files <span style="color:var(--text-3);font-weight:400;text-transform:none;letter-spacing:0">(most imported)</span></div>
+        <div id="stats-hubs-list" style="display:flex;flex-direction:column;gap:0.35rem"></div>
+      </div>
+      <div id="stats-cycles" style="display:none;margin-top:1rem">
+        <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#f97316;margin-bottom:0.5rem">Circular Dependencies Detected</div>
+        <div id="stats-cycles-list" style="display:flex;flex-direction:column;gap:0.3rem;font-size:0.8rem;color:var(--text-2);font-family:monospace"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="new-analysis"><a href="/">← Analyze another repo</a></div>
+
+  {% endif %}
+
+</div>
+
+<footer class="ark-footer">
+  <a class="ark-footer-logo" href="/">Arkhe<span>.</span></a>
+  <div class="ark-footer-links">
+    <a href="/">Home</a>
+    <a href="/pricing">Pricing</a>
+  </div>
+</footer>
+
+<script>
+  // Fetch and render graph stats
+  (async function () {
+    const JOB_ID = "{{ job_id }}";
+    try {
+      const r = await fetch(`/graph/${JOB_ID}/stats`);
+      if (!r.ok) return;
+      const d = await r.json();
+
+      const fmt = n => n >= 1000 ? (n/1000).toFixed(1) + "k" : String(n);
+      const statItems = [
+        { label: "Files",         value: fmt(d.total_files) },
+        { label: "Edges",         value: fmt(d.total_edges) },
+        { label: "Total Tokens",  value: fmt(d.total_tokens) },
+        { label: "Avg Imports",   value: d.avg_in_degree },
+        { label: "Hub Files",     value: d.hub_count },
+        { label: "Isolated",      value: d.isolated_count },
+        { label: "Circular Deps", value: d.circular_count, warn: d.circular_count > 0 },
+      ];
+
+      const grid = document.getElementById("stats-grid");
+      grid.innerHTML = statItems.map(s => `
+        <div>
+          <div style="font-size:1.35rem;font-weight:800;color:${s.warn ? "#f97316" : "var(--accent-hi)"}">${s.value}</div>
+          <div style="font-size:0.72rem;color:var(--text-3);margin-top:0.2rem">${s.label}</div>
+        </div>
+      `).join("");
+
+      if (d.hubs && d.hubs.length) {
+        const hubsEl  = document.getElementById("stats-hubs");
+        const listEl  = document.getElementById("stats-hubs-list");
+        hubsEl.style.display = "";
+        listEl.innerHTML = d.hubs.map((h, i) => `
+          <div style="display:flex;align-items:center;gap:0.75rem;font-size:0.82rem;padding:0.3rem 0;border-bottom:1px solid var(--border)">
+            <span style="width:1.4rem;text-align:center;font-size:0.75rem;font-weight:700;color:var(--text-3)">#${i+1}</span>
+            <span style="flex:1;font-family:monospace;color:var(--text-2)">${h.path}</span>
+            <span style="color:var(--accent-hi);font-size:0.75rem;white-space:nowrap">${h.in_degree} importer${h.in_degree !== 1 ? "s" : ""}</span>
+            <span style="color:var(--text-3);font-size:0.75rem;white-space:nowrap">${fmt(h.tokens)} tok</span>
+          </div>
+        `).join("");
+      }
+
+      if (d.circular_count > 0 && d.cycle_examples.length) {
+        const cyclesEl = document.getElementById("stats-cycles");
+        const listEl   = document.getElementById("stats-cycles-list");
+        cyclesEl.style.display = "";
+        listEl.innerHTML = d.cycle_examples.map(c =>
+          `<div style="padding:0.2rem 0.5rem;background:rgba(249,115,22,.08);border-radius:4px">${c}</div>`
+        ).join("");
+      }
+
+      document.getElementById("graph-stats-section").style.display = "";
+    } catch (_) {}
+  })();
+
+  // Job age display
+  (function () {
+    const createdAt = {{ created_at or 0 }};
+    const el = document.getElementById("job-age");
+    if (!el || !createdAt) return;
+    function fmt(ms) {
+      const s = Math.floor(ms / 1000);
+      if (s < 60)  return `${s}s ago`;
+      if (s < 3600) return `${Math.floor(s/60)}m ago`;
+      if (s < 86400) return `${Math.floor(s/3600)}h ago`;
+      return `${Math.floor(s/86400)}d ago`;
+    }
+    function update() { el.textContent = fmt(Date.now() - createdAt * 1000); }
+    update();
+    setInterval(update, 30000);
+  })();
+
+  (function () {
+    const stored = localStorage.getItem("arkhe-theme") || "dark";
+    document.documentElement.setAttribute("data-theme", stored);
+    function syncLabel() {
+      const t = document.documentElement.getAttribute("data-theme");
+      const icon = document.getElementById("t-icon");
+      const label = document.getElementById("t-label");
+      if (!icon) return;
+      if (t === "dark") { icon.textContent = "☀️"; label.textContent = "Light"; }
+      else              { icon.textContent = "🌙"; label.textContent = "Dark"; }
+    }
+    document.addEventListener("DOMContentLoaded", () => {
+      syncLabel();
+      document.getElementById("theme-toggle").addEventListener("click", () => {
+        const cur  = document.documentElement.getAttribute("data-theme");
+        const next = cur === "dark" ? "light" : "dark";
+        document.documentElement.setAttribute("data-theme", next);
+        localStorage.setItem("arkhe-theme", next);
+        syncLabel();
+      });
+    });
+  })();
+</script>
+
+</body>
+</html>

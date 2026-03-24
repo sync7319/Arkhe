@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Smart Context — Arkhe</title>
+  <link rel="stylesheet" href="/static/arkhe.css" />
+  <style>
+    .page-wrap {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 5rem 2rem 4rem;
+    }
+    .breadcrumb {
+      display: flex; align-items: center; gap: 0.5rem;
+      font-size: 0.8rem; color: var(--text-3); margin-bottom: 2rem;
+    }
+    .breadcrumb a { color: var(--text-3); text-decoration: none; }
+    .breadcrumb a:hover { color: var(--text-2); }
+
+    .page-header { margin-bottom: 2.5rem; text-align: center; }
+    .page-header h1 {
+      font-size: clamp(1.5rem, 3.5vw, 2.5rem);
+      font-weight: 800; letter-spacing: -1px; color: var(--text);
+      margin-bottom: 0.5rem;
+    }
+    .page-header h1 em {
+      font-style: normal;
+      background: linear-gradient(135deg, var(--accent-hi) 0%, #c4b5fd 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    [data-theme="light"] .page-header h1 em {
+      background: linear-gradient(135deg, #059669, #10b981, #34d399);
+      -webkit-background-clip: text; background-clip: text;
+    }
+    .page-header p { font-size: 0.95rem; color: var(--text-2); line-height: 1.6; max-width: 560px; margin: 0 auto; }
+
+    /* Controls */
+    .controls {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .controls textarea {
+      width: 100%; background: var(--bg);
+      border: 1px solid var(--border); border-radius: 8px;
+      padding: 0.85rem 1rem; font-size: 0.9rem;
+      color: var(--text); resize: vertical; min-height: 80px;
+      font-family: inherit; outline: none;
+      transition: border-color 0.2s;
+    }
+    .controls textarea::placeholder { color: var(--text-3); }
+    .controls textarea:focus { border-color: var(--accent); }
+
+    .controls-row {
+      display: flex; align-items: center; gap: 1rem;
+      margin-top: 1rem; flex-wrap: wrap;
+    }
+    .budget-group {
+      display: flex; align-items: center; gap: 0.5rem;
+    }
+    .budget-label {
+      font-size: 0.78rem; font-weight: 600; color: var(--text-2);
+      white-space: nowrap;
+    }
+    .budget-select {
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 6px; padding: 0.5rem 0.75rem;
+      font-size: 0.85rem; color: var(--text);
+      cursor: pointer; outline: none;
+    }
+    .budget-select:focus { border-color: var(--accent); }
+    .btn-find {
+      background: var(--accent); color: #fff; border: none;
+      border-radius: 8px; padding: 0.6rem 1.5rem;
+      font-size: 0.875rem; font-weight: 600; cursor: pointer;
+      transition: filter 0.15s; white-space: nowrap;
+    }
+    .btn-find:hover { filter: brightness(1.1); }
+    .btn-find:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* Stats bar */
+    .stats-bar {
+      display: none;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0.85rem 1.25rem;
+      margin-bottom: 1.25rem;
+      font-size: 0.85rem;
+      color: var(--text-2);
+    }
+    .stats-bar.visible { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem; }
+    .stats-left { display: flex; align-items: center; gap: 0.75rem; }
+    .stats-badge {
+      font-size: 0.72rem; font-weight: 700;
+      padding: 0.2rem 0.55rem; border-radius: 5px;
+      background: var(--accent-bg); color: var(--accent-hi);
+    }
+    .btn-copy-all {
+      background: var(--surface-hi); border: 1px solid var(--border-hi);
+      color: var(--text-2); font-size: 0.78rem; font-weight: 600;
+      padding: 0.38rem 0.8rem; border-radius: 6px; cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+    .btn-copy-all:hover { background: var(--accent-bg); color: var(--accent-hi); }
+
+    /* Results */
+    .results-list { display: flex; flex-direction: column; gap: 0.75rem; }
+
+    .file-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.25rem;
+      transition: border-color 0.15s;
+    }
+    .file-card:hover { border-color: var(--border-hi); }
+
+    .fc-top {
+      display: flex; align-items: flex-start; justify-content: space-between;
+      margin-bottom: 0.6rem; gap: 0.5rem;
+    }
+    .fc-rank {
+      font-size: 0.72rem; font-weight: 800;
+      padding: 0.15rem 0.5rem; border-radius: 5px;
+      background: var(--accent-bg); color: var(--accent-hi);
+      flex-shrink: 0;
+    }
+    .fc-score {
+      font-size: 0.68rem; font-weight: 600;
+      padding: 0.15rem 0.45rem; border-radius: 4px;
+      background: var(--surface-hi); color: var(--text-3);
+    }
+    .fc-path {
+      font-family: "SF Mono", Menlo, monospace;
+      font-size: 0.9rem; font-weight: 600; color: var(--text);
+      word-break: break-all; margin-bottom: 0.5rem;
+    }
+    .fc-meta {
+      display: flex; flex-wrap: wrap; gap: 0.4rem;
+      margin-bottom: 0.6rem;
+    }
+    .fc-pill {
+      font-size: 0.68rem; font-weight: 600;
+      padding: 0.12rem 0.45rem; border-radius: 4px;
+      background: var(--surface-hi); color: var(--text-3);
+    }
+    .fc-pill.fn  { background: rgba(99,102,241,0.1); color: var(--accent-hi); }
+    .fc-pill.cls { background: rgba(168,85,247,0.1); color: #c084fc; }
+    .fc-pill.match { background: rgba(34,197,94,0.12); color: #4ade80; }
+    [data-theme="light"] .fc-pill.match { background: rgba(5,150,105,0.1); color: #059669; }
+    .fc-reasons { margin-top: 0.35rem; display: flex; flex-wrap: wrap; gap: 0.3rem; }
+
+    /* Token budget bar */
+    .fc-budget-bar {
+      height: 3px; border-radius: 2px;
+      background: var(--border); margin: 0.5rem 0 0.4rem;
+      overflow: hidden;
+    }
+    .fc-budget-fill {
+      height: 100%; border-radius: 2px;
+      background: var(--accent);
+      transition: width 0.4s ease;
+    }
+
+    .fc-snippet {
+      position: relative;
+      max-height: 120px; overflow: hidden;
+    }
+    .fc-snippet pre {
+      font-size: 0.78rem; line-height: 1.5;
+      color: var(--text-2); margin: 0;
+      white-space: pre-wrap; word-break: break-all;
+    }
+    .fc-snippet::after {
+      content: "";
+      position: absolute; bottom: 0; left: 0; right: 0;
+      height: 40px;
+      background: linear-gradient(transparent, var(--surface));
+      pointer-events: none;
+    }
+    .fc-actions {
+      display: flex; gap: 0.5rem; margin-top: 0.6rem;
+    }
+    .fc-btn {
+      font-size: 0.72rem; font-weight: 600;
+      padding: 0.25rem 0.6rem; border-radius: 5px;
+      background: var(--surface-hi); border: 1px solid var(--border);
+      color: var(--text-3); cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+    .fc-btn:hover { background: var(--accent-bg); color: var(--accent-hi); }
+
+    /* Empty / loading */
+    .loading-state {
+      text-align: center; padding: 3rem;
+      color: var(--text-2); font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body>
+
+<nav class="ark-nav">
+  <a class="ark-logo" href="/">Arkhe<span>.</span></a>
+  <div class="ark-nav-right">
+    <a href="/results/{{ job_id }}">Results</a>
+    <a href="/pricing">Pricing</a>
+    <button class="theme-toggle" id="theme-toggle">
+      <span class="t-icon" id="t-icon"></span>
+      <span id="t-label">Light</span>
+    </button>
+  </div>
+</nav>
+
+<div class="page-wrap">
+
+  <div class="breadcrumb">
+    <a href="/">Home</a><span>/</span>
+    <a href="/results/{{ job_id }}">Results</a><span>/</span>
+    <span>Smart Context</span>
+  </div>
+
+  <div class="page-header">
+    <h1>AI-ready context, <em>on demand.</em></h1>
+    <p>Describe your task. Arkhe ranks the most relevant files in this codebase and fits them to your token budget — no more wasted context window.</p>
+  </div>
+
+  <div class="controls">
+    <textarea id="task-input" placeholder="e.g. fix the authentication bug in the login flow&#10;e.g. add rate limiting to the API client&#10;e.g. understand how the dependency graph is built"></textarea>
+    <div class="controls-row">
+      <div class="budget-group">
+        <span class="budget-label">Budget:</span>
+        <select class="budget-select" id="budget-select">
+          <option value="4000">4k</option>
+          <option value="8000" selected>8k</option>
+          <option value="16000">16k</option>
+          <option value="32000">32k</option>
+          <option value="64000">64k</option>
+          <option value="128000">128k</option>
+        </select>
+      </div>
+      <div class="budget-group">
+        <span class="budget-label">Extensions:</span>
+        <input type="text" id="ext-filter" placeholder=".py,.ts (all)" style="
+          background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+          padding: 0.48rem 0.65rem; font-size: 0.82rem; color: var(--text);
+          outline: none; width: 130px;
+        " />
+      </div>
+      <div class="budget-group">
+        <span class="budget-label">Path:</span>
+        <input type="text" id="path-filter" placeholder="agents/ (all)" style="
+          background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+          padding: 0.48rem 0.65rem; font-size: 0.82rem; color: var(--text);
+          outline: none; width: 120px;
+        " />
+      </div>
+      <button class="btn-find" id="find-btn" onclick="findContext()">Find Context</button>
+    </div>
+  </div>
+
+  <div class="stats-bar" id="stats-bar">
+    <div class="stats-left">
+      <span id="stats-text"></span>
+      <span class="stats-badge" id="stats-budget"></span>
+    </div>
+    <button class="btn-copy-all" onclick="copyAll()">Copy all as context</button>
+  </div>
+
+  <div class="results-list" id="results-list"></div>
+
+</div>
+
+<footer class="ark-footer">
+  <a class="ark-footer-logo" href="/">Arkhe<span>.</span></a>
+  <div class="ark-footer-links">
+    <a href="/results/{{ job_id }}">Results</a>
+    <a href="/">Home</a>
+  </div>
+</footer>
+
+<script>
+  // Theme
+  (function () {
+    const stored = localStorage.getItem("arkhe-theme") || "dark";
+    document.documentElement.setAttribute("data-theme", stored);
+    function sync() {
+      const t = document.documentElement.getAttribute("data-theme");
+      const i = document.getElementById("t-icon"), l = document.getElementById("t-label");
+      if (!i) return;
+      i.textContent = t === "dark" ? "\u2600\uFE0F" : "\uD83C\uDF19";
+      l.textContent = t === "dark" ? "Light" : "Dark";
+    }
+    document.addEventListener("DOMContentLoaded", () => {
+      sync();
+      document.getElementById("theme-toggle").addEventListener("click", () => {
+        const cur = document.documentElement.getAttribute("data-theme");
+        const next = cur === "dark" ? "light" : "dark";
+        document.documentElement.setAttribute("data-theme", next);
+        localStorage.setItem("arkhe-theme", next);
+        sync();
+      });
+    });
+  })();
+
+  const JOB_ID = "{{ job_id }}";
+  let lastResult = null;
+  let lastTask = "";
+
+  document.addEventListener("DOMContentLoaded", () => {
+    document.getElementById("task-input").addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); findContext(); }
+    });
+  });
+
+  async function findContext() {
+    const task   = document.getElementById("task-input").value.trim();
+    const budget = parseInt(document.getElementById("budget-select").value);
+    const exts   = document.getElementById("ext-filter").value.trim();
+    const path   = document.getElementById("path-filter").value.trim();
+    const btn    = document.getElementById("find-btn");
+
+    if (!task) { document.getElementById("task-input").focus(); return; }
+
+    btn.disabled = true; btn.textContent = "Searching...";
+    document.getElementById("results-list").innerHTML =
+      '<div class="loading-state"><div class="ark-spinner" style="margin:0 auto 0.75rem"></div>Ranking files by relevance...</div>';
+
+    try {
+      const res = await fetch(`/context/${JOB_ID}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ task, budget, exts, path }),
+      });
+      const data = await res.json();
+      if (data.error) {
+        document.getElementById("results-list").innerHTML = `<div class="loading-state" style="color:#f87171">${data.error}</div>`;
+        btn.disabled = false; btn.textContent = "Find Context";
+        return;
+      }
+      lastResult = data;
+      lastTask = task;
+      renderResults(data);
+    } catch (e) {
+      document.getElementById("results-list").innerHTML = '<div class="loading-state" style="color:#f87171">Request failed.</div>';
+    }
+    btn.disabled = false; btn.textContent = "Find Context";
+  }
+
+  function budgetLabel(budget) {
+    if (budget >= 128000) return "Claude / GPT-4 128k";
+    if (budget >= 64000) return "Claude 64k";
+    if (budget >= 32000) return "GPT-4 32k";
+    if (budget >= 16000) return "Claude / Gemini 16k";
+    if (budget >= 8000) return "Standard 8k";
+    return "Compact 4k";
+  }
+
+  function renderResults(data) {
+    // Stats bar
+    const statsBar = document.getElementById("stats-bar");
+    statsBar.classList.add("visible");
+    document.getElementById("stats-text").textContent =
+      `${data.files_selected} of ${data.files_total} files selected \u00B7 ~${data.tokens_estimated.toLocaleString()} tokens`;
+    document.getElementById("stats-budget").textContent = budgetLabel(data.budget);
+
+    // File cards
+    const list = document.getElementById("results-list");
+    if (!data.results.length) {
+      list.innerHTML = '<div class="loading-state">No files found.</div>';
+      return;
+    }
+
+    list.innerHTML = data.results.map((f, i) => {
+      const fns = (f.functions || []).slice(0, 8);
+      const cls = (f.classes || []).slice(0, 4);
+      const snippet = (f.snippet || "").trim();
+      const reasons = f.reasons || [];
+      const tokensPct = f.tokens_pct || 0;
+
+      let pills = `<span class="fc-pill">${(f.tokens || 0).toLocaleString()} tokens</span>`;
+      fns.forEach(fn => pills += `<span class="fc-pill fn">${escapeHtml(fn)}</span>`);
+      cls.forEach(c => pills += `<span class="fc-pill cls">${escapeHtml(c)}</span>`);
+
+      let reasonHtml = "";
+      if (reasons.length) {
+        reasonHtml = `<div class="fc-reasons">` +
+          reasons.map(r => `<span class="fc-pill match">${escapeHtml(r)}</span>`).join("") +
+          `</div>`;
+      }
+
+      const budgetBarHtml = `
+        <div class="fc-budget-bar" title="${tokensPct.toFixed(1)}% of token budget">
+          <div class="fc-budget-fill" style="width:${Math.min(tokensPct, 100)}%"></div>
+        </div>`;
+
+      let snippetHtml = "";
+      if (snippet) {
+        snippetHtml = `<div class="fc-snippet"><pre><code>${escapeHtml(snippet)}</code></pre></div>`;
+      }
+
+      return `
+        <div class="file-card">
+          <div class="fc-top">
+            <span class="fc-rank">#${i + 1}</span>
+            <span class="fc-score">score: ${f.score}</span>
+          </div>
+          <div class="fc-path">${escapeHtml(f.path)}</div>
+          <div class="fc-meta">${pills}</div>
+          ${reasonHtml}
+          ${budgetBarHtml}
+          ${snippetHtml}
+          <div class="fc-actions">
+            <button class="fc-btn" onclick="copyPath('${f.path.replace(/'/g, "\\'")}')">Copy path</button>
+          </div>
+        </div>
+      `;
+    }).join("");
+  }
+
+  function escapeHtml(s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+
+  function copyPath(path) {
+    navigator.clipboard.writeText(path);
+  }
+
+  function copyAll() {
+    if (!lastResult || !lastResult.results.length) return;
+    const d = lastResult;
+    let md = `# Arkhe Context: ${lastTask}\n# Files: ${d.files_selected} | Budget: ${d.budget.toLocaleString()} tokens\n\n`;
+
+    d.results.forEach((f, i) => {
+      md += `## ${i + 1}. ${f.path}\n`;
+      const fns = (f.functions || []).join(", ");
+      const cls = (f.classes || []).join(", ");
+      const meta = [];
+      if (fns) meta.push(`Functions: ${fns}`);
+      if (cls) meta.push(`Classes: ${cls}`);
+      if (meta.length) md += meta.join(" | ") + "\n";
+      const snippet = (f.snippet || "").trim();
+      if (snippet) md += "\n```\n" + snippet + "\n```\n";
+      md += "\n";
+    });
+
+    md += "---\n_Generated by [Arkhe](https://github.com/sync7319/Arkhe)_\n";
+
+    navigator.clipboard.writeText(md).then(() => {
+      const btn = document.querySelector(".btn-copy-all");
+      btn.textContent = "Copied!";
+      setTimeout(() => btn.textContent = "Copy all as context", 1500);
+    });
+  }
+</script>
+
+</body>
+</html>

@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <title>Arkhe Debug — {{ job_id }}</title>
+  <link rel="stylesheet" href="/static/arkhe.css">
+  <style>
+    :root { --sidebar-w: 230px; }
+    body { margin: 0; font-family: monospace; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+    /* Top bar */
+    .topbar {
+      display: flex; align-items: center; gap: 1rem;
+      padding: 0.6rem 1.2rem; background: var(--surface);
+      border-bottom: 1px solid var(--border); flex-shrink: 0;
+      font-size: 0.82rem;
+    }
+    .topbar .job-id { color: var(--accent-hi); font-weight: 700; }
+    .topbar .job-url { color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+    .topbar a { color: var(--accent); text-decoration: none; }
+    .topbar a:hover { text-decoration: underline; }
+
+    /* Tab bar */
+    .tabs {
+      display: flex; gap: 0; background: var(--bg);
+      border-bottom: 1px solid var(--border); flex-shrink: 0;
+    }
+    .tab-btn {
+      padding: 0.55rem 1.2rem; cursor: pointer; font-size: 0.82rem;
+      color: var(--text-3); border: none; background: none;
+      border-bottom: 2px solid transparent; font-family: monospace;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .tab-btn:hover { color: var(--text); }
+    .tab-btn.active { color: var(--accent-hi); border-bottom-color: var(--accent); }
+
+    /* Content area */
+    .content { flex: 1; overflow: hidden; display: flex; }
+
+    /* Sidebar */
+    .sidebar {
+      width: var(--sidebar-w); flex-shrink: 0; overflow-y: auto;
+      border-right: 1px solid var(--border); background: var(--surface);
+      padding: 0.5rem 0;
+    }
+    .sidebar-item {
+      padding: 0.45rem 1rem; font-size: 0.78rem; cursor: pointer;
+      color: var(--text-2); border-left: 2px solid transparent;
+      transition: background 0.1s, color 0.1s;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .sidebar-item:hover { background: var(--surface-hi); color: var(--text); }
+    .sidebar-item.active { color: var(--accent-hi); border-left-color: var(--accent); background: rgba(99,102,241,0.08); }
+    .sidebar-sep { padding: 0.3rem 1rem; font-size: 0.7rem; color: var(--text-3);
+                   text-transform: uppercase; letter-spacing: 0.08em; margin-top: 0.5rem; }
+
+    /* Main viewer */
+    .viewer { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+    .viewer-header {
+      display: flex; align-items: center; gap: 0.75rem;
+      padding: 0.5rem 1rem; border-bottom: 1px solid var(--border);
+      background: var(--surface); flex-shrink: 0; font-size: 0.8rem; color: var(--text-2);
+    }
+    .viewer-header .fname { color: var(--accent-hi); font-weight: 700; }
+    .viewer-header .ext-link { color: var(--accent); text-decoration: none; font-size: 0.75rem; }
+    .viewer-header .ext-link:hover { text-decoration: underline; }
+    .viewer-body { flex: 1; overflow-y: auto; padding: 1rem; }
+    pre.file-content {
+      margin: 0; font-size: 0.78rem; line-height: 1.6;
+      color: var(--text); white-space: pre-wrap; word-break: break-word;
+    }
+
+    /* Graph node list */
+    .node-list { display: flex; flex-direction: column; gap: 0.25rem; padding: 0.5rem 1rem; }
+    .node-row {
+      display: flex; align-items: center; gap: 0.75rem;
+      padding: 0.45rem 0.75rem; border-radius: 6px;
+      background: var(--surface); font-size: 0.78rem;
+    }
+    .node-row:hover { background: var(--surface-hi); }
+    .node-path { flex: 1; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .node-meta { font-size: 0.72rem; color: var(--text-3); white-space: nowrap; }
+    .node-btn {
+      font-size: 0.72rem; padding: 2px 8px; border-radius: 4px;
+      background: rgba(99,102,241,0.12); color: var(--accent-hi);
+      text-decoration: none; white-space: nowrap;
+      border: 1px solid rgba(99,102,241,0.25);
+    }
+    .node-btn:hover { background: rgba(99,102,241,0.25); }
+
+    /* Search */
+    .search-row { padding: 0.5rem 1rem; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+    .search-input {
+      width: 100%; box-sizing: border-box;
+      background: var(--surface); border: 1px solid var(--border);
+      color: var(--text); border-radius: 6px; padding: 0.35rem 0.65rem;
+      font-family: monospace; font-size: 0.78rem;
+    }
+    .search-input:focus { outline: none; border-color: var(--accent); }
+
+    /* Log viewer */
+    .log-body { flex: 1; overflow-y: auto; padding: 1rem; }
+    pre.log-content {
+      margin: 0; font-size: 0.72rem; line-height: 1.5;
+      color: var(--text-2); white-space: pre-wrap; word-break: break-word;
+    }
+
+    /* No selection state */
+    .no-sel { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--text-3); font-size: 0.85rem; }
+
+    /* Tab panels */
+    .tab-panel { display: none; height: 100%; width: 100%; }
+    .tab-panel.active { display: flex; }
+  </style>
+</head>
+<body>
+
+<div class="topbar">
+  <a href="/debug">← jobs</a>
+  <span class="job-id">{{ job_id }}</span>
+  <span class="job-url">{{ job_url }}</span>
+  <a href="/results/{{ job_id }}" target="_blank">results ↗</a>
+  <a href="/impact/{{ job_id }}/view" target="_blank">blast radius ↗</a>
+  <a href="/context/{{ job_id }}/view" target="_blank">context ↗</a>
+</div>
+
+<div class="tabs">
+  <button class="tab-btn active" onclick="switchTab('outputs')">Output Files ({{ output_sections|length }})</button>
+  <button class="tab-btn" onclick="switchTab('graph')">Graph Nodes ({{ graph_nodes|length }})</button>
+  <button class="tab-btn" onclick="switchTab('logs')">Server Logs</button>
+</div>
+
+<div class="content">
+
+  <!-- ── OUTPUTS TAB ────────────────────────────────────────────────── -->
+  <div class="tab-panel active" id="tab-outputs">
+    <div class="sidebar" id="out-sidebar">
+      {% for sec in output_sections %}
+      <div class="sidebar-item {% if loop.first %}active{% endif %}"
+           id="si-{{ loop.index0 }}"
+           onclick="showOutput({{ loop.index0 }})">
+        {{ sec.filename }}
+      </div>
+      {% endfor %}
+      {% if not output_sections %}
+      <div class="sidebar-sep">No outputs yet</div>
+      {% endif %}
+    </div>
+
+    <div class="viewer" id="out-viewer">
+      {% if output_sections %}
+      <div class="viewer-header">
+        <span class="fname" id="out-fname">{{ output_sections[0].filename }}</span>
+        <a class="ext-link" id="out-extlink"
+           href="/results/{{ job_id }}/{{ output_sections[0].filename }}" target="_blank">
+          download ↗
+        </a>
+        <a class="ext-link" id="out-viewlink"
+           href="/results/{{ job_id }}/view/{{ output_sections[0].filename }}" target="_blank">
+          view ↗
+        </a>
+      </div>
+      <div class="viewer-body">
+        <pre class="file-content" id="out-body">{{ output_sections[0].content }}</pre>
+      </div>
+      {% else %}
+      <div class="no-sel">No output files found for this job.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- ── GRAPH TAB ──────────────────────────────────────────────────── -->
+  <div class="tab-panel" id="tab-graph" style="flex-direction:column; overflow:hidden;">
+    <div class="search-row">
+      <input class="search-input" id="node-search" placeholder="Filter files… (e.g. agent, config, .py)"
+             oninput="filterNodes(this.value)">
+    </div>
+    <div class="node-list" id="node-list" style="overflow-y:auto; flex:1;">
+      {% for n in graph_nodes %}
+      <div class="node-row" data-path="{{ n.path }}">
+        <span class="node-path" title="{{ n.path }}">{{ n.path }}</span>
+        <span class="node-meta">{{ n.tokens }} tok · cx {{ n.complexity }}</span>
+        <a class="node-btn"
+           href="/impact/{{ job_id }}/view#{{ n.path }}"
+           target="_blank">blast radius ↗</a>
+      </div>
+      {% endfor %}
+      {% if not graph_nodes %}
+      <div style="color:var(--text-3); padding:1rem; font-size:0.85rem;">GRAPH.json not found for this job.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- ── LOGS TAB ───────────────────────────────────────────────────── -->
+  <div class="tab-panel" id="tab-logs" style="flex-direction:column; overflow:hidden;">
+    <div class="log-body">
+      <pre class="log-content" id="log-pre">{{ log_tail }}</pre>
+    </div>
+  </div>
+
+</div><!-- .content -->
+
+<script>
+  // ── Output sections data ───────────────────────────────────────────
+  const SECTIONS = [
+    {% for sec in output_sections %}
+    { filename: {{ sec.filename | tojson }}, content: {{ sec.content | tojson }}, kind: {{ sec.kind | tojson }} },
+    {% endfor %}
+  ];
+  const JOB_ID = {{ job_id | tojson }};
+
+  let activeOutput = 0;
+
+  function showOutput(idx) {
+    if (idx < 0 || idx >= SECTIONS.length) return;
+    activeOutput = idx;
+    const sec = SECTIONS[idx];
+
+    // Update sidebar selection
+    document.querySelectorAll(".sidebar-item").forEach((el, i) => {
+      el.classList.toggle("active", i === idx);
+    });
+
+    document.getElementById("out-fname").textContent = sec.filename;
+    document.getElementById("out-extlink").href = `/results/${JOB_ID}/${sec.filename}`;
+    document.getElementById("out-viewlink").href = `/results/${JOB_ID}/view/${sec.filename}`;
+    document.getElementById("out-body").textContent = sec.content;
+  }
+
+  // ── Tabs ──────────────────────────────────────────────────────────
+  const TAB_IDS = { outputs: "tab-outputs", graph: "tab-graph", logs: "tab-logs" };
+
+  function switchTab(name) {
+    Object.entries(TAB_IDS).forEach(([k, id]) => {
+      document.getElementById(id).classList.toggle("active", k === name);
+    });
+    document.querySelectorAll(".tab-btn").forEach((btn, i) => {
+      btn.classList.toggle("active", btn.textContent.toLowerCase().startsWith(name));
+    });
+
+    // Scroll log to bottom when switching to it
+    if (name === "logs") {
+      const lb = document.querySelector(".log-body");
+      if (lb) lb.scrollTop = lb.scrollHeight;
+    }
+  }
+
+  // ── Graph node filter ─────────────────────────────────────────────
+  function filterNodes(q) {
+    q = q.toLowerCase();
+    document.querySelectorAll("#node-list .node-row").forEach(row => {
+      const path = row.dataset.path.toLowerCase();
+      row.style.display = (!q || path.includes(q)) ? "" : "none";
+    });
+  }
+
+  // ── Deep-link to a specific output file via ?file=FILENAME ────────
+  const urlParams = new URLSearchParams(location.search);
+  const fileParam = urlParams.get("file");
+  if (fileParam) {
+    const idx = SECTIONS.findIndex(s => s.filename === fileParam);
+    if (idx >= 0) showOutput(idx);
+  }
+
+  // ── Deep-link to graph tab via ?tab=graph ─────────────────────────
+  const tabParam = urlParams.get("tab");
+  if (tabParam && TAB_IDS[tabParam]) switchTab(tabParam);
+</script>
+</body>
+</html>

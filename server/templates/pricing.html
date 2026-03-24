@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Arkhe — Pricing</title>
+  <link rel="stylesheet" href="/static/arkhe.css" />
+  <style>
+    .pricing-hero {
+      text-align: center;
+      padding: 10rem 1.5rem 5rem;
+      max-width: 700px;
+      margin: 0 auto;
+    }
+    .pricing-hero h1 {
+      font-size: clamp(2.5rem, 5vw, 3.75rem);
+      font-weight: 800;
+      letter-spacing: -2px;
+      line-height: 1.1;
+      color: var(--text);
+      margin-bottom: 1rem;
+    }
+    .pricing-hero h1 em {
+      font-style: normal;
+      color: var(--accent-hi);
+    }
+    .pricing-hero p {
+      font-size: 1.05rem;
+      color: var(--text-2);
+      line-height: 1.7;
+    }
+
+    .pricing-section {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 0 2rem 7rem;
+    }
+
+    /* ── Tier cards ── */
+    .tier-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1rem;
+    }
+    @media (max-width: 700px) { .tier-grid { grid-template-columns: 1fr; } }
+
+    .tier-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 2.25rem 2rem;
+      display: flex;
+      flex-direction: column;
+      transition: border-color 0.2s;
+    }
+    .tier-card.featured {
+      border-color: var(--accent);
+      background: var(--accent-bg);
+    }
+    .tier-card:hover { border-color: var(--border-hi); }
+    .tier-card.featured:hover { border-color: var(--accent-hi); }
+
+    .tier-badge-top {
+      display: inline-block;
+      font-size: 0.68rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      padding: 0.2rem 0.65rem;
+      border-radius: 999px;
+      background: var(--accent-bg);
+      color: var(--accent-hi);
+      border: 1px solid var(--border-hi);
+      margin-bottom: 1.5rem;
+      align-self: flex-start;
+    }
+    .tier-card.featured .tier-badge-top {
+      background: var(--accent);
+      color: #fff;
+      border-color: transparent;
+    }
+
+    .tier-name {
+      font-size: 1.1rem;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+      color: var(--text);
+      margin-bottom: 0.25rem;
+    }
+    .tier-price {
+      font-size: 3rem;
+      font-weight: 800;
+      letter-spacing: -2px;
+      color: var(--text);
+      line-height: 1;
+      margin: 1rem 0 0.3rem;
+    }
+    .tier-price sub {
+      font-size: 1rem;
+      font-weight: 500;
+      color: var(--text-2);
+      vertical-align: baseline;
+      letter-spacing: 0;
+    }
+    .tier-billing {
+      font-size: 0.8rem;
+      color: var(--text-3);
+      margin-bottom: 1.5rem;
+    }
+    .tier-desc {
+      font-size: 0.875rem;
+      color: var(--text-2);
+      line-height: 1.65;
+      margin-bottom: 2rem;
+      padding-bottom: 2rem;
+      border-bottom: 1px solid var(--border);
+      flex: 1;
+    }
+    .tier-action {
+      margin-bottom: 2rem;
+    }
+    .tier-action a, .tier-action button {
+      display: block;
+      width: 100%;
+      text-align: center;
+      padding: 0.75rem;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      transition: filter 0.15s, background 0.15s;
+    }
+    .tier-action .btn-tier-primary {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+    }
+    .tier-action .btn-tier-primary:hover { filter: brightness(1.1); }
+    .tier-action .btn-tier-ghost {
+      background: transparent;
+      color: var(--accent-hi);
+      border: 1px solid var(--border-hi);
+    }
+    .tier-action .btn-tier-ghost:hover { background: var(--accent-bg); }
+
+    .tier-features {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 0.7rem;
+    }
+    .tier-features li {
+      font-size: 0.845rem;
+      color: var(--text-2);
+      display: flex;
+      align-items: flex-start;
+      gap: 0.65rem;
+    }
+    .tier-features li .check {
+      color: var(--accent-hi);
+      flex-shrink: 0;
+      font-size: 0.75rem;
+      margin-top: 0.15rem;
+    }
+    .tier-features li.dim { color: var(--text-3); }
+    .tier-features li.dim .check { color: var(--text-3); }
+
+    /* ── FAQ strip ── */
+    .faq-section {
+      max-width: 700px;
+      margin: 0 auto;
+      padding: 0 2rem 7rem;
+    }
+    .faq-item {
+      border-bottom: 1px solid var(--border);
+      padding: 1.5rem 0;
+    }
+    .faq-item:first-child { border-top: 1px solid var(--border); }
+    .faq-q {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 0.6rem;
+    }
+    .faq-a {
+      font-size: 0.875rem;
+      color: var(--text-2);
+      line-height: 1.65;
+    }
+    .faq-a a { color: var(--accent-hi); text-decoration: none; }
+    .faq-a a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+
+<nav class="ark-nav">
+  <a class="ark-logo" href="/">Arkhe<span>.</span></a>
+  <div class="ark-nav-right">
+    <a href="/">Home</a>
+    <a href="https://github.com/sync7319/Arkhe" target="_blank">GitHub</a>
+    <a href="/#install" class="ark-nav-cta">Install CLI</a>
+    <button class="theme-toggle" id="theme-toggle">
+      <span class="t-icon" id="t-icon">☀️</span>
+      <span id="t-label">Light</span>
+    </button>
+  </div>
+</nav>
+
+<div class="pricing-hero">
+  <h1>Simple, transparent<br><em>pricing.</em></h1>
+  <p>Start free. Scale when you need it. Developers can always bring their own keys and pay nothing.</p>
+</div>
+
+<div class="pricing-section">
+  <div class="tier-grid">
+
+    <!-- Free -->
+    <div class="tier-card">
+      <div class="tier-badge-top">Free forever</div>
+      <div class="tier-name">Web — Free</div>
+      <div class="tier-price">$0</div>
+      <div class="tier-billing">no credit card needed</div>
+      <div class="tier-desc">
+        Full analysis on any public GitHub or GitLab repository. No install, no API keys required.
+      </div>
+      <div class="tier-action">
+        <a href="/" class="btn-tier-ghost">Analyze a repo →</a>
+      </div>
+      <ul class="tier-features">
+        <li><span class="check">✓</span> Codebase map + dependency graph</li>
+        <li><span class="check">✓</span> Blast radius explorer</li>
+        <li><span class="check">✓</span> Smart context API (/context)</li>
+        <li><span class="check">✓</span> Security audit (OWASP Top 10)</li>
+        <li><span class="check">✓</span> Dead code detection</li>
+        <li><span class="check">✓</span> Complexity heatmap</li>
+        <li><span class="check">✓</span> Powered by Gemini</li>
+        <li class="dim"><span class="check">—</span> Anthropic Claude synthesis</li>
+        <li class="dim"><span class="check">—</span> Private repos</li>
+        <li class="dim"><span class="check">—</span> Executive Word report</li>
+      </ul>
+    </div>
+
+    <!-- Pro -->
+    <div class="tier-card featured">
+      <div class="tier-badge-top">Most popular</div>
+      <div class="tier-name">Web — Pro</div>
+      <div class="tier-price">$15<sub>/mo</sub></div>
+      <div class="tier-billing">billed monthly · cancel anytime</div>
+      <div class="tier-desc">
+        Best models, full output suite, and private repo support for teams that need more.
+      </div>
+      <div class="tier-action">
+        <button class="btn-tier-primary" disabled>Coming soon</button>
+      </div>
+      <ul class="tier-features">
+        <li><span class="check">✓</span> Everything in Free</li>
+        <li><span class="check">✓</span> Anthropic Claude synthesis</li>
+        <li><span class="check">✓</span> Private repo support (token auth)</li>
+        <li><span class="check">✓</span> Executive Word report</li>
+        <li><span class="check">✓</span> Test gap + scaffolding</li>
+        <li><span class="check">✓</span> PR impact analysis</li>
+        <li><span class="check">✓</span> Priority processing queue</li>
+        <li><span class="check">✓</span> Persistent cache across runs</li>
+      </ul>
+    </div>
+
+    <!-- CLI -->
+    <div class="tier-card">
+      <div class="tier-badge-top">BYOK · unlimited</div>
+      <div class="tier-name">CLI</div>
+      <div class="tier-price">$0<sub> BYOK</sub></div>
+      <div class="tier-billing">bring your own API keys</div>
+      <div class="tier-desc">
+        Install locally. Run on any directory on your machine. Full control — your keys, your models, no rate limits.
+      </div>
+      <div class="tier-action">
+        <a href="/#install" class="btn-tier-ghost">Install instructions →</a>
+      </div>
+      <ul class="tier-features">
+        <li><span class="check">✓</span> Any local directory, unlimited</li>
+        <li><span class="check">✓</span> All outputs + refactor mode</li>
+        <li><span class="check">✓</span> Groq &amp; Gemini free tiers</li>
+        <li><span class="check">✓</span> Bring your own Anthropic key</li>
+        <li><span class="check">✓</span> No rate limits</li>
+        <li><span class="check">✓</span> SQLite cache (incremental runs)</li>
+        <li><span class="check">✓</span> Works offline after install</li>
+        <li><span class="check">✓</span> GitLab Duo flow included</li>
+      </ul>
+    </div>
+
+  </div>
+</div>
+
+<hr class="divider" style="max-width:960px;margin:0 auto;" />
+
+<!-- FAQ -->
+<div class="faq-section">
+  <h2 class="section-h2" style="text-align:left;margin-bottom:2.5rem">Common questions</h2>
+
+  <div class="faq-item">
+    <div class="faq-q">What does "BYOK" mean?</div>
+    <div class="faq-a">Bring Your Own Key. The CLI reads your own Groq, Gemini, or Anthropic API keys from a local <code>.env</code> file. We never see your keys and never pay for your inference. Groq and Gemini have generous free tiers — most users pay $0.</div>
+  </div>
+  <div class="faq-item">
+    <div class="faq-q">Can I analyze private repositories?</div>
+    <div class="faq-a">Yes with the CLI — point it at any local directory. Private repo support on the web tier is a Pro feature (coming soon).</div>
+  </div>
+  <div class="faq-item">
+    <div class="faq-q">How does the GitLab Duo integration work?</div>
+    <div class="faq-a">Arkhe ships a GitLab Duo flow that runs on GitLab's compute with GitLab's AI tokens — no API keys needed. Mention the agent in any MR comment and it posts a full analysis back. <a href="https://github.com/sync7319/Arkhe" target="_blank">See the docs →</a></div>
+  </div>
+  <div class="faq-item">
+    <div class="faq-q">Is my code sent to Arkhe servers?</div>
+    <div class="faq-a">On the web tier, your repo is cloned to an ephemeral container, analyzed, then deleted. We don't store your source code. The CLI runs entirely on your machine — nothing leaves unless you call an LLM API.</div>
+  </div>
+  <div class="faq-item">
+    <div class="faq-q">What is the /context endpoint and who is it for?</div>
+    <div class="faq-a">After analyzing a repo, Arkhe exposes a <code>POST /context/{job_id}</code> API. Give it a task description and a token budget — it returns the most relevant files ranked by relevance, truncated to fit. Built for AI coding agents (Claude Code, Copilot, Cursor) to stop wasting 70% of their context window on irrelevant files.</div>
+  </div>
+  <div class="faq-item">
+    <div class="faq-q">What is "blast radius" analysis?</div>
+    <div class="faq-a">The <code>GET /impact/{job_id}?file=path</code> endpoint traces every file that depends on the given file — directly and transitively across the full AST-parsed dependency graph. It answers "what breaks if I change this?" with a depth map, risk level, and copy-paste Markdown report. Unlike IDE "find references," this is graph traversal, not symbol search — it catches indirect dependencies too.</div>
+  </div>
+</div>
+
+<footer class="ark-footer">
+  <a class="ark-footer-logo" href="/">Arkhe<span>.</span></a>
+  <div class="ark-footer-links">
+    <a href="/">Home</a>
+    <a href="https://github.com/sync7319/Arkhe" target="_blank">GitHub</a>
+    <a href="#">MIT License</a>
+  </div>
+</footer>
+
+<script>
+  (function () {
+    const stored = localStorage.getItem("arkhe-theme") || "dark";
+    document.documentElement.setAttribute("data-theme", stored);
+    function syncLabel() {
+      const t = document.documentElement.getAttribute("data-theme");
+      const icon = document.getElementById("t-icon");
+      const label = document.getElementById("t-label");
+      if (!icon) return;
+      if (t === "dark") { icon.textContent = "☀️"; label.textContent = "Light"; }
+      else              { icon.textContent = "🌙"; label.textContent = "Dark"; }
+    }
+    document.addEventListener("DOMContentLoaded", () => {
+      syncLabel();
+      document.getElementById("theme-toggle").addEventListener("click", () => {
+        const cur  = document.documentElement.getAttribute("data-theme");
+        const next = cur === "dark" ? "light" : "dark";
+        document.documentElement.setAttribute("data-theme", next);
+        localStorage.setItem("arkhe-theme", next);
+        syncLabel();
+      });
+    });
+  })();
+</script>
+
+</body>
+</html>

@@ -1,14 +1,31 @@
 """
 Synthesizer agent — combines all batch reports into CODEBASE_MAP.md.
-Provider + model controlled entirely from .env via llm_client.
+
+Uses hierarchical synthesis for large codebases:
+  1. Group file reports into batches of BATCH_SIZE
+  2. Mini-synthesize each batch into a short module summary (~500 tokens)
+  3. Final synthesis of all summaries into the full CODEBASE_MAP.md
+
+This keeps every LLM call well under Groq's per-minute token limits.
 """
-from config.llm_client import llm_call_async
+import logging
+from config.llm_client import llm_call_async_pool
 
-SYSTEM = """You are a senior software architect. You have received analysis reports
-from multiple agents, each covering a different module of the same codebase.
-Synthesize them into a single, comprehensive CODEBASE_MAP.md with these sections:
+logger = logging.getLogger("arkhe.synthesizer")
 
-# Arkhe — Codebase Map
+# Files per intermediate batch — keeps each call ~5K tokens (well under 10K TPM)
+BATCH_SIZE = 10
+
+BATCH_SYSTEM = """You are a senior software engineer. Summarize the following file analysis
+reports into a concise module overview (3-6 sentences). Cover: what these files do together,
+key functions/classes (name them explicitly), dependencies, and any gotchas.
+Output plain text — no code blocks, no markdown fences. Be brief and specific."""
+
+SYSTEM = """You are a senior software architect. You have received module summaries
+from a multi-agent analysis of a codebase. Synthesize them into a comprehensive
+CODEBASE_MAP.md with these sections:
+
+# Codebase Map
 
 ## 1. System Overview
 ## 2. Architecture Diagram (ASCII)
@@ -19,19 +36,56 @@ Synthesize them into a single, comprehensive CODEBASE_MAP.md with these sections
 ## 7. Gotchas & Warnings
 ## 8. Navigation Guide
 
-Be thorough but scannable. Use tables where appropriate."""
+Rules:
+- Output raw Markdown directly. Do NOT wrap your response in a code block, markdown fence, or any ``` markers.
+- CRITICAL: Only list function names, class names, and entry points that appear verbatim in the analysis reports below. Do NOT invent, guess, or paraphrase any names. If a function name was not explicitly mentioned in the reports, leave that cell blank or write "—".
+- For the dependencies column: use the "imports:" field from the file list above — those are ground-truth AST-extracted imports. Do not guess or add imports not shown there.
+- Be specific: reference actual file paths, real function names (exactly as reported), and real design patterns you observed. Never make up plausible-sounding names.
+- Do not write generic descriptions like "lazy initialization may cause issues" — name the actual function and the actual risk.
+- Use tables where appropriate. Be thorough but scannable."""
+
+
+async def _call(system: str, prompt: str, max_tokens: int) -> str:
+    from config.model_router import get_heavy_pool
+    pool = get_heavy_pool()
+    logger.info(f"[synthesize] heavy pool: {[m for _, m in pool]} | prompt: {len(prompt):,} chars")
+    return await llm_call_async_pool(pool, system, prompt, max_tokens=max_tokens, role="synthesize")
 
 
 async def synthesize(reports: list[dict], file_tree: list[dict]) -> str:
-    combined = "\n\n---\n\n".join(
-        f"## Batch {r['batch_id']} — Files: {', '.join(r['files'])}\n\n{r['analysis']}"
-        for r in reports
-    )
+    # Build ground-truth import index from AST — prevents hallucinated dependencies
+    def _imports_for(f: dict) -> str:
+        imps = f.get("structure", {}).get("imports", [])
+        return ", ".join(imps[:8]) if imps else "none"
+
     file_list = "\n".join(
-        f"- {f['path']} ({f['tokens']} tokens)" for f in file_tree
+        f"- {f['path']} ({f['tokens']} tokens) | imports: {_imports_for(f)}"
+        for f in file_tree
     )
-    prompt = (
-        f"Full file list ({len(file_tree)} files):\n{file_list}\n\n"
-        f"Agent reports:\n\n{combined}"
-    )
-    return await llm_call_async("report", SYSTEM, prompt, max_tokens=8192)
+
+    # Small codebase — single call is fine
+    if len(reports) <= BATCH_SIZE:
+        combined = "\n\n---\n\n".join(
+            f"## File: {', '.join(r['files'])}\n\n{r['analysis']}"
+            for r in reports
+        )
+        prompt = f"File list ({len(file_tree)} files):\n{file_list}\n\nReports:\n\n{combined}"
+        return await _call(SYSTEM, prompt, max_tokens=8192)
+
+    # Large codebase — hierarchical: batch summaries → final synthesis
+    logger.info(f"[synthesize] hierarchical mode: {len(reports)} reports → batches of {BATCH_SIZE}")
+
+    summaries = []
+    for i in range(0, len(reports), BATCH_SIZE):
+        batch = reports[i:i + BATCH_SIZE]
+        combined = "\n\n---\n\n".join(
+            f"File: {', '.join(r['files'])}\n{r['analysis']}"
+            for r in batch
+        )
+        summary = await _call(BATCH_SYSTEM, combined, max_tokens=2048)
+        summaries.append(f"### Batch {i // BATCH_SIZE + 1} ({len(batch)} files)\n{summary}")
+        logger.info(f"[synthesize] batch {i // BATCH_SIZE + 1}/{(len(reports) + BATCH_SIZE - 1) // BATCH_SIZE} done")
+
+    all_summaries = "\n\n".join(summaries)
+    prompt = f"File list ({len(file_tree)} files):\n{file_list}\n\nModule summaries:\n\n{all_summaries}"
+    return await _call(SYSTEM, prompt, max_tokens=8192)

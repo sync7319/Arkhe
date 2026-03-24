@@ -41,12 +41,13 @@ def scan(repo_path: str) -> list:
         dirnames[:] = [
             d for d in dirnames
             if d not in IGNORE_DIRS
+            and not d.startswith(".")
             and not spec.match_file(os.path.relpath(os.path.join(dirpath, d), repo_path))
         ]
 
         for filename in filenames:
             abs_path = os.path.join(dirpath, filename)
-            rel_path = os.path.relpath(abs_path, repo_path)
+            rel_path = os.path.relpath(abs_path, repo_path).replace("\\", "/")
             ext      = pathlib.Path(filename).suffix.lower()
 
             if ext in IGNORE_EXTENSIONS:

@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Arkhe — {{ label }}</title>
+  <link rel="stylesheet" href="/static/arkhe.css" />
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <style>
+    .report-layout {
+      min-height: 100vh;
+    }
+    @media (max-width: 700px) {
+      .report-sidebar { display: none; }
+    }
+
+    /* ── Sidebar ── */
+    .report-sidebar {
+      position: fixed;
+      top: 56px;
+      left: 0;
+      bottom: 0;
+      width: 240px;
+      border-right: 1px solid var(--border);
+      background: var(--bg);
+      overflow-y: auto;
+      padding: 1.5rem 1rem;
+      z-index: 10;
+    }
+    [data-theme="light"] .report-sidebar { background: var(--bg2); }
+    .sidebar-label {
+      font-size: 0.65rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--text-3);
+      margin-bottom: 0.75rem;
+      padding-left: 0.5rem;
+    }
+    .sidebar-toc { list-style: none; }
+    .sidebar-toc li a {
+      display: block;
+      font-size: 0.8rem;
+      color: var(--text-2);
+      text-decoration: none;
+      padding: 0.3rem 0.5rem;
+      border-radius: 5px;
+      transition: background 0.12s, color 0.12s;
+      line-height: 1.4;
+    }
+    .sidebar-toc li a:hover { background: var(--surface-hi); color: var(--text); }
+    .sidebar-toc li.h3-item a { padding-left: 1rem; font-size: 0.76rem; color: var(--text-3); }
+
+    /* ── Main content ── */
+    /* Sidebar is position:fixed so no grid needed — just margin-left to clear it */
+    .report-main {
+      margin-left: 240px;
+      padding: 7rem 3rem 5rem;
+      max-width: 860px;
+      min-width: 0;
+      box-sizing: border-box;
+    }
+    @media (max-width: 700px) { .report-main { margin-left: 0; padding: 7rem 1.5rem 5rem; } }
+
+    /* ── Report header ── */
+    .report-header {
+      margin-bottom: 3rem;
+      padding-bottom: 2rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .report-eyebrow {
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--accent-hi);
+      margin-bottom: 0.75rem;
+    }
+    .report-title {
+      font-size: clamp(1.75rem, 3.5vw, 2.5rem);
+      font-weight: 800;
+      letter-spacing: -1px;
+      color: var(--text);
+      margin-bottom: 0.6rem;
+      line-height: 1.15;
+    }
+    .report-meta-row {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+    }
+    .report-url {
+      font-size: 0.82rem;
+      color: var(--accent-hi);
+      font-weight: 500;
+    }
+    .report-dot { color: var(--text-3); font-size: 0.8rem; }
+    .report-file {
+      font-size: 0.78rem;
+      color: var(--text-3);
+      font-family: "SF Mono", Menlo, monospace;
+      background: var(--surface-hi);
+      padding: 0.15rem 0.5rem;
+      border-radius: 4px;
+    }
+    .report-actions {
+      display: flex;
+      gap: 0.6rem;
+      margin-top: 1.25rem;
+    }
+
+    /* ── Markdown prose ── */
+    .prose { line-height: 1.75; color: var(--text-2); font-size: 0.95rem; }
+    .prose h1, .prose h2, .prose h3, .prose h4 {
+      color: var(--text);
+      font-weight: 700;
+      letter-spacing: -0.3px;
+      margin: 2.5rem 0 1rem;
+      line-height: 1.25;
+    }
+    .prose h1 { font-size: 1.75rem; letter-spacing: -0.8px; border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
+    .prose h2 { font-size: 1.3rem; }
+    .prose h3 { font-size: 1.05rem; color: var(--text); }
+    .prose h4 { font-size: 0.95rem; }
+    .prose p  { margin: 0 0 1rem; }
+    .prose ul, .prose ol { margin: 0 0 1rem 1.5rem; }
+    .prose li { margin-bottom: 0.35rem; }
+    .prose strong { color: var(--text); font-weight: 600; }
+    .prose em { font-style: italic; }
+    .prose a  { color: var(--accent-hi); text-decoration: none; }
+    .prose a:hover { text-decoration: underline; }
+    .prose blockquote {
+      border-left: 3px solid var(--accent);
+      padding: 0.75rem 1rem;
+      margin: 1.5rem 0;
+      background: var(--accent-bg);
+      border-radius: 0 8px 8px 0;
+      color: var(--text-2);
+    }
+    .prose code {
+      font-size: 0.85em;
+      background: var(--surface-hi);
+      padding: 0.15em 0.45em;
+      border-radius: 4px;
+      color: var(--accent-hi);
+    }
+    .prose pre {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.25rem 1.5rem;
+      overflow-x: auto;
+      margin: 1.5rem 0;
+    }
+    .prose pre code {
+      background: none;
+      padding: 0;
+      color: var(--text-2);
+      font-size: 0.85rem;
+    }
+    .prose table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1.5rem 0;
+      font-size: 0.875rem;
+    }
+    .prose th {
+      text-align: left;
+      padding: 0.6rem 1rem;
+      background: var(--surface-hi);
+      color: var(--text);
+      font-weight: 600;
+      border-bottom: 1px solid var(--border-hi);
+    }
+    .prose td {
+      padding: 0.6rem 1rem;
+      border-bottom: 1px solid var(--border);
+      color: var(--text-2);
+    }
+    .prose hr { border: none; border-top: 1px solid var(--border); margin: 2rem 0; }
+
+  @media print {
+    .ark-nav, .report-sidebar { display: none !important; }
+    .report-main { margin-left: 0 !important; padding: 1rem 2rem !important; max-width: 100% !important; }
+    .report-layout { display: block !important; }
+    .report-actions { display: none !important; }
+  }
+  </style>
+</head>
+<body>
+
+<nav class="ark-nav">
+  <a class="ark-logo" href="/">Arkhe<span>.</span></a>
+  <div class="ark-nav-right">
+    <a href="/results/{{ job_id }}">← Results</a>
+    <a href="/pricing">Pricing</a>
+    <a href="/results/{{ job_id }}/{{ filename }}" download class="ark-nav-cta">Download</a>
+    <button class="theme-toggle" id="theme-toggle">
+      <span class="t-icon" id="t-icon">☀️</span>
+      <span id="t-label">Light</span>
+    </button>
+  </div>
+</nav>
+
+<div class="report-layout">
+  <!-- Sidebar TOC -->
+  <aside class="report-sidebar">
+    <div class="sidebar-label">Contents</div>
+    <ul class="sidebar-toc" id="toc"></ul>
+  </aside>
+
+  <!-- Main -->
+  <main class="report-main">
+    <div class="report-header">
+      <div class="report-eyebrow">Analysis Report</div>
+      <h1 class="report-title">{{ label }}</h1>
+      <div class="report-meta-row">
+        <span class="report-url">{{ job_url }}</span>
+        <span class="report-dot">·</span>
+        <span class="report-file">{{ filename }}</span>
+      </div>
+      <div class="report-actions">
+        <a class="btn-ghost" href="/results/{{ job_id }}/{{ filename }}" download>Download raw</a>
+        <a class="btn-ghost" href="/results/{{ job_id }}">← All outputs</a>
+      </div>
+    </div>
+
+    <div class="prose" id="report-body"></div>
+  </main>
+</div>
+
+<script>
+  // Render markdown
+  const raw = {{ content | tojson }};
+  document.getElementById("report-body").innerHTML = marked.parse(raw);
+
+  // Build TOC from rendered headings
+  const headings = document.querySelectorAll(".prose h1, .prose h2, .prose h3");
+  const toc = document.getElementById("toc");
+  headings.forEach((h, i) => {
+    const id = "heading-" + i;
+    h.id = id;
+    const li = document.createElement("li");
+    if (h.tagName === "H3") li.className = "h3-item";
+    const a = document.createElement("a");
+    a.href = "#" + id;
+    a.textContent = h.textContent;
+    li.appendChild(a);
+    toc.appendChild(li);
+  });
+
+  // Theme
+  (function () {
+    const stored = localStorage.getItem("arkhe-theme") || "dark";
+    document.documentElement.setAttribute("data-theme", stored);
+    function syncLabel() {
+      const t = document.documentElement.getAttribute("data-theme");
+      const icon = document.getElementById("t-icon");
+      const label = document.getElementById("t-label");
+      if (!icon) return;
+      if (t === "dark") { icon.textContent = "☀️"; label.textContent = "Light"; }
+      else              { icon.textContent = "🌙"; label.textContent = "Dark"; }
+    }
+    document.addEventListener("DOMContentLoaded", () => {
+      syncLabel();
+      document.getElementById("theme-toggle").addEventListener("click", () => {
+        const cur  = document.documentElement.getAttribute("data-theme");
+        const next = cur === "dark" ? "light" : "dark";
+        document.documentElement.setAttribute("data-theme", next);
+        localStorage.setItem("arkhe-theme", next);
+        syncLabel();
+      });
+    });
+  })();
+</script>
+
+</body>
+</html>

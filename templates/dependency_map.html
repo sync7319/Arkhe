@@ -2,405 +2,726 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<title>Arkhe — Architecture Map</title>
+<title>Dependency Map</title>
+<script>document.documentElement.setAttribute("data-theme",localStorage.getItem("arkhe-theme")||"dark");</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
 <style>
+:root{
+  --bg:#0b0f1a;--surface:#141927;--surface2:#1a2236;--border:#2a3550;
+  --text:#e2e8f0;--text2:#94a3b8;--text3:#64748b;--text4:#3d4f6b;
+  --text-bright:#f1f5f9;--text5:#cbd5e1;
+  --accent:#3b82f6;
+  --search-bg:#141927;--sym-hover:#1a2236;
+  --shadow:rgba(0,0,0,.45);
+  --c-fwd:#3b82f6;
+  --c-back:#8b5cf6;
+  --c-mut:#f59e0b;
+  --folder-bg:rgba(255,255,255,.022);
+  --folder-border:rgba(255,255,255,.06);
+  --folder-label:#4a5c7a;
+  --col-div:rgba(255,255,255,.05);
+}
+[data-theme="light"]{
+  --bg:#f0f4f8;--surface:#ffffff;--surface2:#f8fafc;--border:#d1d9e6;
+  --text:#0f172a;--text2:#475569;--text3:#64748b;--text4:#94a3b8;
+  --text-bright:#1e293b;--text5:#475569;
+  --accent:#2563eb;
+  --search-bg:#f1f5f9;--sym-hover:#f1f5f9;
+  --shadow:rgba(0,0,0,.1);
+  --c-fwd:#2563eb;
+  --c-back:#7c3aed;
+  --c-mut:#d97706;
+  --folder-bg:rgba(0,0,0,.025);
+  --folder-border:rgba(0,0,0,.09);
+  --folder-label:#94a3b8;
+  --col-div:rgba(0,0,0,.07);
+}
 *{margin:0;padding:0;box-sizing:border-box}
-body{background:#080c14;color:#e6edf3;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",monospace;overflow:hidden;user-select:none}
+body{background:var(--bg);color:var(--text);font-family:'Inter',-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;overflow:hidden;user-select:none}
 
-#header{
-  position:fixed;top:0;left:0;right:0;height:50px;
-  background:rgba(8,12,20,0.97);border-bottom:1px solid #151e2e;
-  backdrop-filter:blur(16px);display:flex;align-items:center;
-  padding:0 24px;gap:20px;z-index:300
-}
-#logo{font-size:13px;font-weight:700;letter-spacing:3px;color:#4da3ff}
-#logo-sub{font-size:9px;color:#2a3a50;letter-spacing:2px;margin-top:2px}
-#search{
-  flex:1;max-width:240px;padding:5px 14px;
-  background:#0a1020;border:1px solid #151e2e;border-radius:20px;
-  color:#e6edf3;font-size:12px;outline:none;transition:border .2s
-}
-#search:focus{border-color:#4da3ff}
-#stats{margin-left:auto;font-size:10px;color:#2a3a50;letter-spacing:1px}
+/* ── Header ── */
+#header{position:fixed;top:0;left:0;right:0;height:48px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 20px;gap:12px;z-index:300}
+#map-label{font-size:10px;font-weight:700;color:var(--text3);letter-spacing:1.5px;text-transform:uppercase;white-space:nowrap;flex-shrink:0}
+#search{flex:0 1 220px;padding:5px 14px;background:var(--search-bg);border:1px solid var(--border);border-radius:20px;color:var(--text);font-size:11px;outline:none;transition:border .15s}
+#search:focus{border-color:var(--accent)}
+#search::placeholder{color:var(--text4)}
+.ctrl-btn{padding:4px 12px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text2);font-size:10px;cursor:pointer;transition:all .15s;white-space:nowrap}
+.ctrl-btn:hover{background:var(--border);color:var(--text)}
+.ctrl-btn.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+#stats{margin-left:auto;font-size:10px;color:var(--text3);letter-spacing:.3px;white-space:nowrap}
 
-#legend{
-  position:fixed;bottom:20px;right:20px;
-  background:rgba(8,12,20,0.95);border:1px solid #151e2e;
-  border-radius:10px;padding:14px 18px;z-index:300;min-width:190px
-}
-#legend h3{font-size:9px;color:#2a3a50;letter-spacing:2px;text-transform:uppercase;margin-bottom:10px}
-.leg-row{display:flex;align-items:center;gap:9px;margin:5px 0;font-size:11px;color:#8b949e}
+/* ── Legend ── */
+#legend{position:fixed;bottom:16px;right:16px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 16px;z-index:300;min-width:190px;box-shadow:0 4px 24px var(--shadow)}
+#legend h4{font-size:8px;color:var(--text3);letter-spacing:2px;text-transform:uppercase;margin-bottom:8px;font-weight:600}
+.leg-row{display:flex;align-items:center;gap:8px;margin:4px 0;font-size:10px;color:var(--text2)}
 .leg-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
-.leg-sep{border-top:1px solid #151e2e;margin:9px 0}
-.leg-link{display:flex;align-items:center;gap:9px;margin:5px 0;font-size:11px;color:#8b949e}
+.leg-sep{border-top:1px solid var(--border);margin:9px 0}
+.leg-gradient{height:6px;border-radius:3px;margin:4px 0 2px}
+.leg-gradient-labels{display:flex;justify-content:space-between;font-size:8px;color:var(--text3)}
+.leg-link{display:flex;align-items:center;gap:9px;margin:5px 0;font-size:10px;color:var(--text2)}
 
-#tooltip{
-  position:fixed;pointer-events:none;
-  background:rgba(8,12,20,0.97);border:1px solid #151e2e;
-  border-radius:8px;padding:10px 14px;font-size:11px;
-  box-shadow:0 8px 40px rgba(0,0,0,.8);z-index:400;display:none;max-width:250px
-}
-.tt-name{font-weight:700;color:#4da3ff;margin-bottom:5px}
-.tt-row{color:#3a5070;margin:2px 0}.tt-row span{color:#c9d1d9}
+/* ── Tooltip ── */
+#tooltip{position:fixed;pointer-events:none;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-size:10px;box-shadow:0 8px 32px var(--shadow);z-index:400;display:none;max-width:300px}
+.tt-name{font-weight:700;color:var(--text-bright);margin-bottom:2px;font-size:11px;font-family:'SF Mono',Consolas,monospace}
+.tt-path{font-size:9px;color:var(--text3);font-family:'SF Mono',Consolas,monospace;margin-bottom:5px}
+.tt-row{color:var(--text3);margin:2px 0}
+.tt-row span{color:var(--text2);font-weight:500}
 
-#info{
-  position:fixed;top:66px;left:20px;
-  background:rgba(8,12,20,0.97);border:1px solid #151e2e;
-  border-radius:10px;padding:16px;width:270px;z-index:300;display:none
-}
-.i-head{display:flex;justify-content:space-between;align-items:start;margin-bottom:12px}
-.i-title{font-size:12px;font-weight:700;color:#4da3ff;word-break:break-all;line-height:1.5}
-.i-close{color:#2a3a50;cursor:pointer;font-size:16px;padding-left:8px;flex-shrink:0}
-.i-close:hover{color:#e6edf3}
-.i-block{margin-bottom:10px}
-.i-label{font-size:9px;color:#2a3a50;letter-spacing:2px;text-transform:uppercase;margin-bottom:4px}
-.i-val{font-size:11px;color:#c9d1d9;line-height:1.6}
-.tag{display:inline-block;background:#0a1e30;border:1px solid #152840;border-radius:3px;padding:1px 6px;font-size:10px;margin:2px;color:#79c0ff;font-family:monospace}
-.mod-badge{display:inline-block;padding:2px 9px;border-radius:10px;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase}
+/* ── Info Panel ── */
+#info{position:fixed;top:64px;left:16px;background:var(--surface);border:1px solid var(--border);border-radius:12px;width:300px;z-index:300;box-shadow:0 8px 32px var(--shadow);flex-direction:column;max-height:calc(100vh - 80px)}
+.i-head{display:flex;justify-content:space-between;align-items:center;padding:12px 14px 10px;border-bottom:1px solid var(--border);flex-shrink:0}
+.i-crumb{font-size:9px;color:var(--text3);margin-bottom:1px;font-family:'SF Mono',Consolas,monospace}
+.i-title{font-size:12px;font-weight:700;color:var(--text-bright);word-break:break-all;line-height:1.3}
+.i-close{color:var(--text3);cursor:pointer;font-size:16px;line-height:1;padding:3px 5px;border-radius:4px;flex-shrink:0;margin-left:6px;transition:all .1s}
+.i-close:hover{color:var(--text-bright);background:var(--border)}
+.i-scroll{overflow-y:auto;flex:1;padding:12px 14px}
+.i-stats{display:flex;gap:6px;margin-bottom:12px}
+.i-stat{flex:1;text-align:center;padding:6px 3px;background:var(--surface2);border-radius:6px;border:1px solid var(--border)}
+.i-stat-n{font-size:16px;font-weight:800;color:var(--text-bright);line-height:1}
+.i-stat-l{font-size:8px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:2px}
+.i-section{margin-bottom:12px}
+.i-label{font-size:8px;color:var(--text3);letter-spacing:1.5px;text-transform:uppercase;font-weight:600;display:flex;align-items:center;gap:6px;margin-bottom:6px}
+.i-label::after{content:"";flex:1;height:1px;background:var(--border)}
+.sym{display:flex;align-items:center;gap:6px;padding:3px 6px;border-radius:4px;margin:2px 0;transition:background .1s}
+.sym:hover{background:var(--sym-hover)}
+.sym-badge{font-size:8px;font-weight:700;letter-spacing:.3px;padding:1px 5px;border-radius:3px;flex-shrink:0;font-family:monospace}
+.badge-fn{background:rgba(59,130,246,.15);color:#60a5fa}
+.badge-cls{background:rgba(16,185,129,.15);color:#34d399}
+.sym-name{font-family:monospace;font-size:10px;color:var(--text5);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.dep-row{display:flex;align-items:flex-start;gap:6px;padding:3px 6px;border-radius:4px;margin:2px 0;font-size:10px;font-family:monospace;color:var(--text3);transition:background .1s}
+.dep-row.clickable{cursor:pointer;color:#a78bfa}
+.dep-row.clickable:hover{background:rgba(167,139,250,.08)}
+.dep-row.ext{color:var(--text4)}
+.dep-arrow{flex-shrink:0;font-style:normal;color:var(--text4);line-height:1.5}
+.dep-body{flex:1;overflow:hidden}
+.dep-file{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.4}
+.dep-syms{font-size:9px;color:var(--text4);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.none-msg{font-size:10px;color:var(--border);padding:3px 6px;font-style:italic}
+.mod-chip{display:inline-flex;align-items:center;padding:2px 8px;border-radius:12px;font-size:9px;font-weight:700;letter-spacing:.5px;text-transform:uppercase}
 
-svg{cursor:grab}
+/* ── SVG ── */
+svg{cursor:grab;background:var(--bg)}
 svg:active{cursor:grabbing}
-.col-divider{stroke:#151e2e;stroke-width:1;stroke-dasharray:3,10}
-.col-label{font-size:9px;fill:#1a2535;letter-spacing:2px;text-transform:uppercase;text-anchor:middle}
-.branch{stroke:#1e2e42;stroke-width:1.5;fill:none}
-.file-node{cursor:pointer}
-.file-rect{rx:6;ry:6;stroke-width:1}
-.file-node:hover .file-rect{filter:brightness(1.5)}
-.file-node.dimmed{opacity:.07}
-.file-node.highlighted .file-rect{filter:drop-shadow(0 0 8px currentColor) brightness(1.6)}
-.file-name{font-size:10px;font-weight:600;pointer-events:none;text-anchor:middle}
-.file-meta{font-size:8px;pointer-events:none;text-anchor:middle;fill:#3a5070}
-.folder-node{cursor:pointer}
-.folder-rect{rx:8;ry:8;stroke-width:1.5}
-.folder-node:hover .folder-rect{filter:brightness(1.4)}
-.folder-name{font-size:11px;font-weight:700;pointer-events:none;text-anchor:middle;letter-spacing:1px;text-transform:uppercase}
-.folder-count{font-size:9px;pointer-events:none;text-anchor:middle}
-.dep-link{fill:none;stroke-width:1.5;opacity:.7}
-.dep-direct{stroke:#4da3ff}
-.dep-mutual{stroke:#f0883e;stroke-width:2;opacity:.85}
-.dep-link.lit{opacity:1!important;stroke-width:2.5!important}
+.node{cursor:pointer}
+.node.dimmed{opacity:.04;transition:opacity .3s}
+.node-rect{transition:filter .2s,fill .3s,stroke .3s}
+.node:hover .node-rect{filter:brightness(1.3) drop-shadow(0 0 10px rgba(255,255,255,.12))}
+.node-label{font-size:10px;font-weight:700;pointer-events:none;fill:var(--text-bright);font-family:'SF Mono',Consolas,monospace}
+.node-sub{font-size:8px;pointer-events:none;fill:var(--text3);font-family:'SF Mono',Consolas,monospace}
+.node-count{font-size:8px;pointer-events:none;fill:var(--text4);text-anchor:end}
+.col-header{font-size:8px;fill:var(--text4);letter-spacing:2.5px;text-transform:uppercase;text-anchor:middle;font-weight:700}
+.col-line{stroke:var(--col-div);stroke-width:1}
+
+/* ── Links ── */
+.link{fill:none;transition:opacity .2s,stroke-width .2s}
+.link-fwd{stroke:var(--c-fwd);stroke-width:2.2;opacity:.5}
+.link-back{stroke:var(--c-back);stroke-width:2;stroke-dasharray:7,4;opacity:.5}
+.link-mut{stroke:var(--c-mut);stroke-width:2.8;opacity:.6}
+.link.lit{opacity:1!important;stroke-width:3.5!important}
 </style>
 </head>
 <body>
 
 <div id="header">
-  <div><div id="logo">⬡ ARKHE</div><div id="logo-sub">ARCHITECTURE MAP</div></div>
-  <input id="search" type="text" placeholder="Search files…"/>
+  <span id="map-label">Dependency Map</span>
+  <input id="search" type="text" placeholder="Search files\u2026"/>
+  <button class="ctrl-btn" onclick="fitGraph()">Fit</button>
+  <button class="ctrl-btn" id="btn-color" onclick="toggleColor()">Heatmap</button>
   <div id="stats"></div>
 </div>
 
 <div id="legend">
-  <h3>Folders</h3>
-  <div id="leg-folders"></div>
+  <div id="leg-heat">
+    <h4>Complexity</h4>
+    <div class="leg-gradient" style="background:linear-gradient(to right,#86efac,#fde047,#f87171)"></div>
+    <div class="leg-gradient-labels"><span>Low</span><span>High</span></div>
+  </div>
+  <div id="leg-folders" style="display:none"><h4>Folders</h4></div>
   <div class="leg-sep"></div>
-  <h3>Dependencies</h3>
+  <h4>Imports</h4>
   <div class="leg-link">
-    <svg width="30" height="10">
-      <defs><marker id="ld1" markerWidth="5" markerHeight="5" refX="4" refY="2.5" orient="auto"><path d="M0,0L5,2.5L0,5" fill="#4da3ff"/></marker></defs>
-      <line x1="0" y1="5" x2="26" y2="5" stroke="#4da3ff" stroke-width="1.5" marker-end="url(#ld1)"/>
-    </svg>Direct import
+    <svg width="42" height="14"><line x1="2" y1="7" x2="31" y2="7" stroke="#3b82f6" stroke-width="2.5"/><polygon points="30,3 42,7 30,11" fill="#3b82f6"/></svg>
+    <span>Parent \u2192 Child</span>
   </div>
   <div class="leg-link">
-    <svg width="30" height="10">
-      <defs>
-        <marker id="ld2" markerWidth="5" markerHeight="5" refX="4" refY="2.5" orient="auto"><path d="M0,0L5,2.5L0,5" fill="#f0883e"/></marker>
-        <marker id="ld2b" markerWidth="5" markerHeight="5" refX="1" refY="2.5" orient="auto-start-reverse"><path d="M0,0L5,2.5L0,5" fill="#f0883e"/></marker>
-      </defs>
-      <line x1="0" y1="5" x2="26" y2="5" stroke="#f0883e" stroke-width="2" marker-end="url(#ld2)" marker-start="url(#ld2b)"/>
-    </svg>Mutual
+    <svg width="42" height="14"><line x1="2" y1="7" x2="31" y2="7" stroke="#8b5cf6" stroke-width="2" stroke-dasharray="5,3"/><polygon points="30,3 42,7 30,11" fill="#8b5cf6"/></svg>
+    <span>Child \u2192 Parent</span>
+  </div>
+  <div class="leg-link">
+    <svg width="42" height="14"><polygon points="0,3 11,7 0,11" fill="#f59e0b"/><line x1="2" y1="7" x2="31" y2="7" stroke="#f59e0b" stroke-width="2.8"/><polygon points="30,3 42,7 30,11" fill="#f59e0b"/></svg>
+    <span>Mutual</span>
   </div>
 </div>
 
-<div id="info">
+<div id="info" style="display:none;flex-direction:column">
   <div class="i-head">
-    <div class="i-title" id="i-title">—</div>
-    <div class="i-close" onclick="closeInfo()">✕</div>
+    <div style="min-width:0"><div class="i-crumb" id="i-crumb"></div><div class="i-title" id="i-title"></div></div>
+    <div class="i-close" onclick="closeInfo()">\u2715</div>
   </div>
-  <div id="i-body"></div>
+  <div class="i-scroll" id="i-scroll"></div>
 </div>
 
 <div id="tooltip"></div>
 <svg id="graph"></svg>
 
 <script>
-const ALL_NODES = {{NODES_JSON}};
-const ALL_LINKS = {{LINKS_JSON}};
+const ALL_NODES_RAW = {{NODES_JSON}};
+const ALL_LINKS_RAW = {{LINKS_JSON}};
+
+// ── Show all nodes by default (all are code files, filtered at build time) ────
+const connectedIds = new Set();
+ALL_LINKS_RAW.forEach(l => { connectedIds.add(l.source); connectedIds.add(l.target); });
+
+let showIsolated = true;
+const connectedNodes = ALL_NODES_RAW.filter(n => connectedIds.has(n.id));
+let ALL_NODES = ALL_NODES_RAW;
+let ALL_LINKS = ALL_LINKS_RAW;
+
+const isolatedCount = ALL_NODES_RAW.length - connectedNodes.length;
+if (isolatedCount > 0 && connectedNodes.length > 0) {
+  const btn = document.createElement("button");
+  btn.className = "ctrl-btn active";
+  btn.id = "btn-isolated";
+  btn.textContent = `${isolatedCount} isolated`;
+  btn.title = "Toggle files with no imports";
+  btn.onclick = () => {
+    showIsolated = !showIsolated;
+    btn.classList.toggle("active", showIsolated);
+    ALL_NODES = showIsolated ? ALL_NODES_RAW : connectedNodes;
+    rebuildGraph();
+  };
+  document.getElementById("header").appendChild(btn);
+}
 
 const W = window.innerWidth, H = window.innerHeight;
+
+// ── Layout constants ──────────────────────────────────────────────────────────
+const NODE_W    = 178;
+const NODE_H    = 44;
+const NODE_R    = 7;
+const COL_GAP   = 300;   // horizontal distance between layer columns
+const MAX_LAYERS = 8;    // cap layer depth — compress deep chains into this many columns
+const ROW_GAP   = 10;    // vertical gap between nodes in the same folder group
+const GRP_GAP   = 38;    // extra vertical gap between different folder groups
+const FHDR      = 30;    // folder label height above first node in group
+const FSIDE     = 14;    // folder container horizontal padding
+const FBOT      = 14;    // folder container bottom padding
+const LEFT_PAD  = 72;
+const TOP_PAD   = 82;
+
+// ── Colors ────────────────────────────────────────────────────────────────────
+const ALL_GROUPS = [...new Set(ALL_NODES_RAW.map(d => d.group))].sort();
+const PALETTE = [
+  "#3b82f6","#10b981","#f59e0b","#8b5cf6","#ef4444",
+  "#06b6d4","#ec4899","#6366f1","#14b8a6","#f97316",
+  "#84cc16","#a855f7","#0ea5e9","#fb923c","#22d3ee",
+];
+const colorOf = d3.scaleOrdinal().domain(ALL_GROUPS).range(PALETTE);
+const maxC = Math.max(...ALL_NODES_RAW.map(n => n.complexity || 0), 1);
+function heatColor(c) {
+  const t = Math.min((c || 0) / maxC, 1);
+  if (t < 0.5) return d3.interpolateRgb("#86efac","#fde047")(t * 2);
+  return d3.interpolateRgb("#fde047","#f87171")((t - 0.5) * 2);
+}
+let colorMode = {{HEATMAP_DEFAULT}} ? "heat" : "folder";
+function nodeColor(d) { return colorMode === "heat" ? heatColor(d.complexity) : colorOf(d.group); }
+
+// ── SVG + zoom ────────────────────────────────────────────────────────────────
 const svg = d3.select("#graph").attr("width", W).attr("height", H);
 const defs = svg.append("defs");
+defs.append("filter").attr("id","shd").attr("x","-20%").attr("y","-20%")
+  .attr("width","140%").attr("height","140%")
+  .append("feDropShadow").attr("dx",0).attr("dy",2).attr("stdDeviation",3).attr("flood-opacity",.22);
 
-const mkM = (id, color) => {
-  defs.append("marker").attr("id",id).attr("viewBox","0 -4 10 8")
-    .attr("refX",9).attr("refY",0).attr("markerWidth",5).attr("markerHeight",5)
-    .attr("orient","auto").append("path").attr("d","M0,-4L10,0L0,4").attr("fill",color);
-};
-const mkMR = (id, color) => {
-  defs.append("marker").attr("id",id).attr("viewBox","0 -4 10 8")
-    .attr("refX",1).attr("refY",0).attr("markerWidth",5).attr("markerHeight",5)
-    .attr("orient","auto-start-reverse").append("path").attr("d","M0,-4L10,0L0,4").attr("fill",color);
-};
-mkM("m-direct","#4da3ff"); mkM("m-mutual","#f0883e"); mkMR("m-mutual-r","#f0883e");
-
-const groups  = [...new Set(ALL_NODES.map(d => d.group))].sort();
-const palette = ["#4da3ff","#3fb950","#f0883e","#bc8cff","#ffa657","#56d364","#ff7b72","#79c0ff","#d2a8ff","#58a6ff"];
-const colorOf = d3.scaleOrdinal().domain(groups).range(palette);
-
-document.getElementById("leg-folders").innerHTML = groups.map(g =>
-  `<div class="leg-row"><div class="leg-dot" style="background:${colorOf(g)}"></div><span>${g}</span></div>`
-).join("");
-document.getElementById("stats").textContent = `${ALL_NODES.length} FILES  ·  ${ALL_LINKS.length} EDGES`;
-
-// ── Layout constants ────────────────────────────────────────────
-const COL0_X  = 80;
-const COL1_X  = 280;
-const COL2_X  = 520;
-const TOP_PAD = 68;
-
-// Node dimensions
-const ROOT_W = 120, ROOT_H = 44;
-const FOLD_W = 170, FOLD_H = 48;
-const FILE_W = 160, FILE_H = 38;
-const FILE_GAP = 10;
-const FOLD_GAP = 14;
-
-// State
-const folderState = {};
-groups.forEach(g => { folderState[g] = false; });
+// Arrow markers — forward (blue), back (purple), mutual (orange)
+function mkArr(id, color) {
+  defs.append("marker").attr("id",id)
+    .attr("viewBox","0 0 12 8").attr("refX",12).attr("refY",4)
+    .attr("markerWidth",10).attr("markerHeight",8).attr("orient","auto")
+    .append("path").attr("d","M0,0.5 L11,4 L0,7.5 L2.5,4 Z").attr("fill",color);
+}
+function mkArrRev(id, color) {
+  defs.append("marker").attr("id",id)
+    .attr("viewBox","0 0 12 8").attr("refX",0).attr("refY",4)
+    .attr("markerWidth",10).attr("markerHeight",8).attr("orient","auto-start-reverse")
+    .append("path").attr("d","M12,0.5 L1,4 L12,7.5 L9.5,4 Z").attr("fill",color);
+}
+mkArr("a-fwd","#3b82f6");     mkArr("a-fwd-lit","#60a5fa");
+mkArr("a-back","#8b5cf6");    mkArr("a-back-lit","#a78bfa");
+mkArr("a-mut","#f59e0b");     mkArr("a-mut-lit","#fbbf24");
+mkArrRev("a-mut-rev","#f59e0b"); mkArrRev("a-mut-rev-lit","#fbbf24");
 
 const gMain = svg.append("g");
-svg.call(d3.zoom().scaleExtent([0.08,5]).on("zoom", e => gMain.attr("transform", e.transform)));
+let currentTransform = d3.zoomIdentity;
+const zoomB = d3.zoom().scaleExtent([0.03, 5]).on("zoom", e => {
+  gMain.attr("transform", e.transform); currentTransform = e.transform;
+});
+svg.call(zoomB);
 
-const gBranches = gMain.append("g");
-const gLinks    = gMain.append("g");
-const gNodes    = gMain.append("g");
+const gFolders = gMain.append("g");  // folder backgrounds (bottom layer)
+const gCols    = gMain.append("g");  // column headers + divider lines
+const gEdges   = gMain.append("g");  // dependency arrows
+const gNodes   = gMain.append("g");  // file nodes (top layer)
 
-// ── Core layout computation ─────────────────────────────────────
-function folderHeight(g) {
-  if (!folderState[g]) return FOLD_H;
-  const count = ALL_NODES.filter(n => n.group === g).length;
-  return Math.max(FOLD_H, count * (FILE_H + FILE_GAP) - FILE_GAP);
-}
+// ── Graph builder — called on init and when isolated toggle changes ───────────
+let nodes = [], folderBgs = [], renderLinks = [], nodeMap = {};
+let nodeEl, linkEl;
 
-function totalLayoutHeight() {
-  return groups.reduce((acc, g) => acc + folderHeight(g) + FOLD_GAP, -FOLD_GAP);
-}
+function buildLayout() {
+  if (!ALL_NODES.length) return 0;
+  // ── Layer assignment (longest-path BFS) ──
+  const nm = {};
+  ALL_NODES.forEach(n => { nm[n.id] = {...n}; });
+  const adj = {}, incoming = {};
+  ALL_NODES.forEach(n => { adj[n.id] = []; incoming[n.id] = []; });
+  // Only use links between currently visible nodes
+  const visIds = new Set(ALL_NODES.map(n => n.id));
+  const visLinks = ALL_LINKS_RAW.filter(l => visIds.has(l.source) && visIds.has(l.target));
+  visLinks.forEach(l => {
+    adj[l.source].push(l.target);
+    incoming[l.target].push(l.source);
+    if (l.bidirectional) { adj[l.target].push(l.source); incoming[l.source].push(l.target); }
+  });
 
-function folderCenterY(g) {
-  const totalH = totalLayoutHeight();
-  const startY = TOP_PAD + H/2 - totalH/2;
-  let y = startY;
-  for (const gr of groups) {
-    const h = folderHeight(gr);
-    if (gr === g) return y + h/2;
-    y += h + FOLD_GAP;
+  let roots = ALL_NODES.filter(n => incoming[n.id].length === 0);
+  if (!roots.length) roots = [ALL_NODES.reduce((a, b) => adj[a.id].length >= adj[b.id].length ? a : b)];
+
+  const layer = {};
+  roots.forEach(n => { layer[n.id] = 0; });
+  const visited = new Set(roots.map(n => n.id));
+  const bfsQ = [...roots.map(n => n.id)];
+  while (bfsQ.length) {
+    const id = bfsQ.shift();
+    adj[id].forEach(tid => {
+      const nl = (layer[id] || 0) + 1;
+      if (layer[tid] === undefined || nl > layer[tid]) layer[tid] = nl;
+      if (!visited.has(tid)) { visited.add(tid); bfsQ.push(tid); }
+    });
   }
-  return y;
+  ALL_NODES.forEach(n => { if (layer[n.id] === undefined) layer[n.id] = Math.max(0, ...Object.values(layer)) + 1; });
+
+  // Cap layers at MAX_LAYERS — compress everything deeper into the last column
+  const rawMax = Math.max(0, ...Object.values(layer));
+  if (rawMax >= MAX_LAYERS) {
+    ALL_NODES.forEach(n => {
+      layer[n.id] = Math.min(layer[n.id], MAX_LAYERS - 1);
+    });
+  }
+
+  const numLayers = Math.min(rawMax + 1, MAX_LAYERS);
+
+  // ── Group nodes by (layer, folder) ──
+  const byLayerGroup = Array.from({length: numLayers}, () => ({}));
+  ALL_NODES.forEach(n => {
+    const col = layer[n.id];
+    if (!byLayerGroup[col][n.group]) byLayerGroup[col][n.group] = [];
+    byLayerGroup[col][n.group].push(n);
+  });
+  byLayerGroup.forEach(byGrp => {
+    Object.values(byGrp).forEach(arr => arr.sort((a, b) => a.name.localeCompare(b.name)));
+  });
+
+  // ── Assign pixel positions ──
+  nodes = []; folderBgs = []; nodeMap = {};
+  byLayerGroup.forEach((byGrp, col) => {
+    const colX = LEFT_PAD + col * COL_GAP;
+    let y = TOP_PAD;
+    Object.keys(byGrp).sort().forEach((grp, gi) => {
+      if (gi > 0) y += GRP_GAP;
+      const grpNodes = byGrp[grp];
+      const grpStartY = y + FHDR;
+      grpNodes.forEach((n, i) => {
+        const nd = {...n, px: colX, py: grpStartY + i * (NODE_H + ROW_GAP), _layer: col};
+        nodes.push(nd);
+        nodeMap[n.id] = nd;
+      });
+      const grpInnerH = grpNodes.length * (NODE_H + ROW_GAP) - ROW_GAP;
+      const totalH = FHDR + grpInnerH + FBOT;
+      folderBgs.push({x: colX - FSIDE, y, w: NODE_W + FSIDE * 2, h: totalH,
+        color: colorOf(grp), label: grp === "root" ? "/" : grp + "/"});
+      y += totalH;
+    });
+  });
+
+  // ── Prepare edges ──
+  renderLinks = [];
+  visLinks.forEach(l => {
+    const sn = nodeMap[l.source], tn = nodeMap[l.target];
+    if (!sn || !tn) return;
+    const isMut      = !!l.bidirectional;
+    const isBack     = !isMut && sn._layer >= tn._layer;
+    const isSameLayer = sn._layer === tn._layer;
+    renderLinks.push({_source: sn, _target: tn, mutual: isMut, _back: isBack, _sameLayer: isSameLayer});
+  });
+
+  // ── Forward edge bundling: edges from same source + same target layer share midX ──
+  const fwdMidXMap = {};
+  renderLinks.forEach(d => {
+    if (d._back || d._sameLayer) return;
+    const key = `${d._source.id}:${d._target._layer}`;
+    if (!fwdMidXMap[key]) fwdMidXMap[key] = (d._source.px + NODE_W + d._target.px) / 2;
+    d._midX = fwdMidXMap[key];
+  });
+
+  // ── Back + same-layer edge bundling: edges from same source share a left bypass lane ──
+  // All edges from the same source exit at the same bypass x → visual merging.
+  const BYPASS_BASE = LEFT_PAD - 30;
+  const BYPASS_LANE_W = 14;
+  const srcLaneMap = {};
+  let nextLane = 0;
+  renderLinks.forEach(d => {
+    if (!d._back && !d._sameLayer) return;
+    const sid = d._source.id;
+    if (srcLaneMap[sid] === undefined) { srcLaneMap[sid] = nextLane % 10; nextLane++; }
+    d._bypassX = BYPASS_BASE - srcLaneMap[sid] * BYPASS_LANE_W;
+  });
+
+  // stats
+  document.getElementById("stats").textContent =
+    `${ALL_NODES.length} files \u00b7 ${visLinks.length} edges`;
+
+  return numLayers;
 }
 
-// ── Render ──────────────────────────────────────────────────────
-function render() {
-  gBranches.selectAll("*").remove();
+// ── Edge path computation — all orthogonal, no curves ─────────────────────────
+function edgePath(d) {
+  const s = d._source, t = d._target;
+  const halfH = NODE_H / 2;
+
+  // Back edges and same-layer edges: orthogonal routing through LEFT bypass corridor.
+  // All edges from the same source share the same bypassX → visual bundling.
+  // Path: exit left edge of source → go left to bypass lane → go up/down → arrive at left edge of target.
+  if (d._back || d._sameLayer) {
+    const sx = s.px,  sy = s.py + halfH;
+    const tx = t.px,  ty = t.py + halfH;
+    return `M${sx},${sy}H${d._bypassX}V${ty}H${tx}`;
+  }
+
+  // Forward and cross-layer mutual: orthogonal H-V-H.
+  // Edges from same source to the same target column share midX → visual bundling.
+  const sx = s.px + NODE_W, sy = s.py + halfH;
+  const tx = t.px,          ty = t.py + halfH;
+  const mx = d._midX != null ? d._midX : (sx + tx) / 2;
+  if (Math.abs(sy - ty) < 1) return `M${sx},${sy}L${tx},${ty}`;
+  return `M${sx},${sy}H${mx}V${ty}H${tx}`;
+}
+
+// ── Draw graph (clears and redraws everything) ────────────────────────────────
+function drawGraph() {
+  const numLayers = buildLayout();
+
+  gCols.selectAll("*").remove();
+  gFolders.selectAll("*").remove();
+  gEdges.selectAll("*").remove();
   gNodes.selectAll("*").remove();
 
-  const positions = {};
-
-  const rootCY = H / 2;
-  const rootX  = COL0_X, rootY = rootCY - ROOT_H/2;
-  positions["root"] = { cx: rootX + ROOT_W/2, cy: rootCY, w: ROOT_W, h: ROOT_H };
-
-  const rootG = gNodes.append("g").attr("transform", `translate(${rootX},${rootY})`);
-  rootG.append("rect").attr("width",ROOT_W).attr("height",ROOT_H).attr("rx",10)
-    .attr("fill","#4da3ff").attr("fill-opacity",.12)
-    .attr("stroke","#4da3ff").attr("stroke-opacity",.5).attr("stroke-width",2);
-  rootG.append("text").attr("x",ROOT_W/2).attr("y",18).attr("text-anchor","middle")
-    .attr("font-size","12px").attr("font-weight","700").attr("fill","#4da3ff").attr("letter-spacing","2px").text("ARKHE");
-  rootG.append("text").attr("x",ROOT_W/2).attr("y",32).attr("text-anchor","middle")
-    .attr("font-size","9px").attr("fill","#2a3a50").text("project root");
-
-  groups.forEach(g => {
-    const cx   = colorOf(g);
-    const fcy  = folderCenterY(g);
-    const fy   = fcy - FOLD_H/2;
-    const fx   = COL1_X;
-    const expanded = folderState[g];
-
-    positions["folder_"+g] = { cx: fx + FOLD_W/2, cy: fcy, w: FOLD_W, h: FOLD_H };
-
-    const rp = positions["root"];
-    gBranches.append("path").attr("class","branch")
-      .attr("d", bezier(rp.cx + rp.w/2, rp.cy, fx, fcy));
-
-    const fg = gNodes.append("g").attr("class","folder-node")
-      .attr("transform", `translate(${fx},${fy})`)
-      .on("click", () => { folderState[g] = !folderState[g]; render(); drawLinks(); });
-
-    fg.append("rect").attr("class","folder-rect")
-      .attr("width",FOLD_W).attr("height",FOLD_H)
-      .attr("fill",cx).attr("fill-opacity",.1)
-      .attr("stroke",cx).attr("stroke-opacity",.45).attr("stroke-width",1.5);
-    fg.append("rect").attr("width",3).attr("height",FOLD_H)
-      .attr("fill",cx).attr("fill-opacity",.9).attr("rx",2);
-    fg.append("text").attr("class","folder-name")
-      .attr("x",FOLD_W/2).attr("y",20).attr("fill",cx).text(`/ ${g}`);
-    fg.append("text").attr("class","folder-count")
-      .attr("x",FOLD_W/2).attr("y",35).attr("fill",cx).attr("fill-opacity",.45)
-      .text(`${ALL_NODES.filter(n=>n.group===g).length} files  ${expanded?"▾":"▸"}`);
-
-    if (expanded) {
-      const files   = ALL_NODES.filter(n => n.group === g);
-      const totalFH = files.length * (FILE_H + FILE_GAP) - FILE_GAP;
-      const startY  = fcy - totalFH/2;
-
-      files.forEach((file, idx) => {
-        const fiy  = startY + idx * (FILE_H + FILE_GAP);
-        const ficy = fiy + FILE_H/2;
-        const fix  = COL2_X;
-        positions[file.id] = { cx: fix + FILE_W/2, cy: ficy, w: FILE_W, h: FILE_H };
-
-        const fp = positions["folder_"+g];
-        gBranches.append("path").attr("class","branch")
-          .attr("d", bezier(fp.cx + fp.w/2, fp.cy, fix, ficy));
-
-        const ng = gNodes.append("g").attr("class","file-node")
-          .attr("data-id", file.id)
-          .attr("transform", `translate(${fix},${fiy})`)
-          .on("click",     () => showInfo(file))
-          .on("mouseover", (e) => showTip(e,file))
-          .on("mousemove", moveTip)
-          .on("mouseout",  hideTip);
-
-        ng.append("rect").attr("class","file-rect")
-          .attr("width",FILE_W).attr("height",FILE_H)
-          .attr("fill",cx).attr("fill-opacity",.08)
-          .attr("stroke",cx).attr("stroke-opacity",.3).attr("stroke-width",1);
-        ng.append("rect").attr("width",2.5).attr("height",FILE_H)
-          .attr("fill",cx).attr("fill-opacity",.8).attr("rx",1);
-        ng.append("text").attr("class","file-name")
-          .attr("x",FILE_W/2).attr("y",15).attr("fill",cx)
-          .text(file.name.length > 20 ? file.name.slice(0,18)+"…" : file.name);
-
-        const fns = file.functions.length, cls = file.classes.length;
-        const meta = [fns?`${fns} fn`:"", cls?`${cls} cls`:""].filter(Boolean).join(" · ") || "—";
-        ng.append("text").attr("class","file-meta").attr("x",FILE_W/2).attr("y",28).text(meta);
-      });
+  // Column headers + dividers
+  const canvasH = Math.max(...nodes.map(n => n.py + NODE_H), H) + 60;
+  for (let col = 0; col < numLayers; col++) {
+    const colX   = LEFT_PAD + col * COL_GAP;
+    const labelX = colX + NODE_W / 2;
+    const lbl    = col === 0 ? "ENTRY" : col === numLayers - 1 && numLayers > 1 ? "BASE" : `LAYER ${col}`;
+    gCols.append("text").attr("class","col-header").attr("x", labelX).attr("y", TOP_PAD - 46).text(lbl);
+    if (col > 0) {
+      const lx = colX - (COL_GAP - NODE_W) / 2;
+      gCols.append("line").attr("class","col-line")
+        .attr("x1", lx).attr("y1", TOP_PAD - 58).attr("x2", lx).attr("y2", canvasH);
     }
+  }
+
+  // Folder panels
+  folderBgs.forEach(fg => {
+    const g = gFolders.append("g");
+    g.append("rect").attr("x", fg.x).attr("y", fg.y).attr("width", fg.w).attr("height", fg.h)
+      .attr("rx", 9).attr("fill","var(--folder-bg)").attr("stroke","var(--folder-border)").attr("stroke-width", 1.5);
+    g.append("rect").attr("x", fg.x + 10).attr("y", fg.y + 8).attr("width", 9).attr("height", 9)
+      .attr("rx", 2).attr("fill", fg.color).attr("opacity", .75);
+    const lbl = fg.label.length > 22 ? "\u2026" + fg.label.slice(-20) : fg.label;
+    g.append("text").attr("x", fg.x + 26).attr("y", fg.y + 18)
+      .attr("font-size", 9).attr("font-weight", 700).attr("font-family","'SF Mono',Consolas,monospace")
+      .attr("fill","var(--folder-label)").attr("letter-spacing", .4).text(lbl);
   });
 
-  [[COL1_X - 18, "FOLDERS"],[COL2_X - 18, "FILES"]].forEach(([x, label]) => {
-    gBranches.append("line").attr("class","col-divider")
-      .attr("x1",x).attr("y1",TOP_PAD-20).attr("x2",x).attr("y2",TOP_PAD + totalLayoutHeight() + 60);
-    gBranches.append("text").attr("class","col-label")
-      .attr("x",x + 90).attr("y",TOP_PAD-26).text(label);
-  });
+  // Edges
+  linkEl = gEdges.selectAll("path").data(renderLinks).join("path")
+    .attr("class", d => d.mutual ? "link link-mut" : d._back ? "link link-back" : "link link-fwd")
+    .attr("d", edgePath)
+    .attr("marker-end",   d => `url(#a-${d.mutual ? "mut" : d._back ? "back" : "fwd"})`)
+    .attr("marker-start", d => d.mutual ? "url(#a-mut-rev)" : null);
 
-  window._positions = positions;
+  // Nodes
+  nodeEl = gNodes.selectAll("g").data(nodes).join("g")
+    .attr("class", "node")
+    .attr("transform", d => `translate(${d.px},${d.py})`);
+
+  // Background fill
+  nodeEl.append("rect").attr("class","node-rect")
+    .attr("width", NODE_W).attr("height", NODE_H).attr("rx", NODE_R)
+    .attr("fill", d => nodeColor(d)).attr("fill-opacity", .1)
+    .attr("stroke", d => nodeColor(d)).attr("stroke-width", 1.5)
+    .attr("filter","url(#shd)");
+
+  // Left color stripe
+  nodeEl.append("rect")
+    .attr("width", 3).attr("height", NODE_H - 10).attr("x", 2).attr("y", 5).attr("rx", 1.5)
+    .attr("fill", d => colorOf(d.group));
+
+  // File name (primary label)
+  nodeEl.append("text").attr("class","node-label")
+    .attr("x", 13).attr("y", 17)
+    .text(d => d.name.length > 22 ? d.name.slice(0, 20) + "\u2026" : d.name);
+
+  // Folder path below filename
+  nodeEl.append("text").attr("class","node-sub")
+    .attr("x", 13).attr("y", 30)
+    .text(d => {
+      const parts = d.path.split("/");
+      if (parts.length <= 1) return "";
+      const dir = parts.slice(0, -1).join("/");
+      return dir.length > 24 ? "\u2026" + dir.slice(-22) : dir;
+    });
+
+// Fn/cls count at right
+  nodeEl.append("text").attr("class","node-count")
+    .attr("x", NODE_W - 8).attr("y", 17)
+    .text(d => {
+      const fn = (d.functions || []).length, cls = (d.classes || []).length;
+      if (fn && cls) return `${fn}fn ${cls}cls`;
+      if (fn) return `${fn}fn`;
+      if (cls) return `${cls}cls`;
+      return "";
+    });
+
+  // Reattach events
+  nodeEl.on("click", (e, d) => { e.stopPropagation(); showInfo(d); })
+    .on("mouseover", showTip).on("mousemove", moveTip).on("mouseout", hideTip);
+} // end drawGraph()
+
+function rebuildGraph() {
+  closeInfo();
+  drawGraph();
+  setTimeout(fitGraph, 50);
 }
 
-function bezier(x1, y1, x2, y2) {
-  const mx = (x1 + x2) / 2;
-  return `M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`;
+// ── Auto-fit ──────────────────────────────────────────────────────────────────
+function fitGraph() {
+  const bb = gMain.node().getBBox();
+  if (!bb.width || !bb.height) return;
+  const pad = 60;
+  const scale = Math.min((W - pad * 2) / bb.width, (H - pad * 2) / bb.height, 1.2);
+  const tx = (W - bb.width * scale) / 2 - bb.x * scale;
+  const ty = (H - bb.height * scale) / 2 - bb.y * scale;
+  svg.transition().duration(500)
+    .call(zoomB.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
 }
 
-// ── Dependency arrows ────────────────────────────────────────────
-function drawLinks() {
-  gLinks.selectAll("*").remove();
-  const pos = window._positions;
-  if (!pos) return;
+// Initial render
+drawGraph();
+svg.on("click", () => closeInfo());
+setTimeout(fitGraph, 50);
 
-  ALL_LINKS.forEach(link => {
-    const sid = link.source?.id ?? link.source;
-    const tid = link.target?.id ?? link.target;
-    const sp = pos[sid], tp = pos[tid];
-    if (!sp || !tp) return;
-
-    const mutual = link.bidirectional;
-    const x1 = sp.cx + sp.w/2, y1 = sp.cy;
-    const x2 = tp.cx - tp.w/2, y2 = tp.cy;
-    const mx = (x1+x2)/2;
-    const curvature = (y2 - y1) * 0.4;
-
-    gLinks.append("path")
-      .attr("class", `dep-link ${mutual?"dep-mutual":"dep-direct"}`)
-      .attr("data-src", sid).attr("data-tgt", tid)
-      .attr("d", `M${x1},${y1} C${mx},${y1-curvature} ${mx},${y2+curvature} ${x2},${y2}`)
-      .attr("marker-end",   mutual ? "url(#m-mutual)"   : "url(#m-direct)")
-      .attr("marker-start", mutual ? "url(#m-mutual-r)" : null);
-  });
+// ── Color mode toggle ─────────────────────────────────────────────────────────
+function updateLegend() {
+  const lf = document.getElementById("leg-folders");
+  document.getElementById("leg-heat").style.display = colorMode === "heat" ? "" : "none";
+  lf.style.display = colorMode === "folder" ? "" : "none";
+  if (colorMode === "folder") {
+    const activeGroups = [...new Set(ALL_NODES.map(d => d.group))].sort();
+    lf.innerHTML = "<h4>Folders</h4>" + activeGroups.map(g =>
+      `<div class="leg-row"><div class="leg-dot" style="background:${colorOf(g)}"></div><span>${g}</span></div>`
+    ).join("");
+  }
 }
-
-render();
-drawLinks();
-
-const bbox = gMain.node().getBBox();
-if (bbox.width > 0) {
-  const scale = Math.min((W-40)/bbox.width, (H-80)/bbox.height, 1);
-  const tx = (W - bbox.width * scale) / 2 - bbox.x * scale;
-  const ty = (H - bbox.height * scale) / 2 - bbox.y * scale + 25;
-  gMain.attr("transform", `translate(${tx},${ty}) scale(${scale})`);
+function toggleColor() {
+  colorMode = colorMode === "heat" ? "folder" : "heat";
+  const btn = document.getElementById("btn-color");
+  btn.textContent = colorMode === "heat" ? "Folders" : "Heatmap";
+  btn.classList.toggle("active", colorMode === "heat");
+  updateLegend();
+  nodeEl.select(".node-rect").transition().duration(300)
+    .attr("fill", d => nodeColor(d)).attr("stroke", d => nodeColor(d));
 }
+// Set initial button/legend state
+(function(){
+  const btn = document.getElementById("btn-color");
+  btn.textContent = colorMode === "heat" ? "Folders" : "Heatmap";
+  btn.classList.toggle("active", colorMode === "heat");
+  updateLegend();
+})();
 
-// ── Tooltip ──────────────────────────────────────────────────────
+// ── Tooltip ───────────────────────────────────────────────────────────────────
 function showTip(e, d) {
-  const t = document.getElementById("tooltip");
-  t.style.display = "block";
-  t.innerHTML = `<div class="tt-name">${d.name}</div>
-    <div class="tt-row">Path: <span>${d.path}</span></div>
-    <div class="tt-row">Tokens: <span>${(d.tokens||0).toLocaleString()}</span></div>
-    <div class="tt-row">Functions: <span>${d.functions?.length}</span></div>
-    <div class="tt-row">Classes: <span>${d.classes?.length}</span></div>`;
+  const tip = document.getElementById("tooltip");
+  tip.style.display = "block";
+  const hue = Math.round((1 - Math.min((d.complexity || 0) / maxC, 1)) * 120);
+  const parts = d.path.split("/");
+  const dir = parts.length > 1 ? parts.slice(0, -1).join("/") + "/" : "";
+  tip.innerHTML =
+    `<div class="tt-name">${esc(d.name)}</div>` +
+    (dir ? `<div class="tt-path">${esc(dir)}</div>` : "") +
+    `<div class="tt-row">Group: <span style="color:${colorOf(d.group)}">${esc(d.group)}</span></div>` +
+    `<div class="tt-row">Tokens: <span>${(d.tokens || 0).toLocaleString()}</span>` +
+    ` \u00b7 Fn: <span>${(d.functions || []).length}</span>` +
+    ` \u00b7 Cls: <span>${(d.classes || []).length}</span></div>` +
+    `<div class="tt-row">Complexity: <span style="color:hsl(${hue},70%,55%)">${d.complexity || 0}</span></div>`;
 }
 function moveTip(e) {
-  const t = document.getElementById("tooltip");
-  t.style.left=(e.clientX+16)+"px"; t.style.top=(e.clientY+16)+"px";
+  const tip = document.getElementById("tooltip");
+  tip.style.left = (e.clientX + 14) + "px";
+  tip.style.top  = (e.clientY + 14) + "px";
 }
-function hideTip() { document.getElementById("tooltip").style.display="none"; }
+function hideTip() { document.getElementById("tooltip").style.display = "none"; }
 
-// ── Info panel ────────────────────────────────────────────────────
+// ── Import helpers ─────────────────────────────────────────────────────────────
+function parseImp(raw) {
+  let m = raw.match(/^from\s+([\w.]+)\s+import\s+(.+)$/);
+  if (m) return {mod: m[1], syms: m[2].split(",").map(s => s.trim()).filter(Boolean)};
+  m = raw.match(/^import\s+([\w.]+)/);
+  if (m) return {mod: m[1], syms: []};
+  return {mod: raw, syms: []};
+}
+function resolveFile(mod) {
+  const base = mod.replace(/\./g, "/");
+  return ALL_NODES.find(n =>
+    n.path === base + ".py" || n.path === base + "/__init__.py" ||
+    n.path.endsWith("/" + base + ".py") || n.path.endsWith("/" + base + "/__init__.py")
+  ) || null;
+}
+
+// ── Info panel ────────────────────────────────────────────────────────────────
 function showInfo(d) {
-  document.getElementById("i-title").textContent = d.path;
-  const fns  = (d.functions||[]).slice(0,10).map(f=>`<span class="tag">${f}()</span>`).join("")||"—";
-  const cls  = (d.classes||[]).slice(0,6).map(c=>`<span class="tag">${c}</span>`).join("")||"—";
-  const imps = (d.imports||[]).slice(0,6).map(i=>`<span class="tag">${i.slice(0,34)}</span>`).join("")||"—";
-  const cx   = colorOf(d.group);
-  document.getElementById("i-body").innerHTML = `
-    <div class="i-block"><div class="i-label">Module</div>
-      <div class="i-val"><span class="mod-badge" style="background:${cx}22;color:${cx};border:1px solid ${cx}44">${d.group}</span></div></div>
-    <div class="i-block"><div class="i-label">Tokens</div><div class="i-val">${(d.tokens||0).toLocaleString()}</div></div>
-    <div class="i-block"><div class="i-label">Functions</div><div class="i-val">${fns}</div></div>
-    <div class="i-block"><div class="i-label">Classes</div><div class="i-val">${cls}</div></div>
-    <div class="i-block"><div class="i-label">Imports</div><div class="i-val">${imps}</div></div>`;
-  document.getElementById("info").style.display = "block";
+  const color = colorOf(d.group);
+  const parts = d.path.split("/");
+  const fname = parts.pop();
+  document.getElementById("i-crumb").textContent = parts.join("/") + (parts.length ? "/" : "");
+  document.getElementById("i-title").textContent = fname;
+
+  const importedBy = ALL_NODES.filter(n => n.id !== d.id && ALL_LINKS.some(l => {
+    const s = l.source?.id ?? l.source, t = l.target?.id ?? l.target;
+    return (t === d.id && s === n.id) || (l.bidirectional && s === d.id && t === n.id);
+  }));
+  const parsed = (d.imports || []).map(raw => ({raw, ...parseImp(raw), file: null}));
+  parsed.forEach(p => { p.file = resolveFile(p.mod); });
+  const localImp = parsed.filter(p => p.file);
+  const extImp   = parsed.filter(p => !p.file);
+  const fns = d.functions || [], cls = d.classes || [];
+  const hue = Math.round((1 - Math.min((d.complexity || 0) / maxC, 1)) * 120);
+
+  const fnR = fns.length
+    ? fns.map(f => `<div class="sym"><span class="sym-badge badge-fn">fn</span><span class="sym-name">${esc(f)}()</span></div>`).join("")
+    : `<div class="none-msg">No functions</div>`;
+  const clR = cls.length
+    ? cls.map(c => `<div class="sym"><span class="sym-badge badge-cls">cls</span><span class="sym-name">${esc(c)}</span></div>`).join("")
+    : `<div class="none-msg">No classes</div>`;
+  const loR = localImp.length
+    ? localImp.map(p => `<div class="dep-row clickable" onclick="focusNode(${p.file.id})"><em class="dep-arrow">\u2192</em><div class="dep-body"><div class="dep-file">${esc(p.file.path)}</div>${p.syms.length ? `<div class="dep-syms">${esc(p.syms.slice(0,4).join(", "))}${p.syms.length > 4 ? ` +${p.syms.length-4}` : ""}</div>` : ""}</div></div>`).join("")
+    : `<div class="none-msg">No local imports</div>`;
+  const exR = extImp.length
+    ? extImp.map(p => `<div class="dep-row ext"><em class="dep-arrow">\u2192</em><div class="dep-body"><div class="dep-file">${esc(p.mod)}${p.syms.length ? ` \u00b7 ${esc(p.syms.slice(0,3).join(", "))}` : ""}</div></div></div>`).join("")
+    : "";
+  const rvR = importedBy.length
+    ? importedBy.map(n => `<div class="dep-row clickable" onclick="focusNode(${n.id})"><em class="dep-arrow">\u2190</em><div class="dep-body"><div class="dep-file">${esc(n.path)}</div></div></div>`).join("")
+    : `<div class="none-msg">Nothing imports this</div>`;
+
+  // Add blast radius link if we're embedded in the map_viewer (job_id available)
+  const jobId = (typeof document._arkheJobId !== "undefined") ? document._arkheJobId : null;
+  const blastBtn = jobId
+    ? `<div class="i-section" style="margin-top:0.5rem">
+        <a href="/impact/${jobId}/view#${encodeURIComponent(d.path)}"
+           target="_parent"
+           style="display:inline-flex;align-items:center;gap:0.4rem;font-size:0.78rem;font-weight:600;
+                  padding:0.35rem 0.85rem;border-radius:6px;text-decoration:none;
+                  background:rgba(99,102,241,0.12);color:#818cf8;border:1px solid rgba(99,102,241,0.3);">
+          💥 Blast Radius
+        </a>
+       </div>`
+    : "";
+
+  document.getElementById("i-scroll").innerHTML = `
+    <div class="i-stats">
+      <div class="i-stat"><div class="i-stat-n">${(d.tokens || 0).toLocaleString()}</div><div class="i-stat-l">Tokens</div></div>
+      <div class="i-stat"><div class="i-stat-n">${fns.length}</div><div class="i-stat-l">Fn</div></div>
+      <div class="i-stat"><div class="i-stat-n" style="color:hsl(${hue},70%,55%)">${d.complexity || 0}</div><div class="i-stat-l">Complexity</div></div>
+    </div>
+    ${blastBtn}
+    <div class="i-section"><div class="i-label">Module</div><span class="mod-chip" style="background:${color}20;color:${color};border:1px solid ${color}40">${esc(d.group)}</span></div>
+    <div class="i-section"><div class="i-label">Functions</div>${fnR}</div>
+    <div class="i-section"><div class="i-label">Classes</div>${clR}</div>
+    <div class="i-section"><div class="i-label">Imports \u2014 Local (${localImp.length})</div>${loR}</div>
+    ${exR ? `<div class="i-section"><div class="i-label">Imports \u2014 External</div>${exR}</div>` : ""}
+    <div class="i-section"><div class="i-label">Imported by (${importedBy.length})</div>${rvR}</div>`;
+
+  document.getElementById("info").style.display = "flex";
 
   const conn = new Set([d.id]);
   ALL_LINKS.forEach(l => {
-    const s = l.source?.id??l.source, t = l.target?.id??l.target;
-    if(s===d.id) conn.add(t); if(t===d.id) conn.add(s);
+    const s = l.source?.id ?? l.source, t = l.target?.id ?? l.target;
+    if (s === d.id) conn.add(t);
+    if (t === d.id) conn.add(s);
   });
-  d3.selectAll(".file-node").classed("dimmed", function() {
-    return !conn.has(+d3.select(this).attr("data-id"));
+  nodeEl.classed("dimmed", n => !conn.has(n.id));
+  linkEl.classed("lit", l => l._source.id === d.id || l._target.id === d.id);
+  linkEl.attr("marker-end", l => {
+    const lit = l._source.id === d.id || l._target.id === d.id;
+    const t = l.mutual ? "mut" : l._back ? "back" : "fwd";
+    return `url(#a-${t}${lit ? "-lit" : ""})`;
   });
-  gLinks.selectAll(".dep-link").classed("lit", function() {
-    const s = +d3.select(this).attr("data-src"), t = +d3.select(this).attr("data-tgt");
-    return s===d.id||t===d.id;
+  linkEl.attr("marker-start", l => {
+    if (!l.mutual) return null;
+    const lit = l._source.id === d.id || l._target.id === d.id;
+    return `url(#a-mut-rev${lit ? "-lit" : ""})`;
   });
-}
-function closeInfo() {
-  document.getElementById("info").style.display="none";
-  d3.selectAll(".file-node").classed("dimmed",false);
-  gLinks.selectAll(".dep-link").classed("lit",false);
 }
 
-// ── Search ────────────────────────────────────────────────────────
+function focusNode(id) {
+  const nd = nodes.find(n => n.id === id);
+  if (!nd) return;
+  showInfo(nd);
+  const scale = Math.max(currentTransform.k, 0.85);
+  svg.transition().duration(400).call(zoomB.transform,
+    d3.zoomIdentity
+      .translate(W / 2 - (nd.px + NODE_W / 2) * scale, H / 2 - (nd.py + NODE_H / 2) * scale)
+      .scale(scale));
+}
+
+function closeInfo() {
+  document.getElementById("info").style.display = "none";
+  nodeEl.classed("dimmed", false);
+  linkEl.classed("lit", false);
+  linkEl.attr("marker-end",   d => `url(#a-${d.mutual ? "mut" : d._back ? "back" : "fwd"})`);
+  linkEl.attr("marker-start", d => d.mutual ? "url(#a-mut-rev)" : null);
+}
+
+// ── Search ────────────────────────────────────────────────────────────────────
 document.getElementById("search").addEventListener("input", function() {
   const q = this.value.toLowerCase();
-  if(!q) { d3.selectAll(".file-node").classed("dimmed",false); return; }
-  d3.selectAll(".file-node").classed("dimmed", function() {
-    const node = ALL_NODES.find(n => n.id===+d3.select(this).attr("data-id"));
-    return !node?.path.toLowerCase().includes(q);
-  });
+  if (!q) { nodeEl.classed("dimmed", false); return; }
+  nodeEl.classed("dimmed", d => !d.path.toLowerCase().includes(q) && !d.name.toLowerCase().includes(q));
 });
+
+// ── Keyboard shortcuts ────────────────────────────────────────────────────────
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape") closeInfo();
+  if (e.key === "f" && !e.ctrlKey && !e.metaKey && document.activeElement.id !== "search") fitGraph();
+});
+window.addEventListener("resize", () => {
+  svg.attr("width", window.innerWidth).attr("height", window.innerHeight);
+});
+
+function esc(s) {
+  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+</script>
+<script>
+(function(){
+  const t = localStorage.getItem("arkhe-theme") || "dark";
+  document.documentElement.setAttribute("data-theme", t);
+  window.addEventListener("message", function(e){
+    if (e.data && (e.data === "light" || e.data === "dark")) {
+      document.documentElement.setAttribute("data-theme", e.data);
+    }
+  });
+})();
 </script>
 </body>
 </html>

@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Arkhe — Dependency Map</title>
+  <link rel="stylesheet" href="/static/arkhe.css" />
+  <style>
+    html, body { height: 100%; overflow: hidden; }
+    .viewer-layout {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+    .viewer-toolbar {
+      position: relative;
+      z-index: 200;
+      flex-shrink: 0;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      gap: 1.5rem;
+      padding: 0 2rem;
+      border-bottom: 1px solid var(--border);
+      background: var(--nav-bg);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+    }
+    .viewer-back {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.82rem;
+      color: var(--text-2);
+      text-decoration: none;
+      transition: color 0.15s;
+      white-space: nowrap;
+    }
+    .viewer-back:hover { color: var(--text); }
+    .viewer-sep { color: var(--text-3); font-size: 0.8rem; }
+    .viewer-logo { font-size: 1rem; font-weight: 700; color: var(--text); text-decoration: none; }
+    .viewer-logo span { color: var(--accent); }
+    .viewer-title {
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .viewer-meta {
+      font-size: 0.78rem;
+      color: var(--text-3);
+      margin-left: auto;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 280px;
+    }
+    .viewer-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      flex-shrink: 0;
+    }
+    .viewer-actions a {
+      font-size: 0.8rem;
+      font-weight: 600;
+      padding: 0.35rem 0.85rem;
+      border-radius: 6px;
+      text-decoration: none;
+      background: var(--surface-hi);
+      color: var(--accent-hi);
+      border: 1px solid var(--border-hi);
+      transition: background 0.15s;
+      white-space: nowrap;
+    }
+    .viewer-actions a:hover { background: var(--accent-bg); }
+    .viewer-frame {
+      flex: 1;
+      border: none;
+      width: 100%;
+      display: block;
+    }
+  </style>
+</head>
+<body>
+
+<div class="viewer-layout">
+  <div class="viewer-toolbar">
+    <a class="viewer-back" href="/results/{{ job_id }}">← Back</a>
+    <span class="viewer-sep">/</span>
+    <a class="viewer-logo" href="/">Arkhe<span>.</span></a>
+    <span class="viewer-sep">/</span>
+    <span class="viewer-title">Dependency Map</span>
+    <div class="viewer-meta">{{ job_url }}</div>
+    <div class="viewer-actions">
+      <a href="/impact/{{ job_id }}/view">💥 Blast Radius</a>
+      <a href="/context/{{ job_id }}/view">🎯 Context</a>
+      <a href="/results/{{ job_id }}/DEPENDENCY_MAP.html" download>Download</a>
+      <button class="theme-toggle" id="theme-toggle" style="border-radius:6px;padding:0.3rem 0.75rem;">
+        <span class="t-icon" id="t-icon">☀️</span>
+        <span id="t-label">Light</span>
+      </button>
+    </div>
+  </div>
+
+  <iframe
+    class="viewer-frame"
+    id="map-frame"
+    src="/results/{{ job_id }}/DEPENDENCY_MAP.html"
+    title="Dependency Map"
+  ></iframe>
+</div>
+
+<script>
+  // CSS to inject into the iframe for light mode (covers already-generated files)
+  const LIGHT_CSS = `
+    body{background:#f8fafc!important;color:#0f172a!important}
+    #header{background:#fff!important;border-color:#e2e8f0!important}
+    #search{background:#f1f5f9!important;border-color:#e2e8f0!important;color:#0f172a!important}
+    #search::placeholder{color:#94a3b8!important}
+    .ctrl-btn{background:#fff!important;border-color:#e2e8f0!important;color:#475569!important}
+    .ctrl-btn:hover{background:#f1f5f9!important;color:#0f172a!important}
+    .ctrl-btn.active{background:#2563eb!important;color:#fff!important;border-color:#2563eb!important}
+    #stats{color:#64748b!important}
+    #logo{color:#2563eb!important}
+    #logo-sub{color:#94a3b8!important}
+    #legend,#info,#tooltip{background:#fff!important;border-color:#e2e8f0!important;box-shadow:0 4px 24px rgba(0,0,0,.08)!important}
+    .leg-sep{border-color:#e2e8f0!important}
+    .leg-row,.leg-link{color:#475569!important}
+    h4{color:#64748b!important}
+    .leg-gradient-labels span{color:#94a3b8!important}
+    svg{background:#f8fafc!important}
+    .node-label{fill:#1e293b!important}
+    .node-meta{fill:#64748b!important}
+    .col-header{fill:#94a3b8!important}
+    .col-line{stroke:#f1f5f9!important}
+    .i-head{border-color:#e2e8f0!important}
+    .i-crumb{color:#94a3b8!important}
+    .i-title{color:#1e293b!important}
+    .i-close{color:#94a3b8!important}
+    .i-close:hover{color:#1e293b!important;background:#f1f5f9!important}
+    .i-stat{background:#f1f5f9!important;border-color:#e2e8f0!important}
+    .i-stat-n{color:#1e293b!important}
+    .i-stat-l{color:#64748b!important}
+    .i-label{color:#64748b!important}
+    .i-label::after{background:#e2e8f0!important}
+    .sym:hover{background:#f1f5f9!important}
+    .sym-name{color:#475569!important}
+    .dep-row{color:#64748b!important}
+    .dep-row.ext{color:#94a3b8!important}
+    .dep-arrow{color:#94a3b8!important}
+    .none-msg{color:#cbd5e1!important}
+    .tt-name{color:#1e293b!important}
+    .tt-row{color:#64748b!important}
+    .tt-row span{color:#475569!important}
+    .link-import{stroke:#94a3b8!important}
+    .link-import.lit{stroke:#2563eb!important}
+  `;
+
+  function applyThemeToFrame(theme) {
+    const frame = document.getElementById("map-frame");
+    if (!frame) return;
+    try {
+      const fd = frame.contentDocument;
+      if (!fd || !fd.head) return;
+      fd.documentElement.setAttribute("data-theme", theme);
+      let el = fd.getElementById("ark-theme-inject");
+      if (!el) {
+        el = fd.createElement("style");
+        el.id = "ark-theme-inject";
+        fd.head.appendChild(el);
+      }
+      el.textContent = theme === "light" ? LIGHT_CSS : "";
+    } catch (e) { /* cross-origin or not ready */ }
+  }
+
+  (function () {
+    const stored = localStorage.getItem("arkhe-theme") || "dark";
+    document.documentElement.setAttribute("data-theme", stored);
+
+    function syncLabel() {
+      const t = document.documentElement.getAttribute("data-theme");
+      const icon = document.getElementById("t-icon");
+      const label = document.getElementById("t-label");
+      if (!icon) return;
+      if (t === "dark") { icon.textContent = "☀️"; label.textContent = "Light"; }
+      else              { icon.textContent = "🌙"; label.textContent = "Dark"; }
+    }
+
+    const JOB_ID = "{{ job_id }}";
+
+    document.addEventListener("DOMContentLoaded", () => {
+      syncLabel();
+      // Apply theme + inject job_id once iframe has loaded
+      document.getElementById("map-frame").addEventListener("load", () => {
+        applyThemeToFrame(localStorage.getItem("arkhe-theme") || "dark");
+        // Inject job_id so the map can link to blast radius explorer
+        try {
+          const fd = document.getElementById("map-frame").contentDocument;
+          if (fd) fd._arkheJobId = JOB_ID;
+        } catch (e) {}
+      });
+      document.getElementById("theme-toggle").addEventListener("click", () => {
+        const cur  = document.documentElement.getAttribute("data-theme");
+        const next = cur === "dark" ? "light" : "dark";
+        document.documentElement.setAttribute("data-theme", next);
+        localStorage.setItem("arkhe-theme", next);
+        syncLabel();
+        applyThemeToFrame(next);
+      });
+    });
+  })();
+</script>
+
+</body>
+</html>

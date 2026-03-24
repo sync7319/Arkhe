@@ -1,30 +1,43 @@
 """
-Analyst agent — documents each file batch using the traversal model.
-Optimized for free tier limits: small batches, trimmed prompts, sequential
-processing with a brief pause between batches to avoid TPM bursts.
+Analyst agent — documents each file using the traversal model.
+
+Per-file caching: files whose content hasn't changed since the last run are
+loaded from SQLite and skipped entirely. Only new or modified files hit the LLM.
+
+Unchanged files on a typical incremental PR run: ~95%+ cache hit rate.
+New files are analyzed concurrently, bounded by MAX_CONCURRENT_FILES.
 """
 import asyncio
-from config.llm_client import llm_call_async
+import logging
+from cache.db import get_db
+from config.llm_client import llm_call_async_explicit, llm_call_async_pool
 
-SYSTEM = """You are a senior software engineer. Analyze each file and return:
-1. Purpose (1 sentence)
-2. Key functions/classes (names + 1 line each)
-3. Main dependencies
-4. Any gotchas
-Be concise. Markdown format."""
+logger = logging.getLogger("arkhe.analyst")
 
-# Free tier safe limits per model (tokens per minute)
+SYSTEM = """You are a senior software engineer. Analyze this file and return:
+1. Purpose — one sentence, specific to what this file actually does
+2. Key functions/classes — for each one defined in this file (you can see them labeled "fn:" at the top), write its exact name and one sentence describing what it does. Do not list any names not shown in the fn:/cls: header or defined with "def"/"class" in the code block.
+3. Gotchas — non-obvious behaviors, edge cases, or tricky interactions. Name the specific function or variable involved. Skip this section if there are none.
+
+CRITICAL: Only use names that appear verbatim in the code block. Never invent, guess, or paraphrase a function, class, or module name.
+Output raw Markdown — no code fences wrapping the response."""
+
+# Free-tier safe limits per model (tokens per minute)
 MODEL_TPM_LIMITS = {
-    "openai/gpt-oss-20b":        6000,
-    "openai/gpt-oss-120b":       6000,
-    "llama-3.1-8b-instant":      5000,
-    "llama-3.3-70b-versatile":   5000,
-    "gemini-2.0-flash":         50000,
+    "moonshotai/kimi-k2-instruct":       8000,
+    "moonshotai/kimi-k2-instruct-0905":  8000,
+    "openai/gpt-oss-120b":               6000,
+    "llama-3.3-70b-versatile":           5000,
+    "qwen/qwen3-32b":                    5000,
+    "openai/gpt-oss-20b":                6000,
+    "llama-3.1-8b-instant":              5000,
 }
 DEFAULT_SAFE_TPM = 5000
 
-# Max content chars per file in prompt (controls token usage)
-MAX_FILE_CHARS = 800
+# No artificial concurrency cap — try_acquire_slot() in model_router is the real gate.
+# It tracks RPM/TPM sliding windows and blocks when at capacity, so all files can
+# queue up and fire as soon as a slot opens. Maximizes throughput automatically.
+MAX_CONCURRENT_FILES = 200
 
 
 def _safe_budget(model: str) -> int:
@@ -34,67 +47,95 @@ def _safe_budget(model: str) -> int:
     return DEFAULT_SAFE_TPM
 
 
-def _build_prompt(batch: list[dict]) -> str:
-    parts = []
-    for f in batch:
-        s = f.get("structure", {})
-        content_preview = f["content"][:MAX_FILE_CHARS].strip()
-        fns  = ", ".join(s.get("functions", [])[:6]) or "none"
-        cls  = ", ".join(s.get("classes",   [])[:4]) or "none"
-        imps = ", ".join(s.get("imports",   [])[:5]) or "none"
-        parts.append(
-            f"### {f['path']} ({f['tokens']} tokens)\n"
-            f"fn: {fns} | cls: {cls} | imports: {imps}\n"
-            f"```\n{content_preview}\n```"
+def _build_prompt(file: dict) -> str:
+    s    = file.get("structure", {})
+    body = file["content"].strip()
+    fns  = ", ".join(s.get("functions", [])[:6]) or "none"
+    cls  = ", ".join(s.get("classes",   [])[:4]) or "none"
+    imps = ", ".join(s.get("imports",   [])[:5]) or "none"
+    return (
+        f"### {file['path']} ({file['tokens']} tokens)\n"
+        f"fn: {fns} | cls: {cls} | imports: {imps}\n"
+        f"```\n{body}\n```"
+    )
+
+
+async def _analyze_file(file: dict, idx: int, sem: asyncio.Semaphore) -> dict:
+    from config.model_router import get_file_pool_cascade
+    async with sem:
+        prompt = _build_prompt(file)
+        pool   = get_file_pool_cascade(file["path"], file.get("tokens", 0))
+        print(f"[ANALYST] {file['path']}: pool has {len(pool)} models → {[m for _,m in pool[:3]]}", flush=True)
+        if not pool:
+            raise RuntimeError(f"Empty pool for {file['path']}")
+        # Scale output budget with file size: small files get 512, large get up to 1024
+        file_tokens = file.get("tokens", 0)
+        out_tokens = 512 if file_tokens < 300 else (768 if file_tokens < 1000 else 1024)
+        try:
+            analysis = await llm_call_async_pool(pool, SYSTEM, prompt, max_tokens=out_tokens, role="analyst")
+        except Exception as e:
+            import traceback
+            with open("server/error.log", "a") as f:
+                f.write(f"\n[ANALYST] {file['path']}: {type(e).__name__}: {e}\n")
+                f.write(f"  pool: {[(p,m) for p,m in pool[:3]]}\n")
+                traceback.print_exc(file=f)
+            raise
+
+    db = get_db()
+    db.save_analysis(file["path"], file["content_hash"], analysis)
+
+    return {"batch_id": idx, "files": [file["path"]], "analysis": analysis}
+
+
+async def analyze_parallel(files: list[dict]) -> list[dict]:
+    model = "multi-provider/tiered"  # display label only
+    db    = get_db()
+
+    cached_results, new_files = [], []
+    for file in files:
+        content_hash = file.get("content_hash")
+        if not content_hash:
+            new_files.append(file)
+            continue
+        row = db.get_file(file["path"], content_hash)
+        if row and row["analysis"]:
+            logger.debug(f"[analyze] cache hit: {file['path']}")
+            cached_results.append({
+                "batch_id": len(cached_results),
+                "files":    [file["path"]],
+                "analysis": row["analysis"],
+            })
+        else:
+            new_files.append(file)
+
+    hits   = len(cached_results)
+    misses = len(new_files)
+    logger.info(
+        f"[analyze] {hits} cached, {misses} new — model [{model}]  "
+        f"(safe budget: {_safe_budget(model):,} TPM, "
+        f"concurrency: {min(MAX_CONCURRENT_FILES, max(misses, 1))})"
+    )
+
+    sem   = asyncio.Semaphore(MAX_CONCURRENT_FILES)
+    tasks = [_analyze_file(f, hits + i, sem) for i, f in enumerate(new_files)]
+    raw   = await asyncio.gather(*tasks, return_exceptions=True)
+
+    new_results = []
+    failures    = 0
+    for result in raw:
+        if isinstance(result, Exception):
+            logger.error(f"[analyze] failed: {result}")
+            failures += 1
+        else:
+            new_results.append(result)
+
+    if failures:
+        logger.warning(f"[analyze] {failures}/{misses} new file(s) failed — continuing with {len(new_results)} results")
+
+    if not new_results and misses > 0:
+        raise RuntimeError(
+            f"Analysis failed — all {misses} new file(s) errored. "
+            "Check your API key and provider rate limits."
         )
-    return "\n\n".join(parts)
 
-
-def _group_batches(files: list[dict], model: str) -> list[list[dict]]:
-    """
-    Split files into batches that fit within the model's safe TPM budget.
-    System prompt ~= 80 tokens. Max output = 1024 tokens.
-    """
-    safe_budget    = _safe_budget(model)
-    max_input_toks = safe_budget - 1024 - 80
-    batches, current, running = [], [], 0
-
-    for f in files:
-        est = min(f["tokens"], MAX_FILE_CHARS // 4) + 40
-        if running + est > max_input_toks and current:
-            batches.append(current)
-            current, running = [], 0
-        current.append(f)
-        running += est
-
-    if current:
-        batches.append(current)
-    return batches
-
-
-async def _analyze_batch(batch: list[dict], batch_id: int) -> dict:
-    prompt = _build_prompt(batch)
-    result = await llm_call_async("traversal", SYSTEM, prompt, max_tokens=1024)
-    return {
-        "batch_id": batch_id,
-        "files":    [f["path"] for f in batch],
-        "analysis": result,
-    }
-
-
-async def analyze_sequential(files: list[dict]) -> list[dict]:
-    from config.settings import get_model
-    _, model = get_model("traversal")
-
-    batches = _group_batches(files, model)
-    print(f"  -> {len(batches)} batch(es) for model [{model}]  "
-          f"(safe budget: {_safe_budget(model):,} TPM)")
-
-    results = []
-    for i, batch in enumerate(batches):
-        result = await _analyze_batch(batch, i)
-        results.append(result)
-        if i < len(batches) - 1:
-            await asyncio.sleep(1.5)  # brief pause to avoid TPM burst on free tier
-
-    return results
+    return sorted(cached_results + new_results, key=lambda r: r["batch_id"])
