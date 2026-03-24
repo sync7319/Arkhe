@@ -33,16 +33,23 @@ Look for:
 - Weak or broken cryptography (MD5/SHA1 for passwords, hardcoded IV/salt/key)
 - Open redirects, SSRF (user-controlled URLs passed to requests/httpx without allow-list)
 
-Output format per finding:
+Output format — use EXACTLY this structure for every file, no exceptions:
+  FILE: <path> — CLEAN
+  or:
   FILE: <path>
   SEVERITY: CRITICAL | HIGH | MEDIUM | LOW
   ISSUE: <one-line description>
   CODE: <relevant snippet, max 1 line>
   FIX: <one-line recommendation>
 
-If a file has no issues, write: FILE: <path> — CLEAN
-Be concise. Flag real, exploitable issues only — not theoretical or intentional design choices.
-Before flagging, verify the issue is present in the snippet shown — do not flag based on incomplete or partially visible code."""
+Rules:
+- Do NOT use markdown headers (###), numbered lists, or prose paragraphs — only the FILE/SEVERITY/ISSUE/CODE/FIX format.
+- Do NOT change format mid-response.
+- If a snippet appears truncated or ends mid-token, do NOT flag it — you cannot assess what you cannot see.
+- subprocess.run() called with a list (not shell=True) is NOT command injection.
+- os.path.join() on filenames from os.listdir() or a validated allowlist is NOT path traversal.
+- Passing api_key from a variable (not a hardcoded string) to a client constructor is NOT a hardcoded credential.
+Be concise. Flag real, exploitable issues only — not theoretical or intentional design choices."""
 
 BATCH_SIZE  = 4
 MAX_CHARS   = 3000

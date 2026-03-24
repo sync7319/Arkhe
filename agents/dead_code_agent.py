@@ -18,21 +18,26 @@ logger = logging.getLogger("arkhe.deadcode")
 
 # Symbols matching these patterns are skipped — they're almost always live
 _DUNDER        = re.compile(r"^__.+__$")
-_FRAMEWORK_OPS = ["@app.", "@router.", "urlpatterns", "signals.", "admin.register"]
+# Decorator prefixes that register a function with a framework — not dead code
+_DECORATOR_OPS = re.compile(
+    r"@(app|router|blueprint|celery|pytest|signal|admin)\."
+    r"|@(staticmethod|classmethod|property|overload|abstractmethod)"
+    r"|urlpatterns|admin\.register"
+)
 
 
 def _is_framework_magic(symbol: str, content: str) -> bool:
     if _DUNDER.match(symbol):
         return True
-    snippet = re.search(
-        rf"[@(]\S*{re.escape(symbol)}|{re.escape(symbol)}\s*=\s*",
-        content,
-    )
-    if snippet:
-        surrounding = content[max(0, snippet.start() - 20):snippet.start()]
-        for op in _FRAMEWORK_OPS:
-            if op in surrounding:
-                return True
+    # Find every definition of this symbol and check if a decorator appears
+    # on the preceding 3 lines (covers @app.get / @app.post / @router.X etc.)
+    for m in re.finditer(rf"\bdef {re.escape(symbol)}\b|\bclass {re.escape(symbol)}\b", content):
+        # Grab up to 3 lines before the definition
+        before = content[max(0, m.start() - 300):m.start()]
+        last_lines = before.rsplit("\n", 3)[-3:]
+        joined = "\n".join(last_lines)
+        if _DECORATOR_OPS.search(joined):
+            return True
     return False
 
 
