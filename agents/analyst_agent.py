@@ -15,11 +15,13 @@ from config.llm_client import llm_call_async_explicit, llm_call_async_pool
 logger = logging.getLogger("arkhe.analyst")
 
 SYSTEM = """You are a senior software engineer. Analyze this file and return:
-1. Purpose (1 sentence)
-2. Key functions/classes (names + 1 line each)
-3. Main dependencies
-4. Any gotchas
-Be concise. Markdown format."""
+1. Purpose (1 sentence — be specific about what this file actually does, not generic)
+2. Key functions/classes (list each by its exact name, one line description each)
+3. Main dependencies (exact import names)
+4. Gotchas or non-obvious behaviors (name specific functions/variables involved)
+
+Be specific: use actual names from the code. Do not write generic descriptions.
+Output raw Markdown — no code fences wrapping the response."""
 
 # Free-tier safe limits per model (tokens per minute)
 MODEL_TPM_LIMITS = {
@@ -67,8 +69,11 @@ async def _analyze_file(file: dict, idx: int, sem: asyncio.Semaphore) -> dict:
         print(f"[ANALYST] {file['path']}: pool has {len(pool)} models → {[m for _,m in pool[:3]]}", flush=True)
         if not pool:
             raise RuntimeError(f"Empty pool for {file['path']}")
+        # Scale output budget with file size: small files get 512, large get up to 1024
+        file_tokens = file.get("tokens", 0)
+        out_tokens = 512 if file_tokens < 300 else (768 if file_tokens < 1000 else 1024)
         try:
-            analysis = await llm_call_async_pool(pool, SYSTEM, prompt, max_tokens=512, role="analyst")
+            analysis = await llm_call_async_pool(pool, SYSTEM, prompt, max_tokens=out_tokens, role="analyst")
         except Exception as e:
             import traceback
             with open("server/error.log", "a") as f:

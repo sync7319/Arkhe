@@ -18,7 +18,8 @@ BATCH_SIZE = 10
 
 BATCH_SYSTEM = """You are a senior software engineer. Summarize the following file analysis
 reports into a concise module overview (3-6 sentences). Cover: what these files do together,
-key functions/classes, dependencies, and any gotchas. Be brief."""
+key functions/classes (name them explicitly), dependencies, and any gotchas.
+Output plain text — no code blocks, no markdown fences. Be brief and specific."""
 
 SYSTEM = """You are a senior software architect. You have received module summaries
 from a multi-agent analysis of a codebase. Synthesize them into a comprehensive
@@ -35,7 +36,11 @@ CODEBASE_MAP.md with these sections:
 ## 7. Gotchas & Warnings
 ## 8. Navigation Guide
 
-Be thorough but scannable. Use tables where appropriate."""
+Rules:
+- Output raw Markdown directly. Do NOT wrap your response in a code block, markdown fence, or any ``` markers.
+- Be specific: reference actual file paths, real function names, real class names, and real design patterns you observed.
+- Do not write generic descriptions like "lazy initialization may cause issues" — name the actual function and the actual risk.
+- Use tables where appropriate. Be thorough but scannable."""
 
 
 async def _call(system: str, prompt: str, max_tokens: int) -> str:

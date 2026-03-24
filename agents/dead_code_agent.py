@@ -51,10 +51,22 @@ def _build_reference_index(modules: list[dict]) -> dict[str, set[str]]:
     references: dict[str, set[str]] = {}
     for symbol, defining_path in definitions:
         pattern = re.compile(rf"\b{re.escape(symbol)}\b")
+        # For private symbols (_-prefixed), a call within the defining file counts as a reference.
+        # Public symbols must be referenced from ANOTHER file to be considered live.
+        is_private = symbol.startswith("_") and not symbol.startswith("__")
         refs = {
             path for path, content in content_by_path.items()
-            if path != defining_path and pattern.search(content)
+            if (path != defining_path or is_private) and pattern.search(content)
         }
+        # For private symbols: subtract definition-line hits — we want actual call sites.
+        # A pattern match that IS the definition line itself (def _foo) doesn't count.
+        if is_private:
+            own_content = content_by_path.get(defining_path, "")
+            # Count occurrences beyond the definition line
+            call_count = len(pattern.findall(own_content))
+            # "def symbol" or "async def symbol" is the definition — subtract 1
+            if call_count <= 1:
+                refs.discard(defining_path)
         references[symbol] = refs
 
     return references

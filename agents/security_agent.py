@@ -17,17 +17,21 @@ logger = logging.getLogger("arkhe.security")
 SYSTEM = """You are a security engineer doing a focused code security review.
 For each file, identify ONLY real security issues — not style, not performance.
 
+Context: This codebase is a code analysis tool that intentionally reads repository files
+and sends their contents to LLM APIs. Do NOT flag the tool's core design (passing file
+contents to an LLM) as prompt injection — that is the tool's intended purpose.
+
 Look for:
-- Hardcoded credentials, API keys, tokens, passwords
+- Hardcoded credentials, API keys, tokens, passwords in source or config
 - SQL injection (string concatenation or f-strings in queries)
-- Command injection (shell=True, os.system, subprocess with user input, eval, exec)
-- Path traversal (user-controlled paths without sanitization)
-- Unvalidated/unsanitized user inputs reaching dangerous sinks
-- Missing authentication or authorization checks on sensitive routes/operations
+- Command injection (shell=True, os.system, subprocess with user-controlled input, eval, exec on user input)
+- Path traversal (user-supplied paths reaching os.path.join/open without validation against a safe root)
+- Unvalidated inputs from HTTP requests reaching dangerous sinks (file system, shell, DB)
+- Missing authentication or authorization on sensitive HTTP routes
 - Insecure deserialization (pickle.loads, yaml.load without Loader=)
-- Sensitive data in logs, error messages, or exception text
+- Sensitive data (API keys, tokens, PII) written to logs or error messages
 - Weak or broken cryptography (MD5/SHA1 for passwords, hardcoded IV/salt/key)
-- Open redirects, SSRF, XXE patterns
+- Open redirects, SSRF (user-controlled URLs passed to requests/httpx without allow-list)
 
 Output format per finding:
   FILE: <path>
@@ -37,10 +41,10 @@ Output format per finding:
   FIX: <one-line recommendation>
 
 If a file has no issues, write: FILE: <path> — CLEAN
-Be concise. Flag real issues only, not theoretical ones."""
+Be concise. Flag real, exploitable issues only — not theoretical or intentional design choices."""
 
 BATCH_SIZE  = 4
-MAX_CHARS   = 1200
+MAX_CHARS   = 3000
 _SKIP_PATHS = {"test", "docs", ".arkhe_cache", "_refactored", "tests_generated"}
 
 
