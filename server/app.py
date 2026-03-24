@@ -438,8 +438,9 @@ async def results(request: Request, job_id: str):
     if not job:
         return HTMLResponse("<h2>Job not found.</h2>", status_code=404)
     return templates.TemplateResponse(request, "results.html", {
-        "job_id": job_id,
-        "job":    job,
+        "job_id":     job_id,
+        "job":        job,
+        "created_at": job.get("created_at", 0),
     })
 
 

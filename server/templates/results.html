@@ -220,33 +220,38 @@
   <div class="pending-wrap" id="pending-card">
     <div class="pending-spinner"></div>
     <h2>Running pipeline</h2>
-    <p id="status-text">This takes 1–3 minutes depending on repo size.<br>You can keep this tab open — it will update automatically.</p>
+    <p id="status-text">Connecting...</p>
   </div>
 
   <script>
-    const messages = [
-      "Cloning the repository...",
-      "Scanning files and counting tokens...",
-      "Parsing AST structure across all files...",
-      "Analyzing files with AI — this is the long step...",
-      "Synthesizing the final codebase map...",
-      "Building the dependency graph...",
-      "Almost done — writing output files...",
-    ];
-    let idx = 0;
-    setInterval(() => {
-      idx = Math.min(idx + 1, messages.length - 1);
-      document.getElementById("status-text").textContent = messages[idx];
-    }, 9000);
-    setInterval(async () => {
-      const res  = await fetch("/status/{{ job_id }}");
-      const data = await res.json();
-      if (data.status === "complete") window.location.reload();
-      else if (data.status === "error") {
+    const JOB_ID = "{{ job_id }}";
+    const es = new EventSource(`/stream/${JOB_ID}`);
+    es.onmessage = (e) => {
+      const data = JSON.parse(e.data);
+      if (data.status === "complete") {
+        es.close();
+        window.location.reload();
+      } else if (data.status === "error") {
+        es.close();
+        const isRateLimit = (data.error || "").toLowerCase().includes("rate");
+        const retryHtml = isRateLimit
+          ? `<a href="/" style="display:inline-block;margin-top:1rem;padding:0.5rem 1.2rem;
+              background:var(--accent);color:#fff;border-radius:8px;text-decoration:none;
+              font-weight:600;font-size:0.875rem">← Retry (cache will resume)</a>`
+          : `<a href="/" style="display:inline-block;margin-top:1rem;padding:0.5rem 1.2rem;
+              background:var(--surface-hi);color:var(--text-2);border:1px solid var(--border);
+              border-radius:8px;text-decoration:none;font-weight:600;font-size:0.875rem">← Try another repo</a>`;
         document.getElementById("pending-card").innerHTML =
-          `<div class="error-wrap"><h2>Pipeline failed</h2><p>${data.error || "Unknown error"}</p></div>`;
+          `<h2 style="color:#f87171">Pipeline failed</h2>
+           <p style="color:var(--text-2);max-width:480px;margin:0.75rem auto">${data.error || "Unknown error"}</p>
+           ${retryHtml}`;
+      } else if (data.step_label) {
+        document.getElementById("status-text").textContent = data.step_label;
       }
-    }, 5000);
+    };
+    es.onerror = () => {
+      document.getElementById("status-text").textContent = "Reconnecting...";
+    };
   </script>
 
   {% elif job.status == "error" %}
@@ -257,6 +262,11 @@
   <div class="error-wrap">
     <h2>Pipeline Error</h2>
     <p>{{ job.error or "Unknown error" }}</p>
+    {% if "rate" in (job.error or "").lower() %}
+    <p style="margin-top:0.75rem;font-size:0.85rem;color:var(--text-3)">
+      The pipeline cache is intact — retry and it will resume from where it stopped.
+    </p>
+    {% endif %}
   </div>
   <div class="new-analysis"><a href="/">← Try another repo</a></div>
 
@@ -265,9 +275,10 @@
   <div class="results-header">
     <h1>Analysis complete</h1>
     <div class="results-meta">
-      <span class="repo-url">{{ job.url }}</span>
+      {% if job.url %}<span class="repo-url">{{ job.url }}</span><span class="dot">·</span>{% endif %}
+      <span>{{ job.outputs | length }} output(s)</span>
       <span class="dot">·</span>
-      <span>{{ job.outputs | length }} output(s) generated</span>
+      <span id="job-age"></span>
     </div>
   </div>
 
@@ -423,6 +434,23 @@
 
       document.getElementById("graph-stats-section").style.display = "";
     } catch (_) {}
+  })();
+
+  // Job age display
+  (function () {
+    const createdAt = {{ created_at or 0 }};
+    const el = document.getElementById("job-age");
+    if (!el || !createdAt) return;
+    function fmt(ms) {
+      const s = Math.floor(ms / 1000);
+      if (s < 60)  return `${s}s ago`;
+      if (s < 3600) return `${Math.floor(s/60)}m ago`;
+      if (s < 86400) return `${Math.floor(s/3600)}h ago`;
+      return `${Math.floor(s/86400)}d ago`;
+    }
+    function update() { el.textContent = fmt(Date.now() - createdAt * 1000); }
+    update();
+    setInterval(update, 30000);
   })();
 
   (function () {
