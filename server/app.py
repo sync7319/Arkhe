@@ -20,15 +20,19 @@ Run locally:
 """
 import asyncio
 import hashlib
+import json
 import logging
 import os
 import shutil
+import time
 import uuid
 from enum import Enum
 from pathlib import Path
 
+from contextlib import asynccontextmanager
+
 from fastapi import BackgroundTasks, FastAPI, Request
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -48,7 +52,21 @@ logging.getLogger("arkhe.router").setLevel(logging.DEBUG)
 logging.getLogger("arkhe.analyst").setLevel(logging.DEBUG)
 logging.getLogger("arkhe.dispatcher").setLevel(logging.DEBUG)
 
-app = FastAPI(title="Arkhe", docs_url=None, redoc_url=None)
+@asynccontextmanager
+async def _lifespan(app_: FastAPI):
+    asyncio.create_task(_cleanup_old_results())
+    yield
+
+
+app = FastAPI(
+    title="Arkhe API",
+    description="Autonomous codebase intelligence. Blast radius, smart context, dependency graphs.",
+    version="0.3.0",
+    docs_url="/api/docs",
+    redoc_url="/api/redoc",
+    openapi_url="/api/openapi.json",
+    lifespan=_lifespan,
+)
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 
@@ -199,6 +217,9 @@ async def _run_pipeline(job_id: str, url: str, options: dict) -> None:
             jobs[job_id]["status"]  = JobStatus.COMPLETE
             logger.info(f"[job {job_id}] complete — {len(outputs)} output(s)")
 
+            # Persist minimal metadata so results survive server restarts
+            _save_meta(job_id, url, outputs)
+
     except CloneError as e:
         jobs[job_id]["status"] = JobStatus.ERROR
         jobs[job_id]["error"]  = str(e)
@@ -286,16 +307,129 @@ async def status(job_id: str):
     })
 
 
+@app.get("/stream/{job_id}", tags=["jobs"])
+async def stream_status(job_id: str):
+    """
+    Server-Sent Events stream for real-time job progress.
+    Connect with EventSource('/stream/{job_id}').
+    Events: {status, step, step_label, error?, outputs?}
+    Stream closes automatically when job reaches 'complete' or 'error'.
+    """
+    async def _gen():
+        last_step = -1
+        last_status = ""
+        while True:
+            job = jobs.get(job_id)
+            if not job:
+                payload = json.dumps({"status": "error", "error": "Job not found", "step": 0, "step_label": ""})
+                yield f"data: {payload}\n\n"
+                return
+
+            status     = job["status"]
+            step       = job.get("step", 0)
+            step_label = job.get("step_label", "")
+
+            # Send update when step or status changes
+            if step != last_step or status != last_status:
+                last_step   = step
+                last_status = status
+                payload = {"status": status, "step": step, "step_label": step_label, "error": job.get("error")}
+                if status == "complete":
+                    payload["outputs"] = job.get("outputs", [])
+                yield f"data: {json.dumps(payload)}\n\n"
+
+            if status in ("complete", "error"):
+                return
+
+            await asyncio.sleep(0.25)  # check 4× per second
+
+    return StreamingResponse(
+        _gen(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control":    "no-cache",
+            "X-Accel-Buffering": "no",   # disable nginx/proxy buffering
+            "Connection":       "keep-alive",
+        },
+    )
+
+
+def _save_meta(job_id: str, url: str, outputs: list) -> None:
+    """Persist job metadata to disk so results survive server restarts."""
+    meta = {
+        "job_id":     job_id,
+        "url":        url,
+        "status":     "complete",
+        "outputs":    outputs,
+        "created_at": time.time(),
+    }
+    try:
+        (RESULTS_DIR / job_id / "meta.json").write_text(json.dumps(meta))
+    except Exception as e:
+        logger.warning(f"[job {job_id}] could not save meta.json: {e}")
+
+
 def _reconstruct_job_from_disk(job_id: str) -> dict | None:
-    """Rebuild a minimal job dict from on-disk results when the in-memory job is gone (e.g. after server reload)."""
+    """Rebuild a job dict from disk — reads meta.json if available, falls back to file scan."""
     job_dir = RESULTS_DIR / job_id
     if not job_dir.exists():
         return None
+
+    # Fast path: use persisted metadata
+    meta_path = job_dir / "meta.json"
+    if meta_path.exists():
+        try:
+            meta = json.loads(meta_path.read_text())
+            return {
+                "status":     meta.get("status", "complete"),
+                "url":        meta.get("url", ""),
+                "outputs":    meta.get("outputs", []),
+                "error":      meta.get("error"),
+                "created_at": meta.get("created_at", 0),
+            }
+        except Exception:
+            pass  # fall through to file scan
+
+    # Fallback: scan disk (legacy jobs without meta.json)
     outputs = []
     for filename, label, kind in OUTPUT_FILES:
-        if (job_dir / filename).exists():
+        if (job_dir / filename).exists() and filename not in _INTERNAL_FILES:
             outputs.append({"filename": filename, "label": label, "kind": kind})
-    return {"status": "complete", "url": "", "outputs": outputs, "error": None}
+    return {"status": "complete", "url": "", "outputs": outputs, "error": None, "created_at": 0}
+
+
+# ── Result cleanup — delete jobs older than TTL ───────────────────────────────
+
+RESULT_TTL_HOURS = 48  # auto-delete results after 48 hours
+
+
+async def _cleanup_old_results() -> None:
+    """Background task: delete result directories older than RESULT_TTL_HOURS."""
+    while True:
+        await asyncio.sleep(3600)  # run every hour
+        cutoff = time.time() - RESULT_TTL_HOURS * 3600
+        deleted = 0
+        for job_dir in RESULTS_DIR.iterdir():
+            if not job_dir.is_dir():
+                continue
+            meta_path = job_dir / "meta.json"
+            try:
+                if meta_path.exists():
+                    meta = json.loads(meta_path.read_text())
+                    created_at = meta.get("created_at", 0)
+                else:
+                    # Use directory mtime as fallback
+                    created_at = job_dir.stat().st_mtime
+                if created_at < cutoff:
+                    shutil.rmtree(job_dir, ignore_errors=True)
+                    jobs.pop(job_dir.name, None)
+                    deleted += 1
+            except Exception:
+                pass
+        if deleted:
+            logger.info(f"[cleanup] Deleted {deleted} expired job(s) (older than {RESULT_TTL_HOURS}h)")
+
+
 
 
 @app.get("/results/{job_id}", response_class=HTMLResponse)

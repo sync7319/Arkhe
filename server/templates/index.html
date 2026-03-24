@@ -456,10 +456,10 @@
           <span id="step-clone">Clone</span>
           <span id="step-scan">Scan</span>
           <span id="step-parse">Parse</span>
+          <span id="step-graph">Graph</span>
           <span id="step-analyze">Analyze</span>
           <span id="step-synthesize">Synthesize</span>
-          <span id="step-graph">Graph</span>
-          <span id="step-done">Done</span>
+          <span id="step-write">Write</span>
         </div>
       </div>
     </div>
@@ -675,15 +675,15 @@ arkhe ./my-project --refactor</pre>
   })();
 
   // ── Form logic ─────────────────────────────────────────────
-  let pollInterval = null;
+  let _activeStream = null;
   const STEPS = [
-    { id:"step-clone",     label:"Cloning repository...",       pct:5  },
-    { id:"step-scan",      label:"Scanning files...",            pct:15 },
-    { id:"step-parse",     label:"Parsing AST structure...",     pct:30 },
-    { id:"step-analyze",   label:"Analyzing with AI...",         pct:65 },
-    { id:"step-synthesize",label:"Synthesizing codebase map...", pct:85 },
-    { id:"step-graph",     label:"Building dependency graph...", pct:95 },
-    { id:"step-done",      label:"Finishing up...",              pct:99 },
+    { id:"step-clone",     label:"Cloning repository...",              pct:5  },
+    { id:"step-scan",      label:"Scanning files...",                   pct:15 },
+    { id:"step-parse",     label:"Parsing AST structure...",            pct:25 },
+    { id:"step-graph",     label:"Building dependency graph...",        pct:35 },
+    { id:"step-analyze",   label:"Analyzing with AI...",                pct:70 },
+    { id:"step-synthesize",label:"Synthesizing + parallel analyses...", pct:90 },
+    { id:"step-write",     label:"Writing outputs...",                  pct:98 },
   ];
 
   function toggleOptions() {
@@ -723,7 +723,7 @@ arkhe ./my-project --refactor</pre>
     const url   = document.getElementById("repo-url").value.trim();
     const errEl = document.getElementById("error-msg");
     const btn   = document.getElementById("analyze-btn");
-    errEl.textContent = "";
+    errEl.innerHTML = "";
     if (!url) { errEl.textContent = "Please enter a GitHub or GitLab URL."; return; }
     btn.disabled = true; btn.textContent = "Analyzing...";
     setProgress(0);
@@ -737,58 +737,68 @@ arkhe ./my-project --refactor</pre>
       const data = await res.json();
       if (!res.ok) { showError(data.error || "Something went wrong."); resetBtn(); return; }
       localStorage.setItem("arkhe-active-job", JSON.stringify({ jobId: data.job_id, url }));
-      pollStatus(data.job_id);
+      streamStatus(data.job_id);
     } catch (e) { showError("Network error — please try again."); resetBtn(); }
   }
 
-  function pollStatus(jobId) {
+  function streamStatus(jobId) {
     const btn = document.getElementById("analyze-btn");
     btn.disabled = true; btn.textContent = "Analyzing...";
     document.getElementById("status-bar").style.display = "block";
     setProgress(0);
 
-    pollInterval = setInterval(async () => {
-      try {
-        const res  = await fetch(`/status/${jobId}`);
-        const data = await res.json();
-        if (data.status === "complete") {
-          clearInterval(pollInterval);
-          localStorage.removeItem("arkhe-active-job");
-          setProgress(STEPS.length - 1, true);
-          setTimeout(() => window.location.href = `/results/${jobId}`, 400);
-        } else if (data.status === "error") {
-          clearInterval(pollInterval);
-          localStorage.removeItem("arkhe-active-job");
-          showError(data.error || "Pipeline failed.");
-          resetBtn();
-        } else {
-          // Use real step from server
-          const step = data.step ?? 0;
-          setProgress(Math.min(step, STEPS.length - 1));
-        }
-      } catch (e) { /* keep polling */ }
-    }, 2000);
+    // Close any existing stream
+    if (_activeStream) { _activeStream.close(); _activeStream = null; }
+
+    const es = new EventSource(`/stream/${jobId}`);
+    _activeStream = es;
+
+    es.onmessage = (e) => {
+      const data = JSON.parse(e.data);
+      if (data.status === "complete") {
+        es.close(); _activeStream = null;
+        localStorage.removeItem("arkhe-active-job");
+        setProgress(STEPS.length - 1, true);
+        setTimeout(() => window.location.href = `/results/${jobId}`, 500);
+      } else if (data.status === "error") {
+        es.close(); _activeStream = null;
+        localStorage.removeItem("arkhe-active-job");
+        const isRateLimit = (data.error || "").toLowerCase().includes("rate");
+        showError(data.error || "Pipeline failed.", isRateLimit ? jobId : null);
+        resetBtn();
+      } else {
+        const step = data.step ?? 0;
+        // Use server's step_label if available and meaningful
+        setProgress(Math.min(step, STEPS.length - 1), false, data.step_label);
+      }
+    };
+
+    es.onerror = () => {
+      // EventSource auto-reconnects on network blips — only close if job ended
+      if (!_activeStream || _activeStream.readyState === EventSource.CLOSED) return;
+    };
   }
 
-  // On page load, resume any active job
+  // On page load, resume any active job via SSE
   document.addEventListener("DOMContentLoaded", () => {
     const saved = JSON.parse(localStorage.getItem("arkhe-active-job") || "null");
     if (!saved) return;
-    // Verify it's still running before resuming
     fetch(`/status/${saved.jobId}`).then(r => r.json()).then(data => {
       if (data.status === "running" || data.status === "pending") {
         if (saved.url) document.getElementById("repo-url").value = saved.url;
-        pollStatus(saved.jobId);
+        streamStatus(saved.jobId);
       } else {
         localStorage.removeItem("arkhe-active-job");
       }
     }).catch(() => localStorage.removeItem("arkhe-active-job"));
   });
 
-  function setProgress(stepIdx, complete = false) {
-    const step = STEPS[stepIdx];
+  function setProgress(stepIdx, complete = false, serverLabel = "") {
+    const step = STEPS[stepIdx] || STEPS[STEPS.length - 1];
     const pct  = complete ? 100 : step.pct;
-    document.getElementById("status-text").textContent = complete ? "Complete!" : step.label;
+    // Prefer server's real-time label when provided
+    const label = complete ? "Complete!" : (serverLabel || step.label);
+    document.getElementById("status-text").textContent = label;
     document.getElementById("status-pct").textContent  = pct + "%";
     document.getElementById("progress-fill").style.width = pct + "%";
     STEPS.forEach((s, i) => {
@@ -797,14 +807,47 @@ arkhe ./my-project --refactor</pre>
     });
   }
 
-  function showError(msg) {
-    document.getElementById("error-msg").textContent    = msg;
-    document.getElementById("status-bar").style.display = "none";
+  function showError(msg, retryJobId = null) {
+    const errEl = document.getElementById("error-msg");
+    let html = msg;
+    if (retryJobId) {
+      // Rate limit error — offer to retry (cache will pick up from where it left off)
+      html += ` <button onclick="retryJob('${retryJobId}')" style="
+        margin-left:0.5rem;font-size:0.78rem;font-weight:600;
+        padding:0.2rem 0.65rem;border-radius:5px;cursor:pointer;
+        background:var(--accent-bg);color:var(--accent-hi);
+        border:1px solid var(--border-hi);
+      ">Retry</button>`;
+    }
+    errEl.innerHTML = html;
+  }
+
+  async function retryJob(prevJobId) {
+    // Re-submit same URL — the pipeline cache will skip already-analyzed files
+    const url = document.getElementById("repo-url").value.trim();
+    if (!url) return;
+    document.getElementById("error-msg").innerHTML = "";
+    document.getElementById("analyze-btn").disabled = true;
+    document.getElementById("analyze-btn").textContent = "Analyzing...";
+    setProgress(0);
+    document.getElementById("status-bar").style.display = "block";
+    try {
+      const res  = await fetch("/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url, options: collectOptions() }),
+      });
+      const data = await res.json();
+      if (!res.ok) { showError(data.error || "Retry failed."); resetBtn(); return; }
+      localStorage.setItem("arkhe-active-job", JSON.stringify({ jobId: data.job_id, url }));
+      streamStatus(data.job_id);
+    } catch (e) { showError("Network error — please try again."); resetBtn(); }
   }
 
   function resetBtn() {
     const btn = document.getElementById("analyze-btn");
     btn.disabled = false; btn.textContent = "Analyze →";
+    document.getElementById("status-bar").style.display = "none";
   }
 </script>
 
