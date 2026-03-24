@@ -38,7 +38,9 @@ CODEBASE_MAP.md with these sections:
 
 Rules:
 - Output raw Markdown directly. Do NOT wrap your response in a code block, markdown fence, or any ``` markers.
-- Be specific: reference actual file paths, real function names, real class names, and real design patterns you observed.
+- CRITICAL: Only list function names, class names, and entry points that appear verbatim in the analysis reports below. Do NOT invent, guess, or paraphrase any names. If a function name was not explicitly mentioned in the reports, leave that cell blank or write "—".
+- For the dependencies column: use the "imports:" field from the file list above — those are ground-truth AST-extracted imports. Do not guess or add imports not shown there.
+- Be specific: reference actual file paths, real function names (exactly as reported), and real design patterns you observed. Never make up plausible-sounding names.
 - Do not write generic descriptions like "lazy initialization may cause issues" — name the actual function and the actual risk.
 - Use tables where appropriate. Be thorough but scannable."""
 
@@ -51,8 +53,14 @@ async def _call(system: str, prompt: str, max_tokens: int) -> str:
 
 
 async def synthesize(reports: list[dict], file_tree: list[dict]) -> str:
+    # Build ground-truth import index from AST — prevents hallucinated dependencies
+    def _imports_for(f: dict) -> str:
+        imps = f.get("structure", {}).get("imports", [])
+        return ", ".join(imps[:8]) if imps else "none"
+
     file_list = "\n".join(
-        f"- {f['path']} ({f['tokens']} tokens)" for f in file_tree
+        f"- {f['path']} ({f['tokens']} tokens) | imports: {_imports_for(f)}"
+        for f in file_tree
     )
 
     # Small codebase — single call is fine

@@ -22,7 +22,7 @@ and sends their contents to LLM APIs. Do NOT flag the tool's core design (passin
 contents to an LLM) as prompt injection — that is the tool's intended purpose.
 
 Look for:
-- Hardcoded credentials, API keys, tokens, passwords in source or config
+- Hardcoded credentials: literal string values assigned directly (e.g. api_key="sk-abc123"). Do NOT flag api_key=variable patterns where the variable comes from os.getenv() or a function parameter — those are NOT hardcoded.
 - SQL injection (string concatenation or f-strings in queries)
 - Command injection (shell=True, os.system, subprocess with user-controlled input, eval, exec on user input)
 - Path traversal (user-supplied paths reaching os.path.join/open without validation against a safe root)
@@ -41,7 +41,8 @@ Output format per finding:
   FIX: <one-line recommendation>
 
 If a file has no issues, write: FILE: <path> — CLEAN
-Be concise. Flag real, exploitable issues only — not theoretical or intentional design choices."""
+Be concise. Flag real, exploitable issues only — not theoretical or intentional design choices.
+Before flagging, verify the issue is present in the snippet shown — do not flag based on incomplete or partially visible code."""
 
 BATCH_SIZE  = 4
 MAX_CHARS   = 3000

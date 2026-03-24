@@ -15,12 +15,11 @@ from config.llm_client import llm_call_async_explicit, llm_call_async_pool
 logger = logging.getLogger("arkhe.analyst")
 
 SYSTEM = """You are a senior software engineer. Analyze this file and return:
-1. Purpose (1 sentence — be specific about what this file actually does, not generic)
-2. Key functions/classes (list each by its exact name, one line description each)
-3. Main dependencies (exact import names)
-4. Gotchas or non-obvious behaviors (name specific functions/variables involved)
+1. Purpose — one sentence, specific to what this file actually does
+2. Key functions/classes — for each one defined in this file (you can see them labeled "fn:" at the top), write its exact name and one sentence describing what it does. Do not list any names not shown in the fn:/cls: header or defined with "def"/"class" in the code block.
+3. Gotchas — non-obvious behaviors, edge cases, or tricky interactions. Name the specific function or variable involved. Skip this section if there are none.
 
-Be specific: use actual names from the code. Do not write generic descriptions.
+CRITICAL: Only use names that appear verbatim in the code block. Never invent, guess, or paraphrase a function, class, or module name.
 Output raw Markdown — no code fences wrapping the response."""
 
 # Free-tier safe limits per model (tokens per minute)
