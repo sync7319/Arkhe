@@ -53,31 +53,75 @@ scan → parse → analyze → synthesize → visualize → write
 main.py                          — entry point, async pipeline orchestration + subcommand dispatch
 options.env                      — feature toggles (what runs); read by settings.py
 config/settings.py               — all config: providers, models, ignore rules, BYOK chain parsing
-config/llm_client.py             — unified LLM wrapper (groq/gemini/anthropic/openai)
+config/llm_client.py             — unified LLM wrapper (groq/gemini/anthropic/openai/nvidia)
+                                   IMPORTANT: _strip_think_blocks() runs on ALL LLM output — strips
+                                   <think>...</think> from Nemotron/DeepSeek reasoning models
 config/model_router.py           — model priority chains + cooldown fallback; persists to DB
-agents/analyst_agent.py          — TPM-aware batch analysis (sequential, free-tier safe)
-agents/synthesizer_agent.py      — final map synthesis
+config/dispatcher.py             — async rate-limited dispatcher; try_acquire_slot() gates all LLM calls
+agents/analyst_agent.py          — parallel file analysis; max_tokens scales by file size (512/768/1024)
+agents/synthesizer_agent.py      — hierarchical synthesis → CODEBASE_MAP.md; injects AST imports into
+                                   file list so synthesizer uses ground-truth deps, not guesses
 agents/parser_agent.py           — tree-sitter AST extraction (py/js/ts/go/rust/java/ruby)
 agents/visualizer_agent.py       — D3 graph builder, loads template, complexity heatmap
 agents/report_agent.py           — executive report generator (complexity-based model selection)
 agents/refactor_agent.py         — per-file doc+style pass, thorough/fast modes, batching
-agents/security_agent.py         — OWASP Top 10 LLM scan, concurrent batches (traversal model)
-agents/dead_code_agent.py        — static dead symbol detection, zero LLM cost
+agents/security_agent.py         — OWASP Top 10 LLM scan; strict FILE/SEVERITY/ISSUE/CODE/FIX format;
+                                   MAX_CHARS=3000; context prevents false positives on tool design
+agents/dead_code_agent.py        — static dead symbol detection; decorator-aware (_DECORATOR_OPS regex
+                                   checks 3 preceding lines for @app./@router. etc.); private symbols
+                                   and within-file call sites correctly excluded from dead flags
 agents/test_gap_agent.py         — test coverage gap analysis + pytest scaffold generation
 agents/impact_agent.py           — PR blast radius: git diff → reverse dep walk → LLM summary
 templates/dependency_map.html    — D3.js visualization template ({{NODES_JSON}}, {{LINKS_JSON}})
 scripts/scan_codebase.py         — file scanner with gitignore support, Windows path normalization
-output/map_writer.py             — writes CODEBASE_MAP.md to docs/
+scripts/clone_repo.py            — GitHub/GitLab URL cloner; context manager auto-cleans temp dir
+output/map_writer.py             — writes CODEBASE_MAP.md + CONTEXT_INDEX.json + GRAPH.json to docs/
 output/report_writer.py          — writes EXECUTIVE_REPORT.docx to docs/
 output/clone_writer.py           — mirrors repo to <repo>_refactored/ with improved files
 cache/db.py                      — SQLite-backed per-file cache (ArkheDB); stores AST + analysis keyed by content hash
 commands/diff.py                 — `arkhe diff`: scan+parse current state vs SNAPSHOT.json, show file/dep changes
 commands/watch.py                — `arkhe watch`: watchdog-based live reload, 3s debounce, re-runs full pipeline
+server/app.py                    — FastAPI server (55 tests); key endpoints below
+server/static/arkhe.css          — shared CSS: theme vars, nav, buttons, dark/light mode
+server/templates/index.html      — landing page; SSE-based progress via EventSource; retries on rate-limit
+server/templates/results.html    — results dashboard; SSE stream; graph stats; job age; "debug ↗" link
+server/templates/context.html    — Smart Context Picker UI; match-reason pills; token budget bar
+server/templates/impact.html     — Blast Radius Explorer; complexity badges; markdown export
+server/templates/debug_job.html  — Debug Inspector: all outputs readable inline + graph node list
+                                   with blast radius links + server log tail (disable: ARKHE_DEBUG=false)
+server/templates/debug_index.html— lists all jobs on disk with status
+server/templates/map_viewer.html — full-screen iframe viewer for DEPENDENCY_MAP.html
+server/templates/report_viewer.html — markdown viewer with auto-generated TOC sidebar
+server/templates/pricing.html    — pricing page (/pricing)
 tests/test_settings.py           — unit tests for BYOK chain parsing and model selection logic
 tests/test_model_router.py       — unit tests for cooldown tracking and chain navigation
+tests/test_api_endpoints.py      — 55 API endpoint tests covering context, impact, graph stats, SSE
 .github/workflows/ci.yml         — GitHub Actions CI: runs pytest on every push/PR to dev and main
 .gitlab-ci.yml                   — GitLab CI: same tests, runs on MRs and dev/main pushes
 Deeper format/                   — nested test directories for self-test validation
+```
+
+## Server API endpoints
+
+```
+GET  /                              — landing page
+POST /analyze                       — submit repo URL → job_id; options dict patches settings at runtime
+GET  /status/{job_id}               — poll job status (step, step_label, error, outputs)
+GET  /stream/{job_id}               — SSE stream; sends {status,step,step_label} 4×/sec; auto-closes on complete/error
+GET  /results/{job_id}              — results dashboard (HTML)
+GET  /results/{job_id}/view/{file}  — dedicated viewer: map_viewer for .html, report_viewer for .md
+GET  /results/{job_id}/{file}       — raw file download
+GET  /pricing                       — pricing page
+POST /context/{job_id}              — Smart Context Picker: {task, budget, exts, path} → ranked files
+                                      each result has: score, reasons (matched keywords), tokens_pct (budget share)
+GET  /context/{job_id}              — same as POST but via query params
+GET  /context/{job_id}/view         — context picker UI
+GET  /impact/{job_id}?file=path     — Blast Radius: transitive dependents + complexity + risk rating
+GET  /impact/{job_id}/view          — blast radius explorer UI
+GET  /graph/{job_id}/stats          — hub files (top by in-degree), circular deps, isolated/leaf nodes
+GET  /debug                         — inspector: list all jobs (ARKHE_DEBUG=false to disable)
+GET  /debug/{job_id}                — inspector: all outputs + graph nodes + server log tail
+GET  /_health                       — health check
 ```
 
 ## Dev environment
@@ -130,13 +174,85 @@ Everything through Stage 2 is genuinely $0.
 - Arkhe qualifies for **both** category prizes: Google Cloud Run (hosting decision) + Anthropic (already integrated as a provider).
 - Being eligible for two category prizes doubles the chance of winning one.
 
-## Known limitations 
+## Known limitations
 
-- Dead code / test gap detection uses simple regex name matching — dynamic dispatch and `__all__` exports cause false positives.
+- Dead code / test gap detection uses simple regex name matching — dynamic dispatch and `__all__` exports may cause false positives. The decorator check (`@app.`, `@router.`, etc.) now covers the most common framework false positives.
+- Security report: some batches may still output brief prose commentary in addition to the structured FILE/SEVERITY/ISSUE/CODE/FIX format — Nemotron is the primary synthesis model and tends toward conversational output. Findings themselves are accurate.
+- `<think>` block stripping is applied at `_dispatch_async` — if a provider returns malformed think tags (unclosed), the regex still strips correctly (DOTALL mode).
 
 ---
 
 ## Progress Log
+
+### 2026-03-24 (session 2 — Shreeyut)
+- **Static analysis tool integrations (from march_24_plan.txt Batch 1 + 2):**
+  - **`radon`** (`agents/visualizer_agent.py`) — real cyclomatic complexity replaces `tokens+imports×10+functions×5`; `cc_visit(content)` sum × 3 added to base score for Python files; improves heatmap accuracy
+  - **`bandit`** (`agents/security_agent.py`) — deterministic Python security pre-pass before LLM scan; runs via `sys.executable -m bandit -f json`; full-file coverage (no 3000-char limit); CWE-tagged findings in FILE/SEVERITY/ISSUE/CODE/FIX format; LLM still runs second for semantic issues
+  - **`vulture`** (`agents/dead_code_agent.py`) — Python dead code complement at 80% confidence; symbols vulture considers live are removed from regex detector's dead list; graceful fallback if unavailable
+  - **`networkx`** (`agents/impact_agent.py`) — `nx.ancestors(G_rev, file)` replaces 1-level reverse map; PR impact now shows full transitive blast radius, not just direct importers; falls back to hand-rolled map if unavailable
+  - **`__all__` extraction** (`agents/parser_agent.py`) — Python `__all__ = [...]` assignments parsed during tree-sitter walk; stored in `structure["exports"]`; dead code detector skips all exported symbols automatically
+  - **Call graph** (`agents/parser_agent.py`) — `_walk()` now tracks function→callee relationships using scope-aware iterative walk with `_SCOPE_EXIT` sentinel; stored in `structure["calls"] = {"fn": ["callee", ...]}`; works for Python, JS, TS, Go; foundation for function-level analysis
+  - **Parallel parsing** (`agents/parser_agent.py`) — `ThreadPoolExecutor(max_workers=8)` replaces sequential `[parse_file(f) for f in files]`; 3-4× faster on large repos
+  - **JS/TS import resolution** (`agents/visualizer_agent.py`) — `_extract_module_js` + `_resolve_import_js` handle `import { foo } from './utils'` and `require('../config')`; dispatches by file extension; dependency graph now accurate for JS/TS repos
+  - **Cache migration guard** (`agents/parser_agent.py`) — cached structures missing `exports` field are re-parsed once (one-time migration cost on first run after upgrade)
+- **Dependencies added to `pyproject.toml`:** `networkx>=3.0`, `bandit>=1.7`, `radon>=6.0`, `vulture>=2.10`
+- **All 55 tests pass** after changes
+
+> **Shreeyut:** See `march_24_plan.txt` in the repo root — this is Claude Opus 4.6's full
+> improvement recommendations from the 2026-03-24 session. 15 ranked suggestions covering
+> static analysis tools (networkx, bandit, radon, vulture, semgrep), structured LLM output,
+> multi-language import resolution, call graph extraction, and production infra improvements.
+> Worth reading before starting the next dev sprint.
+
+### 2026-03-24 (session — Shreeyut)
+- **Debug Inspector (`ARKHE_DEBUG`):**
+  - `server/templates/debug_index.html` — lists all jobs on disk with job_id link, URL, and status badge
+  - `server/templates/debug_job.html` — 3-tab UI: (1) Output Files — sidebar of all output files; click any to read inline with download link; deep-link via `?file=FILENAME`; (2) Graph Nodes — filterable list of every node from `GRAPH.json` with "blast radius ↗" link per node; `?tab=graph` deep-link; (3) Server Log — last 200 lines of `server.log`, auto-scrolls to bottom
+  - `server/app.py` — `DEBUG_MODE = os.getenv("ARKHE_DEBUG", "true").lower() != "false"`; `_debug_guard()` raises 404 when disabled; routes `GET /debug` and `GET /debug/{job_id}` added; "debug ↗" link added to results.html breadcrumb
+  - Disable entirely: set `ARKHE_DEBUG=false` in `.env`
+
+- **`<think>` block stripping (Nemotron/DeepSeek):**
+  - `_THINK_BLOCK = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)` in `config/llm_client.py`
+  - `_strip_think_blocks()` applied at `_dispatch_async` return — strips reasoning blocks before any caller sees output
+  - Prevents chain-of-thought leakage in security reports and codebase maps from Nemotron-253B
+
+- **Dead code detection — false positive reduction (28 → 4 out of 194 symbols):**
+  - `_DECORATOR_OPS` regex checks 3 preceding lines (300-char lookback) for `@app.`, `@router.`, `@pytest.`, `@staticmethod`, `@classmethod`, `@property`, `@abstractmethod`, `urlpatterns`, `admin.register` — covers FastAPI routes and framework-registered functions
+  - `_build_reference_index()` rewritten: private symbols (`_name`) count within-file self-references; public symbols with call sites beyond the definition line are treated as live
+  - Result: private helpers, FastAPI routes, and within-file classes no longer false-flagged
+
+- **Security report quality:**
+  - `MAX_CHARS = 3000` (was 1200) — full context per snippet
+  - System prompt additions: "This is a code analysis tool..." prevents self-flagging; explicit rules that `api_key=os.getenv(...)` is not hardcoded, `subprocess.run([...list...])` is not injection, `os.path.join` from `os.listdir` is not traversal
+  - Format enforcement: "Do NOT use markdown headers (###). Do NOT change format mid-response. Only use FILE/SEVERITY/ISSUE/CODE/FIX."
+  - Truncation guard: "If a snippet appears truncated, do NOT flag it — you cannot see enough to verify."
+  - Result: 2 legitimate findings (command injection in impact_agent, unauthenticated debug routes in app.py), no false positives
+
+- **LLM hallucination suppression in CODEBASE_MAP:**
+  - `agents/synthesizer_agent.py`: `_imports_for()` pulls AST-extracted imports from tree-sitter per file; `file_list` now includes `| imports: X, Y, Z` — synthesizer instructed to use this as ground-truth, not guess
+  - SYSTEM prompt: "CRITICAL: Only list function names verbatim in the analysis reports. Do NOT invent, guess, or paraphrase."
+  - BATCH_SYSTEM: "Output plain text — no code blocks, no markdown fences. Be brief and specific."
+  - Result: eliminated invented names (`init_client`, `TreeSitterParser`, `networkx` etc.); synthesizer uses real import names from AST
+
+- **Analyst max_tokens scaling:**
+  - `agents/analyst_agent.py`: `out_tokens = 512 if file_tokens < 300 else (768 if file_tokens < 1000 else 1024)`
+  - Larger files get more output budget — prevents truncation of key function descriptions for complex files
+
+- **SYSTEM prompt rewrite in analyst_agent.py:**
+  - Removed "dependencies" question (was source of hallucinations — model guessing what each file imports)
+  - Added "CRITICAL: Only use names that appear verbatim in the code block. Never invent, guess, or paraphrase a function, class, or module name."
+  - Three-section format: Purpose / Key functions+classes / Gotchas (skipped if none)
+
+- **Context Picker enhancements:**
+  - `/context/{job_id}` endpoint now returns `reasons` (list of matched keywords) and `tokens_pct` (share of token budget, 0–100) per result
+  - `server/templates/context.html`: green match-reason pills (`.fc-pill.match`), token budget bar (`.fc-budget-bar` / `.fc-budget-fill`) rendered per file card
+  - `tests/test_api_endpoints.py`: `test_context_results_have_reasons` and `test_context_results_have_tokens_pct` added — 55 tests total
+
+- **Output quality iteration:**
+  - Ran 6 successive analysis jobs against https://github.com/sync7319/Arkhe with all options enabled
+  - Read every output file after each run: CODEBASE_MAP.md, SECURITY_REPORT.md, DEAD_CODE_REPORT.md, DEPENDENCY_MAP.html, TEST_GAP_REPORT.md
+  - Identified and fixed: markdown fence wrapping, hallucinated names, dead code false positives, security false positives, think-block leakage
+  - Main branch was 3 months behind dev — user merged dev→main; subsequent runs used full 60-file codebase
 
 ### 2026-03-18 (session — Shreeyut)
 - **Web server frontend — full redesign and multi-page expansion:**

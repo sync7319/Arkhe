@@ -1,14 +1,22 @@
 """
-Security Audit Agent — LLM scan for common vulnerabilities.
+Security Audit Agent — static + LLM scan for common vulnerabilities.
+
+Two-pass approach:
+  Pass 1 (static, free): Bandit for Python files — deterministic, CWE-mapped,
+          full-file coverage (no truncation). Zero LLM cost.
+  Pass 2 (LLM): Semantic scan for all files — catches auth issues, SSRF, logic
+          flaws, and patterns Bandit can't detect statically.
 
 Covers OWASP Top 10 patterns: hardcoded secrets, injection risks,
 unvalidated inputs, insecure deserialization, missing auth, weak crypto.
 
-Uses the traversal model (cheap) in concurrent batches.
 Output: docs/SECURITY_REPORT.md
 """
 import asyncio
 import logging
+import subprocess
+import sys
+import json
 
 from config.llm_client import llm_call_async
 
@@ -55,10 +63,70 @@ BATCH_SIZE  = 4
 MAX_CHARS   = 3000
 _SKIP_PATHS = {"test", "docs", ".arkhe_cache", "_refactored", "tests_generated"}
 
+# Bandit severity → our severity label
+_BANDIT_SEVERITY = {"HIGH": "HIGH", "MEDIUM": "MEDIUM", "LOW": "LOW"}
+
 
 def _should_audit(path: str) -> bool:
     return not any(seg in path for seg in _SKIP_PATHS)
 
+
+# ── Bandit static scan (Python files, pass 1) ─────────────────────────────────
+
+def _run_bandit(python_modules: list[dict]) -> str:
+    """
+    Run Bandit on Python files via subprocess.
+    Returns formatted findings in FILE/SEVERITY/ISSUE/CODE/FIX format,
+    or empty string if Bandit is unavailable / no issues found.
+    """
+    abs_paths = [m["abs_path"] for m in python_modules if m.get("abs_path")]
+    if not abs_paths:
+        return ""
+
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "bandit", "-f", "json", "-q", "--exit-zero"] + abs_paths,
+            capture_output=True, text=True, timeout=60,
+        )
+        data = json.loads(result.stdout) if result.stdout.strip() else {}
+    except (subprocess.TimeoutExpired, json.JSONDecodeError, FileNotFoundError, Exception) as e:
+        logger.warning(f"[security] bandit unavailable: {e}")
+        return ""
+
+    issues: list[dict] = data.get("results", [])
+    if not issues:
+        return ""
+
+    # Group issues by file path for report formatting
+    by_file: dict[str, list[dict]] = {}
+    for issue in issues:
+        fname = issue.get("filename", "")
+        by_file.setdefault(fname, []).append(issue)
+
+    # Build abs_path → rel_path mapping
+    abs_to_rel = {m.get("abs_path", ""): m["path"] for m in python_modules if m.get("abs_path")}
+
+    lines = ["## Static Analysis (Bandit)\n"]
+    for abs_path, file_issues in sorted(by_file.items()):
+        rel_path = abs_to_rel.get(abs_path, abs_path)
+        for issue in file_issues:
+            sev   = _BANDIT_SEVERITY.get(issue.get("issue_severity", "LOW"), "LOW")
+            text  = issue.get("issue_text", "").strip()
+            code  = issue.get("code", "").strip().splitlines()[0][:120] if issue.get("code") else ""
+            cwe   = issue.get("issue_cwe", {}).get("id", "")
+            cwe_s = f" (CWE-{cwe})" if cwe else ""
+            lines.append(
+                f"FILE: {rel_path}\n"
+                f"SEVERITY: {sev}\n"
+                f"ISSUE: {text}{cwe_s}\n"
+                f"CODE: {code}\n"
+                f"FIX: Refer to Bandit rule {issue.get('test_id', '')} and CWE documentation.\n"
+            )
+
+    return "\n".join(lines)
+
+
+# ── LLM scan (all files, pass 2) ─────────────────────────────────────────────
 
 def _build_prompt(batch: list[dict]) -> str:
     parts = []
@@ -74,13 +142,22 @@ async def _audit_batch(batch: list[dict], idx: int, sem: asyncio.Semaphore) -> s
         return await llm_call_async("traversal", SYSTEM, prompt, max_tokens=1024)
 
 
+# ── Main entry point ─────────────────────────────────────────────────────────
+
 async def run_security_audit(modules: list[dict]) -> str:
     source = [m for m in modules if _should_audit(m["path"]) and m.get("content", "").strip()]
-    batches = [source[i:i + BATCH_SIZE] for i in range(0, len(source), BATCH_SIZE)]
 
-    sem   = asyncio.Semaphore(3)
-    tasks = [_audit_batch(b, i, sem) for i, b in enumerate(batches)]
-    raw   = await asyncio.gather(*tasks, return_exceptions=True)
+    # Pass 1: Bandit static scan on Python files (free, deterministic, full coverage)
+    python_modules = [m for m in source if m.get("ext") == ".py"]
+    bandit_section = _run_bandit(python_modules)
+    if bandit_section:
+        logger.info(f"[security] bandit scanned {len(python_modules)} Python files")
+
+    # Pass 2: LLM semantic scan on all files
+    batches = [source[i:i + BATCH_SIZE] for i in range(0, len(source), BATCH_SIZE)]
+    sem     = asyncio.Semaphore(3)
+    tasks   = [_audit_batch(b, i, sem) for i, b in enumerate(batches)]
+    raw     = await asyncio.gather(*tasks, return_exceptions=True)
 
     sections = []
     for r in raw:
@@ -89,13 +166,21 @@ async def run_security_audit(modules: list[dict]) -> str:
         else:
             sections.append(r)
 
-    if not sections:
+    if not sections and not bandit_section:
         return "# Security Report\n\nAll batches failed — check your API key and rate limits.\n"
 
-    return (
-        "# Security Audit Report\n\n"
+    llm_section = "\n\n---\n\n".join(sections) if sections else ""
+
+    parts = [
+        "# Security Audit Report\n",
         "> Generated by Arkhe. Treat all findings as leads — "
-        "verify manually before acting on them.\n\n"
-        + "\n\n---\n\n".join(sections)
-        + "\n"
-    )
+        "verify manually before acting on them.\n",
+    ]
+    if bandit_section:
+        parts.append(bandit_section)
+    if llm_section:
+        if bandit_section:
+            parts.append("\n## LLM Semantic Scan\n")
+        parts.append(llm_section)
+
+    return "\n".join(parts) + "\n"

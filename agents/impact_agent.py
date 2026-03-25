@@ -2,7 +2,8 @@
 PR Impact Agent — traces the blast radius of changed files.
 
 Diffs HEAD against a base branch to find changed files, then walks the
-dependency graph in reverse to find every file that imports them.
+dependency graph in REVERSE (transitively, via NetworkX) to find every file
+that directly or indirectly imports them.
 An LLM then writes a plain-English summary of what changed and why it matters.
 
 Output: docs/PR_IMPACT.md
@@ -41,8 +42,36 @@ def _get_changed_files(repo_path: str, base_branch: str) -> list[str]:
         return []
 
 
+def _build_nx_graph(graph: dict):
+    """
+    Build a NetworkX DiGraph from Arkhe's graph dict.
+    Edge direction: source → target (source imports target).
+    Returns (G, id_to_path) or (None, {}) if networkx is unavailable.
+    """
+    try:
+        import networkx as nx
+    except ImportError:
+        return None, {}
+
+    id_to_path = {n["id"]: n["path"] for n in graph.get("nodes", [])}
+    G = nx.DiGraph()
+
+    for n in graph.get("nodes", []):
+        G.add_node(n["path"])
+
+    for link in graph.get("links", []):
+        src = id_to_path.get(link["source"], "")
+        tgt = id_to_path.get(link["target"], "")
+        if src and tgt:
+            G.add_edge(src, tgt)
+            if link.get("bidirectional"):
+                G.add_edge(tgt, src)
+
+    return G, id_to_path
+
+
 def _build_reverse_map(graph: dict) -> dict[str, list[str]]:
-    """file → list of files that import it."""
+    """Fallback: hand-rolled 1-level reverse map (used if networkx unavailable)."""
     id_to_path = {n["id"]: n["path"] for n in graph.get("nodes", [])}
     reverse: dict[str, list[str]] = {}
     for link in graph.get("links", []):
@@ -65,8 +94,27 @@ async def analyze_impact(
         logger.info("[impact] no changed files detected — skipping")
         return None
 
-    reverse  = _build_reverse_map(graph)
-    affected = {f: reverse.get(f, []) for f in changed}
+    # Build NetworkX graph for transitive dependency traversal
+    G, _ = _build_nx_graph(graph)
+
+    if G is not None:
+        import networkx as nx
+        # Reverse graph: edges point from dependency → importer
+        G_rev = G.reverse()
+        affected: dict[str, list[str]] = {}
+        for f in changed:
+            if f in G_rev:
+                # nx.descendants = all transitively reachable nodes (full blast radius)
+                dependents = list(nx.descendants(G_rev, f))
+            else:
+                dependents = []
+            affected[f] = dependents
+        logger.info(f"[impact] NetworkX transitive walk: {sum(len(v) for v in affected.values())} total affected")
+    else:
+        # Fallback: 1-level reverse map
+        logger.warning("[impact] networkx not available — using 1-level reverse map")
+        reverse  = _build_reverse_map(graph)
+        affected = {f: reverse.get(f, []) for f in changed}
 
     path_to_analysis = {p: r["analysis"] for r in reports for p in r.get("files", [])}
 
@@ -74,9 +122,11 @@ async def analyze_impact(
     for f in changed:
         analysis    = path_to_analysis.get(f, "No analysis available.")
         importers   = affected.get(f, [])
-        importer_str = ", ".join(importers) if importers else "none"
+        importer_str = ", ".join(importers[:10]) if importers else "none"
+        if len(importers) > 10:
+            importer_str += f" (+{len(importers) - 10} more)"
         context_parts.append(
-            f"**{f}** (imported by: {importer_str})\n{analysis[:500]}"
+            f"**{f}** (imported by {len(importers)} file(s): {importer_str})\n{analysis[:500]}"
         )
 
     prompt = (
