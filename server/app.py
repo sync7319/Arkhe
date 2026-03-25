@@ -165,10 +165,11 @@ OUTPUT_FILES = [
     ("REFACTORED_CODE.zip",  "Refactored Code",     "zip"),
     ("GRAPH.json",           "Dependency Graph Data","json"),
     ("CONTEXT_INDEX.json",   "Context Index",        "json"),
+    ("EMBED_INDEX.json",     "Embed Index",          "json"),
 ]
 
 # Files that are internal data (not shown in results UI as downloads)
-_INTERNAL_FILES = {"GRAPH.json", "CONTEXT_INDEX.json"}
+_INTERNAL_FILES = {"GRAPH.json", "CONTEXT_INDEX.json", "EMBED_INDEX.json"}
 
 
 # ── Options → settings patch ──────────────────────────────────────────────────
@@ -275,6 +276,17 @@ async def _run_pipeline(job_id: str, url: str, options: dict) -> None:
 
             # Persist minimal metadata so results survive server restarts
             _save_meta(job_id, url, outputs)
+
+            # Build semantic search index from embed index (non-blocking, best-effort)
+            embed_src = job_results_dir / "EMBED_INDEX.json"
+            if embed_src.exists():
+                try:
+                    from agents.embed_agent import build_index as _build_embed
+                    modules_for_embed = json.loads(embed_src.read_text(encoding="utf-8"))
+                    asyncio.create_task(asyncio.to_thread(_build_embed, modules_for_embed, job_results_dir))
+                    logger.info(f"[job {job_id}] building semantic search index")
+                except Exception as e:
+                    logger.warning(f"[job {job_id}] embed index skipped: {e}")
 
     except CloneError as e:
         jobs[job_id]["status"] = JobStatus.ERROR
@@ -994,6 +1006,56 @@ async def graph_stats(job_id: str):
         "circular_count":   cycles_found,
         "cycle_examples":   cycle_examples,
     })
+
+
+@app.post("/ask/{job_id}", response_class=JSONResponse)
+async def ask_codebase(job_id: str, request: Request):
+    """
+    Semantic Q&A over the codebase analysis.
+
+    POST body: {"question": "what handles authentication?", "n": 8}
+    Returns the top-N most relevant files with excerpts from their analysis.
+
+    Requires the embedding index to have been built (happens automatically
+    after analysis completes if GEMINI_API_KEY, OPENAI_API_KEY, or
+    sentence-transformers is available).
+    """
+    body = await request.json()
+    question = (body.get("question") or body.get("q") or "").strip()
+    n = min(int(body.get("n") or 8), 20)
+
+    if not question:
+        return JSONResponse({"error": "question is required"}, status_code=400)
+
+    job_dir = RESULTS_DIR / job_id
+    if not job_dir.exists():
+        return JSONResponse({"error": "Job not found"}, status_code=404)
+
+    try:
+        from agents.embed_agent import query_index, index_exists
+        if not index_exists(job_dir):
+            return JSONResponse(
+                {"error": "Semantic index not yet built — check back in a moment after analysis completes"},
+                status_code=404,
+            )
+        results = await asyncio.to_thread(query_index, question, job_dir, n)
+        return JSONResponse({
+            "question": question,
+            "results":  results,
+            "total":    len(results),
+        })
+    except Exception as e:
+        logger.error(f"[ask {job_id}] query error: {e}")
+        return JSONResponse({"error": f"Query failed: {str(e)[:200]}"}, status_code=500)
+
+
+@app.get("/ask/{job_id}", response_class=JSONResponse)
+async def ask_codebase_get(job_id: str, q: str = "", n: int = 8, request: Request = None):
+    """GET version of /ask — accepts ?q=question&n=8"""
+    class _Req:
+        async def json(self_):
+            return {"question": q, "n": n}
+    return await ask_codebase(job_id, _Req())
 
 
 @app.get("/_health")

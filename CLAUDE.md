@@ -184,6 +184,22 @@ Everything through Stage 2 is genuinely $0.
 
 ## Progress Log
 
+### 2026-03-25 (session — Shreeyut)
+- **Production hardening — Sprint 1 + 2 + 3 (from march_24_plan.txt production roadmap):**
+  - **Rate limiting** (`server/app.py`) — `slowapi` 5 analyses/hour per IP; `POST /analyze` decorated with `@limiter.limit("5/hour")`
+  - **API key auth** (`server/app.py`) — optional `X-Arkhe-Key` header via FastAPI `Security()` dependency; enabled by setting `ARKHE_API_KEY` env var
+  - **Concurrent job cap** (`server/app.py`) — `asyncio.Semaphore(MAX_CONCURRENT_JOBS)` (default 3, env `ARKHE_MAX_CONCURRENT_JOBS`); returns 503 + `Retry-After: 120` when full
+  - **Disk space guard** (`server/app.py`) — rejects new jobs with 507 when free disk < 500MB (`ARKHE_MIN_FREE_MB`)
+  - **Export ZIP** (`server/app.py`) — `GET /results/{job_id}/export.zip` packages all outputs as a single archive
+  - **Favicon + PWA manifest** (`server/static/favicon.svg`, `server/static/manifest.json`) — fixes 404 on every page load; green "A" SVG icon; manifest injected into all 9 templates
+  - **Hardened `/_health`** — returns disk free, LLM key presence, running jobs count; 503 when degraded
+  - **Structured logging** (`server/app.py`) — `structlog` configured with JSON renderer for non-TTY (production) and human-readable `ConsoleRenderer` for dev
+  - **SHA-256 cache keys** (`cache/db.py`) — replaces SHA-1 in `content_hash()`; existing entries naturally expire (no collision risk with SHA-256)
+  - **lizard multi-language complexity** (`agents/visualizer_agent.py`) — replaces Python-only `radon` for heatmap; covers JS, TS, Go, Java, C/C++, Ruby, Swift; radon kept as fallback
+  - **Docker** (`Dockerfile`, `docker-compose.yml`, `.dockerignore`) — `python:3.11-slim` image with uv, named volumes for results/cache, healthcheck
+  - **Semantic Q&A — `POST /ask/{job_id}`** (`agents/embed_agent.py`, `server/app.py`) — ChromaDB-backed embedding index; embedding priority: Gemini → OpenAI → local `all-MiniLM-L6-v2`; `build_index()` runs non-blocking after each analysis; `query_index()` returns top-N files with relevance scores and excerpts; `EMBED_INDEX.json` written by `main.py` after analysis phase
+  - **All 55 tests passing** after all changes
+
 ### 2026-03-24 (session 2 — Shreeyut)
 - **Static analysis tool integrations (from march_24_plan.txt Batch 1 + 2):**
   - **`radon`** (`agents/visualizer_agent.py`) — real cyclomatic complexity replaces `tokens+imports×10+functions×5`; `cc_visit(content)` sum × 3 added to base score for Python files; improves heatmap accuracy
