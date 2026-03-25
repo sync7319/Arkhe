@@ -32,6 +32,9 @@ dependencies = [
     "radon>=6.0",
     "vulture>=2.10",
     "slowapi>=0.1.9",
+    "structlog>=25.5.0",
+    "lizard>=1.21.2",
+    "jedi>=0.19.2",
 ]
 
 [project.scripts]

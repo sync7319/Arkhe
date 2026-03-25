@@ -69,10 +69,28 @@ _JOB_SEMAPHORE: asyncio.Semaphore | None = None  # initialised in lifespan
 # ── Min free disk space before refusing new jobs (bytes) ──────────────────────
 MIN_FREE_BYTES = int(os.getenv("ARKHE_MIN_FREE_MB", "500")) * 1024 * 1024
 
-logger = logging.getLogger("arkhe.server")
+import sys
+import structlog
+
+_LOG_JSON = not sys.stderr.isatty()  # JSON in production, human-friendly in dev
+
+structlog.configure(
+    processors=[
+        structlog.stdlib.add_log_level,
+        structlog.stdlib.add_logger_name,
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.StackInfoRenderer(),
+        structlog.processors.format_exc_info,
+        structlog.processors.JSONRenderer() if _LOG_JSON else structlog.dev.ConsoleRenderer(),
+    ],
+    wrapper_class=structlog.stdlib.BoundLogger,
+    context_class=dict,
+    logger_factory=structlog.stdlib.LoggerFactory(),
+)
+
 logging.basicConfig(
     level=logging.DEBUG,
-    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    format="%(message)s",
     handlers=[
         logging.StreamHandler(),
         logging.FileHandler(str(Path(__file__).parent / "server.log"), mode="w"),
@@ -82,6 +100,8 @@ logging.getLogger("arkhe.llm").setLevel(logging.DEBUG)
 logging.getLogger("arkhe.router").setLevel(logging.DEBUG)
 logging.getLogger("arkhe.analyst").setLevel(logging.DEBUG)
 logging.getLogger("arkhe.dispatcher").setLevel(logging.DEBUG)
+
+logger = logging.getLogger("arkhe.server")
 
 @asynccontextmanager
 async def _lifespan(app_: FastAPI):

@@ -160,8 +160,9 @@ def _complexity_score(module: dict) -> int:
     Complexity score for a file — higher = more complex / higher risk.
     Used for the heatmap overlay in the dependency graph.
 
-    Python: augmented with radon cyclomatic complexity (CC sum across all functions).
-    Other:  base heuristic (tokens + imports×10 + functions×5).
+    Multi-language: lizard cyclomatic complexity (all supported languages).
+    Python fallback: radon CC if lizard unavailable.
+    Base heuristic: tokens + imports×10 + functions×5.
     """
     structure = module.get("structure", {})
     base = (
@@ -170,17 +171,30 @@ def _complexity_score(module: dict) -> int:
         + len(structure.get("functions", [])) * 5
     )
 
-    if module.get("ext") == ".py":
-        content = module.get("content", "")
-        if content:
+    content = module.get("content", "")
+    if content:
+        # Try lizard first — supports Python, JS, TS, Go, Java, C/C++, Ruby, Swift, etc.
+        try:
+            import lizard
+            result = lizard.analyze_file.analyze_source_code(
+                module.get("path", "file.py"), content
+            )
+            if result and result.function_list:
+                cc_sum = sum(f.cyclomatic_complexity for f in result.function_list)
+                return base + cc_sum * 3
+        except Exception:
+            pass
+
+        # Radon fallback for Python if lizard unavailable
+        if module.get("ext") == ".py":
             try:
                 from radon.complexity import cc_visit
                 cc_results = cc_visit(content)
                 if cc_results:
                     cc_sum = sum(r.complexity for r in cc_results)
-                    return base + cc_sum * 3  # weight CC: each complexity point = 3
+                    return base + cc_sum * 3
             except Exception:
-                pass  # radon unavailable or parse error — fall through to base
+                pass
 
     return base
 
