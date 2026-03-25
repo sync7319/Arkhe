@@ -184,6 +184,20 @@ Everything through Stage 2 is genuinely $0.
 
 ## Progress Log
 
+### 2026-03-24 (session 2 — Shreeyut)
+- **Static analysis tool integrations (from march_24_plan.txt Batch 1 + 2):**
+  - **`radon`** (`agents/visualizer_agent.py`) — real cyclomatic complexity replaces `tokens+imports×10+functions×5`; `cc_visit(content)` sum × 3 added to base score for Python files; improves heatmap accuracy
+  - **`bandit`** (`agents/security_agent.py`) — deterministic Python security pre-pass before LLM scan; runs via `sys.executable -m bandit -f json`; full-file coverage (no 3000-char limit); CWE-tagged findings in FILE/SEVERITY/ISSUE/CODE/FIX format; LLM still runs second for semantic issues
+  - **`vulture`** (`agents/dead_code_agent.py`) — Python dead code complement at 80% confidence; symbols vulture considers live are removed from regex detector's dead list; graceful fallback if unavailable
+  - **`networkx`** (`agents/impact_agent.py`) — `nx.ancestors(G_rev, file)` replaces 1-level reverse map; PR impact now shows full transitive blast radius, not just direct importers; falls back to hand-rolled map if unavailable
+  - **`__all__` extraction** (`agents/parser_agent.py`) — Python `__all__ = [...]` assignments parsed during tree-sitter walk; stored in `structure["exports"]`; dead code detector skips all exported symbols automatically
+  - **Call graph** (`agents/parser_agent.py`) — `_walk()` now tracks function→callee relationships using scope-aware iterative walk with `_SCOPE_EXIT` sentinel; stored in `structure["calls"] = {"fn": ["callee", ...]}`; works for Python, JS, TS, Go; foundation for function-level analysis
+  - **Parallel parsing** (`agents/parser_agent.py`) — `ThreadPoolExecutor(max_workers=8)` replaces sequential `[parse_file(f) for f in files]`; 3-4× faster on large repos
+  - **JS/TS import resolution** (`agents/visualizer_agent.py`) — `_extract_module_js` + `_resolve_import_js` handle `import { foo } from './utils'` and `require('../config')`; dispatches by file extension; dependency graph now accurate for JS/TS repos
+  - **Cache migration guard** (`agents/parser_agent.py`) — cached structures missing `exports` field are re-parsed once (one-time migration cost on first run after upgrade)
+- **Dependencies added to `pyproject.toml`:** `networkx>=3.0`, `bandit>=1.7`, `radon>=6.0`, `vulture>=2.10`
+- **All 55 tests pass** after changes
+
 > **Shreeyut:** See `march_24_plan.txt` in the repo root — this is Claude Opus 4.6's full
 > improvement recommendations from the 2026-03-24 session. 15 ranked suggestions covering
 > static analysis tools (networkx, bandit, radon, vulture, semgrep), structured LLM output,
