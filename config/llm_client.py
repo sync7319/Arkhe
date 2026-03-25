@@ -603,7 +603,7 @@ def _transient_exceptions(provider: str) -> tuple:
 
 
 import re as _re
-_THINK_BLOCK = _re.compile(r"<think>.*?</think>", _re.DOTALL | _re.IGNORECASE)
+_THINK_BLOCK = _re.compile(r"<think>.*?(?:</think>|\Z)", _re.DOTALL | _re.IGNORECASE)
 
 
 def _strip_think_blocks(text: str) -> str:

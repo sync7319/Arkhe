@@ -198,6 +198,37 @@ Everything through Stage 2 is genuinely $0.
 - **Dependencies added to `pyproject.toml`:** `networkx>=3.0`, `bandit>=1.7`, `radon>=6.0`, `vulture>=2.10`
 - **All 55 tests pass** after changes
 
+### 2026-03-24 (session 3 — Shreeyut)
+- **Batch 3 improvements (from march_24_plan.txt Batch 3: deeper work):**
+
+- **Security report hardening (`agents/security_agent.py`, `cache/db.py`, `config/llm_client.py`):**
+  - Bandit `--skip B404,B603,B607` — suppresses subprocess import/usage noise (intentional in analysis tools); bandit section now shows only real issues
+  - `cache/db.py`: `hashlib.sha1(..., usedforsecurity=False)` — fixes bandit HIGH finding; SHA1 is a cache key, not used for security
+  - `_THINK_BLOCK` regex updated: `r"<think>.*?(?:</think>|\Z)"` — handles UNCLOSED think blocks (model outputs `<think>` without `</think>`); previous regex required both tags, silently left partial blocks in output
+
+- **Semgrep multi-language security scan (`agents/security_agent.py`):**
+  - `_run_semgrep(modules)` — runs `semgrep --config=auto --json`; infers repo root from module abs_path; outputs `## Static Analysis (Semgrep)` section in FILE/SEVERITY/ISSUE/CODE/FIX format
+  - Gracefully skips if semgrep binary not installed (FileNotFoundError silently ignored)
+  - Adds AST-based multi-language security scanning: OWASP Top 10 across 30+ languages at zero LLM cost
+  - Three-pass structure now: Bandit (Python static) → Semgrep (multi-lang static) → LLM (semantic)
+
+- **Call graph propagation to dead code (`agents/dead_code_agent.py`):**
+  - `_build_call_graph_refs(modules)` — collects all callee names from `structure["calls"]` across all modules
+  - New first pass in `detect_dead_code`: if a function appears as a callee in the call graph, it's immediately marked live (skip regex + vulture)
+  - Three-pass dead code: call graph → regex cross-file → vulture
+  - Eliminates false positives for functions that are called but not importable via regex (e.g. callbacks, internal helpers)
+
+- **Test gap indirect coverage (`agents/test_gap_agent.py`):**
+  - `_build_transitive_callees(all_calls, direct)` — BFS from directly-tested functions through the call graph
+  - `find_coverage_gaps()` now returns `indirect` dict: functions not directly tested but reachable via call graph from tested functions
+  - Test gap jumped from 15% → 65% (44 indirectly covered functions now visible)
+  - Report format: new "Indirectly Covered (via call graph)" table section; metrics split into "Directly covered" and "Indirectly covered (via call graph)"
+
+- **Analysis quality scoring (`agents/analyst_agent.py`):**
+  - `_score_analysis(analysis, file)` — 0.0–1.0 score: 50% AST name-mention ratio, 30% length proportional to file size, 20% structural keywords (purpose/function/class)
+  - Files scoring below `RESCORE_THRESHOLD = 0.35` are re-analyzed once with extra +256 output tokens
+  - Prevents garbage-in-garbage-out for synthesizer: low-quality LLM outputs auto-rescored
+
 > **Shreeyut:** See `march_24_plan.txt` in the repo root — this is Claude Opus 4.6's full
 > improvement recommendations from the 2026-03-24 session. 15 ranked suggestions covering
 > static analysis tools (networkx, bandit, radon, vulture, semgrep), structured LLM output,

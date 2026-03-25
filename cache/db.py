@@ -61,7 +61,7 @@ class ArkheDB:
     @staticmethod
     def content_hash(content: str) -> str:
         """SHA-1 of file content — cache key for a specific version of a file."""
-        return hashlib.sha1(content.encode()).hexdigest()
+        return hashlib.sha1(content.encode(), usedforsecurity=False).hexdigest()
 
     # ── reads ──────────────────────────────────────────────────────────────────
 

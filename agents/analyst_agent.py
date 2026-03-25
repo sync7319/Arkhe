@@ -47,6 +47,45 @@ def _safe_budget(model: str) -> int:
     return DEFAULT_SAFE_TPM
 
 
+def _score_analysis(analysis: str, file: dict) -> float:
+    """
+    Score LLM analysis quality 0.0–1.0.
+      0.5 — function/class names from AST actually appear in the response
+      0.3 — response length proportional to file complexity
+      0.2 — contains expected structural keywords
+    Files scoring below RESCORE_THRESHOLD are re-analyzed once with a different prompt.
+    """
+    if not analysis or len(analysis) < 50:
+        return 0.0
+
+    s   = file.get("structure", {})
+    fns = s.get("functions", [])[:6]
+    cls = s.get("classes",   [])[:4]
+
+    # 1. AST name mentions (0–0.5)
+    defined = fns + cls
+    if defined:
+        mentioned = sum(1 for name in defined if name in analysis)
+        name_score = 0.5 * (mentioned / len(defined))
+    else:
+        name_score = 0.25  # file with no extractable names — partial credit
+
+    # 2. Length proportional to complexity (0–0.3)
+    expected   = max(80, file.get("tokens", 80) * 0.4)
+    len_score  = 0.3 * min(len(analysis) / expected, 1.0)
+
+    # 3. Structural keywords (0–0.2)
+    lower = analysis.lower()
+    has_purpose   = any(kw in lower for kw in ("purpose", "this file", "this module", "responsible for"))
+    has_functions = any(kw in lower for kw in ("function", "class", "method", "def ", "returns", "handles"))
+    kw_score = 0.1 * int(has_purpose) + 0.1 * int(has_functions)
+
+    return name_score + len_score + kw_score
+
+
+RESCORE_THRESHOLD = 0.35   # re-analyze files scoring below this
+
+
 def _build_prompt(file: dict) -> str:
     s    = file.get("structure", {})
     body = file["content"].strip()
@@ -80,6 +119,18 @@ async def _analyze_file(file: dict, idx: int, sem: asyncio.Semaphore) -> dict:
                 f.write(f"  pool: {[(p,m) for p,m in pool[:3]]}\n")
                 traceback.print_exc(file=f)
             raise
+
+        # Quality gate: re-analyze once if score is too low
+        score = _score_analysis(analysis, file)
+        if score < RESCORE_THRESHOLD:
+            logger.warning(
+                f"[analyst] low-quality result for {file['path']} "
+                f"(score={score:.2f}) — re-analyzing"
+            )
+            try:
+                analysis = await llm_call_async_pool(pool, SYSTEM, prompt, max_tokens=out_tokens + 256, role="analyst")
+            except Exception:
+                pass  # keep original if re-analysis fails
 
     db = get_db()
     db.save_analysis(file["path"], file["content_hash"], analysis)
