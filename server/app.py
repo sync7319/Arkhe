@@ -28,25 +28,69 @@ import os
 import shutil
 import time
 import uuid
+import zipfile
 from enum import Enum
 from pathlib import Path
 
 from contextlib import asynccontextmanager
 
-from fastapi import BackgroundTasks, FastAPI, Request
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request, Security
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.security.api_key import APIKeyHeader
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
 from scripts.clone_repo import CloneError, clone_repo
 
 # ── Debug inspector — set ARKHE_DEBUG=false to disable completely ─────────────
 DEBUG_MODE = os.getenv("ARKHE_DEBUG", "true").lower() != "false"
 
-logger = logging.getLogger("arkhe.server")
+# ── Optional API key auth — set ARKHE_API_KEY in .env to enable ───────────────
+_ARKHE_API_KEY = os.getenv("ARKHE_API_KEY", "")
+_api_key_header = APIKeyHeader(name="X-Arkhe-Key", auto_error=False)
+
+
+def _require_api_key(key: str | None = Security(_api_key_header)) -> None:
+    """Dependency: enforces API key only when ARKHE_API_KEY env var is set."""
+    if _ARKHE_API_KEY and key != _ARKHE_API_KEY:
+        raise HTTPException(status_code=403, detail="Invalid or missing API key")
+
+
+# ── Rate limiter ───────────────────────────────────────────────────────────────
+limiter = Limiter(key_func=get_remote_address, default_limits=["200/hour"])
+
+# ── Concurrent job cap ─────────────────────────────────────────────────────────
+MAX_CONCURRENT_JOBS = int(os.getenv("ARKHE_MAX_CONCURRENT_JOBS", "3"))
+_JOB_SEMAPHORE: asyncio.Semaphore | None = None  # initialised in lifespan
+
+# ── Min free disk space before refusing new jobs (bytes) ──────────────────────
+MIN_FREE_BYTES = int(os.getenv("ARKHE_MIN_FREE_MB", "500")) * 1024 * 1024
+
+import sys
+import structlog
+
+_LOG_JSON = not sys.stderr.isatty()  # JSON in production, human-friendly in dev
+
+structlog.configure(
+    processors=[
+        structlog.stdlib.add_log_level,
+        structlog.stdlib.add_logger_name,
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.StackInfoRenderer(),
+        structlog.processors.format_exc_info,
+        structlog.processors.JSONRenderer() if _LOG_JSON else structlog.dev.ConsoleRenderer(),
+    ],
+    wrapper_class=structlog.stdlib.BoundLogger,
+    context_class=dict,
+    logger_factory=structlog.stdlib.LoggerFactory(),
+)
+
 logging.basicConfig(
     level=logging.DEBUG,
-    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    format="%(message)s",
     handlers=[
         logging.StreamHandler(),
         logging.FileHandler(str(Path(__file__).parent / "server.log"), mode="w"),
@@ -57,8 +101,12 @@ logging.getLogger("arkhe.router").setLevel(logging.DEBUG)
 logging.getLogger("arkhe.analyst").setLevel(logging.DEBUG)
 logging.getLogger("arkhe.dispatcher").setLevel(logging.DEBUG)
 
+logger = logging.getLogger("arkhe.server")
+
 @asynccontextmanager
 async def _lifespan(app_: FastAPI):
+    global _JOB_SEMAPHORE
+    _JOB_SEMAPHORE = asyncio.Semaphore(MAX_CONCURRENT_JOBS)
     asyncio.create_task(_cleanup_old_results())
     yield
 
@@ -72,6 +120,8 @@ app = FastAPI(
     openapi_url="/api/openapi.json",
     lifespan=_lifespan,
 )
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 
@@ -115,10 +165,11 @@ OUTPUT_FILES = [
     ("REFACTORED_CODE.zip",  "Refactored Code",     "zip"),
     ("GRAPH.json",           "Dependency Graph Data","json"),
     ("CONTEXT_INDEX.json",   "Context Index",        "json"),
+    ("EMBED_INDEX.json",     "Embed Index",          "json"),
 ]
 
 # Files that are internal data (not shown in results UI as downloads)
-_INTERNAL_FILES = {"GRAPH.json", "CONTEXT_INDEX.json"}
+_INTERNAL_FILES = {"GRAPH.json", "CONTEXT_INDEX.json", "EMBED_INDEX.json"}
 
 
 # ── Options → settings patch ──────────────────────────────────────────────────
@@ -145,6 +196,7 @@ def _apply_options(options: dict) -> None:
 # ── Background pipeline ───────────────────────────────────────────────────────
 
 async def _run_pipeline(job_id: str, url: str, options: dict) -> None:
+    await _JOB_SEMAPHORE.acquire()
     jobs[job_id]["status"] = JobStatus.RUNNING
     job_results_dir = RESULTS_DIR / job_id
     job_results_dir.mkdir(exist_ok=True)
@@ -225,6 +277,17 @@ async def _run_pipeline(job_id: str, url: str, options: dict) -> None:
             # Persist minimal metadata so results survive server restarts
             _save_meta(job_id, url, outputs)
 
+            # Build semantic search index from embed index (non-blocking, best-effort)
+            embed_src = job_results_dir / "EMBED_INDEX.json"
+            if embed_src.exists():
+                try:
+                    from agents.embed_agent import build_index as _build_embed
+                    modules_for_embed = json.loads(embed_src.read_text(encoding="utf-8"))
+                    asyncio.create_task(asyncio.to_thread(_build_embed, modules_for_embed, job_results_dir))
+                    logger.info(f"[job {job_id}] building semantic search index")
+                except Exception as e:
+                    logger.warning(f"[job {job_id}] embed index skipped: {e}")
+
     except CloneError as e:
         jobs[job_id]["status"] = JobStatus.ERROR
         jobs[job_id]["error"]  = str(e)
@@ -254,9 +317,22 @@ async def _run_pipeline(job_id: str, url: str, options: dict) -> None:
         jobs[job_id]["status"] = JobStatus.ERROR
         jobs[job_id]["error"]  = f"Unexpected error: {str(e)[:300]}"
         logger.exception(f"[job {job_id}] pipeline error")
+    finally:
+        _JOB_SEMAPHORE.release()
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
+
+@app.get("/favicon.ico", include_in_schema=False)
+@app.get("/favicon.svg", include_in_schema=False)
+async def favicon():
+    return FileResponse(str(SERVER_DIR / "static" / "favicon.svg"), media_type="image/svg+xml")
+
+
+@app.get("/manifest.json", include_in_schema=False)
+async def manifest():
+    return FileResponse(str(SERVER_DIR / "static" / "manifest.json"), media_type="application/manifest+json")
+
 
 @app.get("/", response_class=HTMLResponse)
 async def landing(request: Request):
@@ -268,8 +344,26 @@ async def pricing(request: Request):
     return templates.TemplateResponse(request, "pricing.html")
 
 
-@app.post("/analyze")
+@app.post("/analyze", dependencies=[Security(_require_api_key)])
+@limiter.limit("5/hour")
 async def analyze(request: Request, background_tasks: BackgroundTasks):
+    # Disk space guard
+    free = shutil.disk_usage(RESULTS_DIR).free
+    if free < MIN_FREE_BYTES:
+        return JSONResponse(
+            {"error": f"Server storage is full ({free // 1024 // 1024} MB free). Try again later."},
+            status_code=507,
+        )
+
+    # Concurrent job cap
+    running = sum(1 for j in jobs.values() if j["status"] == JobStatus.RUNNING)
+    if running >= MAX_CONCURRENT_JOBS:
+        return JSONResponse(
+            {"error": f"Server is busy ({running} jobs running). Please try again in a few minutes."},
+            status_code=503,
+            headers={"Retry-After": "120"},
+        )
+
     body = await request.json()
     url  = (body.get("url") or "").strip()
 
@@ -291,6 +385,7 @@ async def analyze(request: Request, background_tasks: BackgroundTasks):
         "error":      None,
         "step":       0,
         "step_label": "Cloning repository...",
+        "created_at": time.time(),
     }
 
     background_tasks.add_task(_run_pipeline, job_id, url, options)
@@ -913,9 +1008,100 @@ async def graph_stats(job_id: str):
     })
 
 
+@app.post("/ask/{job_id}", response_class=JSONResponse)
+async def ask_codebase(job_id: str, request: Request):
+    """
+    Semantic Q&A over the codebase analysis.
+
+    POST body: {"question": "what handles authentication?", "n": 8}
+    Returns the top-N most relevant files with excerpts from their analysis.
+
+    Requires the embedding index to have been built (happens automatically
+    after analysis completes if GEMINI_API_KEY, OPENAI_API_KEY, or
+    sentence-transformers is available).
+    """
+    body = await request.json()
+    question = (body.get("question") or body.get("q") or "").strip()
+    n = min(int(body.get("n") or 8), 20)
+
+    if not question:
+        return JSONResponse({"error": "question is required"}, status_code=400)
+
+    job_dir = RESULTS_DIR / job_id
+    if not job_dir.exists():
+        return JSONResponse({"error": "Job not found"}, status_code=404)
+
+    try:
+        from agents.embed_agent import query_index, index_exists
+        if not index_exists(job_dir):
+            return JSONResponse(
+                {"error": "Semantic index not yet built — check back in a moment after analysis completes"},
+                status_code=404,
+            )
+        results = await asyncio.to_thread(query_index, question, job_dir, n)
+        return JSONResponse({
+            "question": question,
+            "results":  results,
+            "total":    len(results),
+        })
+    except Exception as e:
+        logger.error(f"[ask {job_id}] query error: {e}")
+        return JSONResponse({"error": f"Query failed: {str(e)[:200]}"}, status_code=500)
+
+
+@app.get("/ask/{job_id}", response_class=JSONResponse)
+async def ask_codebase_get(job_id: str, q: str = "", n: int = 8, request: Request = None):
+    """GET version of /ask — accepts ?q=question&n=8"""
+    class _Req:
+        async def json(self_):
+            return {"question": q, "n": n}
+    return await ask_codebase(job_id, _Req())
+
+
 @app.get("/_health")
 async def health():
-    return {"status": "ok"}
+    disk     = shutil.disk_usage(RESULTS_DIR)
+    free_mb  = disk.free // 1024 // 1024
+    total_mb = disk.total // 1024 // 1024
+    has_key  = bool(
+        os.getenv("GROQ_API_KEY") or os.getenv("GEMINI_API_KEY") or
+        os.getenv("ANTHROPIC_API_KEY") or os.getenv("OPENAI_API_KEY") or
+        os.getenv("NVIDIA_API_KEY")
+    )
+    running  = sum(1 for j in jobs.values() if j["status"] == JobStatus.RUNNING)
+    ok = free_mb > 100 and has_key
+    return JSONResponse(
+        {
+            "status":          "ok" if ok else "degraded",
+            "disk_free_mb":    free_mb,
+            "disk_total_mb":   total_mb,
+            "llm_key_present": has_key,
+            "jobs_running":    running,
+            "jobs_queued":     len(jobs),
+        },
+        status_code=200 if ok else 503,
+    )
+
+
+@app.get("/results/{job_id}/export.zip")
+async def export_zip(job_id: str):
+    """Download all output files for a job as a single ZIP archive."""
+    job_dir = RESULTS_DIR / job_id
+    if not job_dir.exists():
+        return JSONResponse({"error": "Job not found"}, status_code=404)
+
+    import io
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for f in job_dir.iterdir():
+            if f.is_file() and f.name != "meta.json":
+                zf.write(f, f.name)
+    buf.seek(0)
+    return StreamingResponse(
+        buf,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="arkhe-{job_id}.zip"'},
+    )
 
 
 # ── Debug inspector routes (ARKHE_DEBUG=false to remove) ─────────────────────

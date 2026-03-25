@@ -1,0 +1,23 @@
+version: "3.9"
+
+services:
+  arkhe:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      - arkhe-results:/app/server/results
+      - arkhe-cache:/app/server/cache
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/_health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  arkhe-results:
+  arkhe-cache:

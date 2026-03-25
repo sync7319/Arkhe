@@ -324,6 +324,30 @@ async def run(repo_path: str, fmt: str, refactor: bool = False, progress_cb=None
     # ── Save snapshot for `arkhe diff` ────────────────────────────────────────
     save_snapshot(graph, files, repo_path)
 
+    # ── Write embed index for semantic Q&A ────────────────────────────────────
+    # Combines per-file analysis text with AST structure for ChromaDB indexing.
+    try:
+        import json as _json
+        from pathlib import Path as _Path
+        _embed_entries = []
+        for m in modules:
+            p_ = m.get("path", "")
+            analysis_ = reports.get(p_, "")
+            if analysis_:
+                _embed_entries.append({
+                    "path":       p_,
+                    "ext":        m.get("ext", ""),
+                    "tokens":     m.get("tokens", 0),
+                    "complexity": m.get("complexity", 0),
+                    "analysis":   analysis_,
+                    "structure":  m.get("structure", {}),
+                })
+        if _embed_entries:
+            _embed_path = _Path(repo_path) / "docs" / "EMBED_INDEX.json"
+            _embed_path.write_text(_json.dumps(_embed_entries, ensure_ascii=False))
+    except Exception:
+        pass  # embed index is non-critical — never block main pipeline
+
 
 def cli():
     """Entry point for `arkhe` CLI command (installed via pip)."""
