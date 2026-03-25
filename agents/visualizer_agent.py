@@ -2,14 +2,25 @@
 Visualizer Agent — builds the interactive D3 dependency graph.
 HTML/CSS/JS lives in templates/dependency_map.html.
 Graph data is injected at render time via {{NODES_JSON}} / {{LINKS_JSON}} placeholders.
+
+Complexity scoring:
+  Python files: radon cyclomatic complexity (CC) + base heuristic
+  Other files:  base heuristic (tokens + imports×10 + functions×5)
+
+Import resolution:
+  Python: dotted module → file path
+  JS/TS:  relative path strings (from '...', require('...'))
 """
 import json
+import logging
 import os
 import re
 from importlib.resources import files
 
+logger = logging.getLogger("arkhe.visualizer")
 
-# ── Import resolution ────────────────────────────────────────────────────────
+
+# ── Import resolution — Python ────────────────────────────────────────────────
 
 def _extract_module(imp_str: str) -> str | None:
     """
@@ -67,8 +78,71 @@ def _module_to_path(module: str, known_paths: set) -> str | None:
     return None
 
 
+# ── Import resolution — JavaScript / TypeScript ───────────────────────────────
+
+def _extract_module_js(imp_str: str) -> str | None:
+    """
+    Extract the module path from a JS/TS import or require statement.
+
+      import { foo } from './utils'      ->  "./utils"
+      import React from 'react'          ->  "react"
+      const x = require('../config')     ->  "../config"
+      export { bar } from './helpers'    ->  "./helpers"
+    """
+    # from '...' (covers import and export ... from)
+    m = re.search(r"""from\s+['"]([^'"]+)['"]""", imp_str)
+    if m:
+        return m.group(1)
+    # require('...')
+    m = re.search(r"""require\s*\(\s*['"]([^'"]+)['"]\s*\)""", imp_str)
+    if m:
+        return m.group(1)
+    return None
+
+
+def _resolve_import_js(imp_str: str, src_path: str, known_paths: set) -> str | None:
+    """
+    Resolve a JS/TS import to a repo-relative file path.
+    Only resolves relative imports (starting with . or ..) — skips node_modules.
+    """
+    module = _extract_module_js(imp_str)
+    if not module or not module.startswith("."):
+        return None  # skip node_modules / bare specifiers
+
+    src_dir = "/".join(src_path.replace("\\", "/").split("/")[:-1])
+    # Normalize the path
+    parts: list[str] = []
+    for part in (src_dir + "/" + module).split("/"):
+        if part == "..":
+            if parts:
+                parts.pop()
+        elif part and part != ".":
+            parts.append(part)
+    base = "/".join(parts)
+
+    # Try various extensions and index file conventions
+    for candidate in (
+        base + ".js", base + ".ts", base + ".tsx", base + ".jsx",
+        base + ".mjs", base + ".cjs",
+        base + "/index.js", base + "/index.ts", base + "/index.tsx",
+        base,
+    ):
+        if candidate in known_paths:
+            return candidate
+    return None
+
+
+# ── Unified import resolver ───────────────────────────────────────────────────
+
+_JS_EXTS = {".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx"}
+
+
 def _resolve_import(imp_str: str, src_path: str, known_paths: set) -> str | None:
     """Full pipeline: parse → resolve relative → map to path."""
+    ext = os.path.splitext(src_path)[1].lower()
+    if ext in _JS_EXTS:
+        return _resolve_import_js(imp_str, src_path, known_paths)
+    # Python (default): dotted module resolution
     module = _extract_module(imp_str)
     if not module:
         return None
@@ -79,23 +153,39 @@ def _resolve_import(imp_str: str, src_path: str, known_paths: set) -> str | None
     return _module_to_path(module, known_paths)
 
 
-# ── Graph builder ────────────────────────────────────────────────────────────
+# ── Complexity scoring ────────────────────────────────────────────────────────
 
 def _complexity_score(module: dict) -> int:
     """
-    Heuristic complexity score for a file.
-    Higher = more complex / higher risk. Used for the heatmap overlay.
-      tokens      — raw size
-      imports×10  — coupling (each dependency adds risk)
-      functions×5 — responsibility (more functions = harder to reason about)
+    Complexity score for a file — higher = more complex / higher risk.
+    Used for the heatmap overlay in the dependency graph.
+
+    Python: augmented with radon cyclomatic complexity (CC sum across all functions).
+    Other:  base heuristic (tokens + imports×10 + functions×5).
     """
     structure = module.get("structure", {})
-    return (
+    base = (
         module.get("tokens", 0)
         + len(structure.get("imports",   [])) * 10
         + len(structure.get("functions", [])) * 5
     )
 
+    if module.get("ext") == ".py":
+        content = module.get("content", "")
+        if content:
+            try:
+                from radon.complexity import cc_visit
+                cc_results = cc_visit(content)
+                if cc_results:
+                    cc_sum = sum(r.complexity for r in cc_results)
+                    return base + cc_sum * 3  # weight CC: each complexity point = 3
+            except Exception:
+                pass  # radon unavailable or parse error — fall through to base
+
+    return base
+
+
+# ── Graph builder ────────────────────────────────────────────────────────────
 
 _CODE_EXTENSIONS = {
     ".py", ".js", ".mjs", ".cjs", ".ts", ".tsx",
