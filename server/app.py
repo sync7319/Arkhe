@@ -46,7 +46,7 @@ from slowapi.util import get_remote_address
 from scripts.clone_repo import CloneError, clone_repo
 
 # ── Debug inspector — set ARKHE_DEBUG=false to disable completely ─────────────
-DEBUG_MODE = os.getenv("ARKHE_DEBUG", "true").lower() != "false"
+DEBUG_MODE = os.getenv("ARKHE_DEBUG", "false").lower() != "false"
 
 # ── Optional API key auth — set ARKHE_API_KEY in .env to enable ───────────────
 _ARKHE_API_KEY = os.getenv("ARKHE_API_KEY", "")
@@ -377,7 +377,7 @@ async def analyze(request: Request, background_tasks: BackgroundTasks):
         return JSONResponse({"error": str(e)}, status_code=400)
 
     options = body.get("options") or {}
-    job_id  = str(uuid.uuid4())[:8]
+    job_id  = str(uuid.uuid4()).replace("-", "")[:16]
     jobs[job_id] = {
         "status":     JobStatus.PENDING,
         "url":        url,
@@ -388,8 +388,11 @@ async def analyze(request: Request, background_tasks: BackgroundTasks):
         "created_at": time.time(),
     }
 
+    # Strip credentials from URL before logging (https://token@host → https://host)
+    import re as _re
+    _safe_url = _re.sub(r"(https?://)([^@/]+@)", r"\1", url)
     background_tasks.add_task(_run_pipeline, job_id, url, options)
-    logger.info(f"[job {job_id}] queued: {url}")
+    logger.info(f"[job {job_id}] queued: {_safe_url}")
     return JSONResponse({"job_id": job_id})
 
 
@@ -577,6 +580,27 @@ async def view_output(request: Request, job_id: str, filename: str):
 
     # Fallback for any other type — serve directly
     return FileResponse(str(path))
+
+
+@app.get("/results/{job_id}/export.zip")
+async def export_zip(job_id: str):
+    """Download all output files for a job as a single ZIP archive."""
+    job_dir = RESULTS_DIR / job_id
+    if not job_dir.exists():
+        return JSONResponse({"error": "Job not found"}, status_code=404)
+
+    import io
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for f in job_dir.iterdir():
+            if f.is_file() and f.name != "meta.json":
+                zf.write(f, f.name)
+    buf.seek(0)
+    return StreamingResponse(
+        buf,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="arkhe-{job_id}.zip"'},
+    )
 
 
 @app.get("/results/{job_id}/{filename}")
@@ -1080,27 +1104,6 @@ async def health():
             "jobs_queued":     len(jobs),
         },
         status_code=200 if ok else 503,
-    )
-
-
-@app.get("/results/{job_id}/export.zip")
-async def export_zip(job_id: str):
-    """Download all output files for a job as a single ZIP archive."""
-    job_dir = RESULTS_DIR / job_id
-    if not job_dir.exists():
-        return JSONResponse({"error": "Job not found"}, status_code=404)
-
-    import io
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        for f in job_dir.iterdir():
-            if f.is_file() and f.name != "meta.json":
-                zf.write(f, f.name)
-    buf.seek(0)
-    return StreamingResponse(
-        buf,
-        media_type="application/zip",
-        headers={"Content-Disposition": f'attachment; filename="arkhe-{job_id}.zip"'},
     )
 
 

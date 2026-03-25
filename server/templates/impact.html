@@ -299,6 +299,11 @@
     });
   });
 
+  function escAttr(s) {
+    return String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;")
+                    .replace(/'/g, "&#39;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
   function renderFileList(files) {
     const el = document.getElementById("file-list");
     if (!files.length) {
@@ -306,7 +311,7 @@
       return;
     }
     el.innerHTML = files.map(f =>
-      `<div class="file-item" data-path="${f.path}" onclick="selectFile('${f.path.replace(/'/g, "\\'")}')">${f.path}</div>`
+      `<div class="file-item" data-path="${escAttr(f.path)}" onclick="selectFile('${escAttr(f.path)}')">${escAttr(f.path)}</div>`
     ).join("");
   }
 
@@ -393,9 +398,8 @@
     html += '<div class="dep-section"><h4>Direct Dependents (depth 1)</h4>';
     if (directAffected.length) {
       html += directAffected.map(a => {
-        const esc = a.path.replace(/'/g, "\\'");
-        return `<div class="dep-item direct" onclick="selectFile('${esc}')">
-          <span>${a.path}</span>
+        return `<div class="dep-item direct" onclick="selectFile('${escAttr(a.path)}')">
+          <span>${escAttr(a.path)}</span>
           <div class="dep-item-right">
             ${complexityBadge(a.complexity)}
             <span class="dep-depth">depth ${a.depth}</span>
@@ -411,9 +415,8 @@
     html += '<div class="dep-section"><h4>Transitive Dependents</h4>';
     if (transitiveAffected.length) {
       html += transitiveAffected.map(a => {
-        const esc = a.path.replace(/'/g, "\\'");
-        return `<div class="dep-item" onclick="selectFile('${esc}')">
-          <span>${a.path}</span>
+        return `<div class="dep-item" onclick="selectFile('${escAttr(a.path)}')">
+          <span>${escAttr(a.path)}</span>
           <div class="dep-item-right">
             ${complexityBadge(a.complexity)}
             <span class="dep-depth">depth ${a.depth}</span>
@@ -429,8 +432,7 @@
     html += '<div class="dep-section"><h4>This File Depends On</h4>';
     if (d.direct_deps.length) {
       html += d.direct_deps.map(p => {
-        const esc = p.replace(/'/g, "\\'");
-        return `<div class="dep-item" onclick="selectFile('${esc}')"><span>${p}</span></div>`;
+        return `<div class="dep-item" onclick="selectFile('${escAttr(p)}')"><span>${escAttr(p)}</span></div>`;
       }).join("");
     } else {
       html += '<div class="dep-none">No local dependencies.</div>';

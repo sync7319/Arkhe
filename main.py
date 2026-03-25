@@ -329,18 +329,22 @@ async def run(repo_path: str, fmt: str, refactor: bool = False, progress_cb=None
     try:
         import json as _json
         from pathlib import Path as _Path
+        # reports is list[dict] with keys: files (list[str]), analysis (str)
+        _path_to_analysis: dict = {}
+        for batch in reports:
+            for fpath in batch.get("files", []):
+                _path_to_analysis[fpath] = batch.get("analysis", "")
         _embed_entries = []
         for m in modules:
             p_ = m.get("path", "")
-            analysis_ = reports.get(p_, "")
+            analysis_ = _path_to_analysis.get(p_, "")
             if analysis_:
                 _embed_entries.append({
-                    "path":       p_,
-                    "ext":        m.get("ext", ""),
-                    "tokens":     m.get("tokens", 0),
-                    "complexity": m.get("complexity", 0),
-                    "analysis":   analysis_,
-                    "structure":  m.get("structure", {}),
+                    "path":      p_,
+                    "ext":       m.get("ext", ""),
+                    "tokens":    m.get("tokens", 0),
+                    "analysis":  analysis_,
+                    "structure": m.get("structure", {}),
                 })
         if _embed_entries:
             _embed_path = _Path(repo_path) / "docs" / "EMBED_INDEX.json"

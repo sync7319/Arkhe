@@ -8,6 +8,7 @@
   <link rel="manifest" href="/manifest.json" />
   <link rel="stylesheet" href="/static/arkhe.css" />
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
   <style>
     .report-layout {
       min-height: 100vh;
@@ -241,7 +242,7 @@
 <script>
   // Render markdown
   const raw = {{ content | tojson }};
-  document.getElementById("report-body").innerHTML = marked.parse(raw);
+  document.getElementById("report-body").innerHTML = DOMPurify.sanitize(marked.parse(raw));
 
   // Build TOC from rendered headings
   const headings = document.querySelectorAll(".prose h1, .prose h2, .prose h3");
