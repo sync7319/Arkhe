@@ -5,22 +5,23 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 /* ── Theme Variables ── */
+/* Dark: macOS Terminal / VS Code dark — neutral charcoal, no blue/purple tint */
 :root, [data-theme="dark"] {
-  --bg:         #0a0a18;
-  --bg2:        #0f0f22;
-  --surface:    rgba(255,255,255,0.04);
-  --surface-hi: rgba(255,255,255,0.08);
-  --border:     rgba(255,255,255,0.10);
-  --border-hi:  rgba(255,255,255,0.22);
-  --text:       #f1f5f9;
-  --text-2:     #94a3b8;
-  --text-3:     #475569;
+  --bg:         #1e1e1e;
+  --bg2:        #252526;
+  --surface:    rgba(255,255,255,0.05);
+  --surface-hi: rgba(255,255,255,0.09);
+  --border:     rgba(255,255,255,0.09);
+  --border-hi:  rgba(255,255,255,0.18);
+  --text:       #d4d4d4;
+  --text-2:     #8c8c8c;
+  --text-3:     #555555;
   --accent:     #10b981;
   --accent-hi:  #34d399;
-  --accent-bg:  rgba(16,185,129,0.12);
-  --nav-bg:     rgba(10,10,24,0.88);
-  --code-bg:    rgba(0,0,0,0.45);
-  --shadow:     0 1px 3px rgba(0,0,0,0.6);
+  --accent-bg:  rgba(16,185,129,0.13);
+  --nav-bg:     rgba(30,30,30,0.92);
+  --code-bg:    rgba(0,0,0,0.35);
+  --shadow:     0 1px 3px rgba(0,0,0,0.55);
 }
 
 [data-theme="light"] {
