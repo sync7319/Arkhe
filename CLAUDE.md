@@ -184,6 +184,12 @@ Everything through Stage 2 is genuinely $0.
 
 ## Progress Log
 
+> **Shreeyut:** See `march_24_plan.txt` in the repo root — this is Claude Opus 4.6's full
+> improvement recommendations from the 2026-03-24 session. 15 ranked suggestions covering
+> static analysis tools (networkx, bandit, radon, vulture, semgrep), structured LLM output,
+> multi-language import resolution, call graph extraction, and production infra improvements.
+> Worth reading before starting the next dev sprint.
+
 ### 2026-03-24 (session — Shreeyut)
 - **Debug Inspector (`ARKHE_DEBUG`):**
   - `server/templates/debug_index.html` — lists all jobs on disk with job_id link, URL, and status badge
