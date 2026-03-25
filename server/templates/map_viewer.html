@@ -111,6 +111,14 @@
 </div>
 
 <script>
+  // CSS to inject into the iframe for dark mode improvements (high-contrast arrows/lines)
+  const DARK_CSS = `
+    .link-import{stroke:#34d399!important;stroke-opacity:0.55!important}
+    .link-import.lit{stroke:#10b981!important;stroke-opacity:0.9!important}
+    marker path{fill:#34d399!important}
+    marker.lit path{fill:#10b981!important}
+  `;
+
   // CSS to inject into the iframe for light mode (covers already-generated files)
   const LIGHT_CSS = `
     body{background:#f8fafc!important;color:#0f172a!important}
@@ -119,9 +127,9 @@
     #search::placeholder{color:#94a3b8!important}
     .ctrl-btn{background:#fff!important;border-color:#e2e8f0!important;color:#475569!important}
     .ctrl-btn:hover{background:#f1f5f9!important;color:#0f172a!important}
-    .ctrl-btn.active{background:#2563eb!important;color:#fff!important;border-color:#2563eb!important}
+    .ctrl-btn.active{background:#059669!important;color:#fff!important;border-color:#059669!important}
     #stats{color:#64748b!important}
-    #logo{color:#2563eb!important}
+    #logo{color:#059669!important}
     #logo-sub{color:#94a3b8!important}
     #legend,#info,#tooltip{background:#fff!important;border-color:#e2e8f0!important;box-shadow:0 4px 24px rgba(0,0,0,.08)!important}
     .leg-sep{border-color:#e2e8f0!important}
@@ -153,7 +161,9 @@
     .tt-row{color:#64748b!important}
     .tt-row span{color:#475569!important}
     .link-import{stroke:#94a3b8!important}
-    .link-import.lit{stroke:#2563eb!important}
+    .link-import.lit{stroke:#059669!important}
+    marker path{fill:#94a3b8!important}
+    marker.lit path{fill:#059669!important}
   `;
 
   function applyThemeToFrame(theme) {
@@ -169,7 +179,7 @@
         el.id = "ark-theme-inject";
         fd.head.appendChild(el);
       }
-      el.textContent = theme === "light" ? LIGHT_CSS : "";
+      el.textContent = theme === "light" ? LIGHT_CSS : DARK_CSS;
     } catch (e) { /* cross-origin or not ready */ }
   }
 

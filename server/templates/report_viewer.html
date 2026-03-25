@@ -47,8 +47,13 @@
       border-radius: 5px;
       transition: background 0.12s, color 0.12s;
       line-height: 1.4;
+      border-left: 2px solid transparent;
     }
-    .sidebar-toc li a:hover { background: var(--surface-hi); color: var(--text); }
+    .sidebar-toc li a:hover {
+      background: var(--surface-hi);
+      color: var(--text);
+      border-left-color: var(--accent);
+    }
     .sidebar-toc li.h3-item a { padding-left: 1rem; font-size: 0.76rem; color: var(--text-3); }
 
     /* ── Main content ── */
@@ -120,7 +125,7 @@
       line-height: 1.25;
     }
     .prose h1 { font-size: 1.75rem; letter-spacing: -0.8px; border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
-    .prose h2 { font-size: 1.3rem; }
+    .prose h2 { font-size: 1.3rem; border-bottom: 1px solid var(--border); padding-bottom: 0.35rem; }
     .prose h3 { font-size: 1.05rem; color: var(--text); }
     .prose h4 { font-size: 0.95rem; }
     .prose p  { margin: 0 0 1rem; }
@@ -144,6 +149,7 @@
       padding: 0.15em 0.45em;
       border-radius: 4px;
       color: var(--accent-hi);
+      border: 1px solid var(--border);
     }
     .prose pre {
       background: var(--code-bg);

@@ -162,9 +162,17 @@
       flex-shrink: 0;
       font-size: 0.75rem;
       margin-top: 0.15rem;
+      font-weight: 700;
     }
     .tier-features li.dim { color: var(--text-3); }
     .tier-features li.dim .check { color: var(--text-3); }
+    [data-theme="dark"] .tier-card {
+      background: rgba(255,255,255,0.03);
+    }
+    [data-theme="dark"] .tier-card.featured {
+      background: rgba(16,185,129,0.08);
+      border-color: var(--accent);
+    }
 
     /* ── FAQ strip ── */
     .faq-section {

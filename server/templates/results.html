@@ -127,7 +127,8 @@
       padding: 0.2rem 0.55rem;
       border-radius: 4px;
       background: var(--surface-hi);
-      color: var(--text-3);
+      color: var(--text-2);
+      border: 1px solid var(--border);
     }
     .oc-title {
       font-size: 1rem;
@@ -182,6 +183,16 @@
       text-decoration: none;
     }
     .new-analysis a:hover { color: var(--text-2); }
+
+    /* ── Section labels ── */
+    .section-eyebrow-sm {
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--accent-hi);
+      margin-bottom: 0.85rem;
+    }
   </style>
 </head>
 <body>
@@ -206,7 +217,7 @@
     <span>Results</span>
     <span>/</span>
     <span>{{ job_id }}</span>
-    <span style="margin-left:auto"><a href="/debug/{{ job_id }}" style="color:var(--text-3);font-size:0.75rem;opacity:0.6" target="_blank">debug ↗</a></span>
+    <span style="margin-left:auto"><a href="/debug/{{ job_id }}" style="color:var(--text-3);font-size:0.75rem;opacity:0.6" target="_blank">debug &#x2197;</a></span>
   </div>
 
   {% if job.status == "pending" or job.status == "running" %}
@@ -238,10 +249,10 @@
         const retryHtml = isRateLimit
           ? `<a href="/" style="display:inline-block;margin-top:1rem;padding:0.5rem 1.2rem;
               background:var(--accent);color:#fff;border-radius:8px;text-decoration:none;
-              font-weight:600;font-size:0.875rem">← Retry (cache will resume)</a>`
+              font-weight:600;font-size:0.875rem">&#8592; Retry (cache will resume)</a>`
           : `<a href="/" style="display:inline-block;margin-top:1rem;padding:0.5rem 1.2rem;
               background:var(--surface-hi);color:var(--text-2);border:1px solid var(--border);
-              border-radius:8px;text-decoration:none;font-weight:600;font-size:0.875rem">← Try another repo</a>`;
+              border-radius:8px;text-decoration:none;font-weight:600;font-size:0.875rem">&#8592; Try another repo</a>`;
         document.getElementById("pending-card").innerHTML =
           `<h2 style="color:#f87171">Pipeline failed</h2>
            <p style="color:var(--text-2);max-width:480px;margin:0.75rem auto">${data.error || "Unknown error"}</p>
@@ -269,16 +280,16 @@
     </p>
     {% endif %}
   </div>
-  <div class="new-analysis"><a href="/">← Try another repo</a></div>
+  <div class="new-analysis"><a href="/">&#8592; Try another repo</a></div>
 
   {% else %}
 
   <div class="results-header">
     <h1>Analysis complete</h1>
     <div class="results-meta">
-      {% if job.url %}<span class="repo-url">{{ job.url }}</span><span class="dot">·</span>{% endif %}
+      {% if job.url %}<span class="repo-url">{{ job.url }}</span><span class="dot">&#xB7;</span>{% endif %}
       <span>{{ job.outputs | length }} output(s)</span>
-      <span class="dot">·</span>
+      <span class="dot">&#xB7;</span>
       <span id="job-age"></span>
     </div>
   </div>
@@ -288,13 +299,13 @@
     <div class="output-card">
       <div class="oc-header">
         <div class="oc-icon">
-          {% if output.kind == "html" %}🕸
-          {% elif output.kind == "docx" %}📊
-          {% elif output.filename == "SECURITY_REPORT.md" %}🔒
-          {% elif output.filename == "DEAD_CODE_REPORT.md" %}🧹
-          {% elif output.filename == "TEST_GAP_REPORT.md" %}🧪
-          {% elif output.filename == "PR_IMPACT.md" %}⚡
-          {% else %}📄{% endif %}
+          {% if output.kind == "html" %}&#x1F578;
+          {% elif output.kind == "docx" %}&#x1F4CA;
+          {% elif output.filename == "SECURITY_REPORT.md" %}&#x1F512;
+          {% elif output.filename == "DEAD_CODE_REPORT.md" %}&#x1F9F9;
+          {% elif output.filename == "TEST_GAP_REPORT.md" %}&#x1F9EA;
+          {% elif output.filename == "PR_IMPACT.md" %}&#x26A1;
+          {% else %}&#x1F4C4;{% endif %}
         </div>
         <span class="oc-type-badge">{{ output.kind | upper }}</span>
       </div>
@@ -325,11 +336,11 @@
 
   <!-- Interactive tools -->
   <div style="margin-top: 2.5rem">
-    <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--accent-hi);margin-bottom:0.85rem">Interactive Tools</div>
+    <div class="section-eyebrow-sm">Interactive Tools</div>
     <div class="outputs-grid">
       <div class="output-card">
         <div class="oc-header">
-          <div class="oc-icon">💥</div>
+          <div class="oc-icon">&#x1F4A5;</div>
           <span class="oc-type-badge">LIVE</span>
         </div>
         <div class="oc-title">Blast Radius Explorer</div>
@@ -340,7 +351,7 @@
       </div>
       <div class="output-card">
         <div class="oc-header">
-          <div class="oc-icon">🎯</div>
+          <div class="oc-icon">&#x1F3AF;</div>
           <span class="oc-type-badge">LIVE</span>
         </div>
         <div class="oc-title">Smart Context Picker</div>
@@ -354,7 +365,7 @@
 
   <!-- Graph stats card (fetched async — only shown if GRAPH.json available) -->
   <div id="graph-stats-section" style="margin-top:2.5rem;display:none">
-    <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--accent-hi);margin-bottom:0.85rem">Codebase Intelligence</div>
+    <div class="section-eyebrow-sm">Codebase Intelligence</div>
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:1.5rem 2rem">
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:1.25rem 2rem;margin-bottom:1.5rem" id="stats-grid"></div>
       <div id="stats-hubs" style="display:none">
@@ -368,7 +379,7 @@
     </div>
   </div>
 
-  <div class="new-analysis"><a href="/">← Analyze another repo</a></div>
+  <div class="new-analysis"><a href="/">&#8592; Analyze another repo</a></div>
 
   {% endif %}
 
