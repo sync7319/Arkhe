@@ -1,12 +1,14 @@
 """
 Dead Code Detector — static analysis, zero LLM cost.
 
-Two-pass approach for Python files:
-  Pass 1 (regex): Cross-file name matching + decorator awareness + within-file call sites.
+Three-pass approach for Python files:
+  Pass 1 (call graph): Functions that appear as callees in tree-sitter call graph are live.
+                       Fast, zero-false-positive first filter.
+  Pass 2 (regex): Cross-file name matching + decorator awareness + within-file call sites.
                   Works for all 7 supported languages.
-  Pass 2 (vulture): AST-based analysis for Python — understands __all__, attribute access,
+  Pass 3 (vulture): AST-based analysis for Python — understands __all__, attribute access,
                     and dynamic patterns the regex pass misses. Used to REMOVE false positives
-                    from pass 1: if vulture says a Python symbol is live, it's removed.
+                    from pass 2: if vulture says a Python symbol is live, it's removed.
 
 For every function and class defined in the codebase, checks whether that
 symbol name appears anywhere outside its own file. Symbols with no external
@@ -103,6 +105,19 @@ def _is_analysis_target(path: str) -> bool:
     return not _EXCLUDE_FROM_DEAD_CODE.search(path.replace("\\", "/"))
 
 
+def _build_call_graph_refs(modules: list[dict]) -> set[str]:
+    """
+    Collect every callee name that appears in any module's call graph.
+    If a function name appears here it's definitely invoked somewhere — always live.
+    """
+    called: set[str] = set()
+    for m in modules:
+        calls = m.get("structure", {}).get("calls", {})
+        for callees in calls.values():
+            called.update(callees)
+    return called
+
+
 # ── Vulture integration (Python-only false-positive reduction) ────────────────
 
 def _get_vulture_live_symbols(python_modules: list[dict]) -> set[str]:
@@ -163,6 +178,11 @@ def detect_dead_code(modules: list[dict]) -> dict:
         exports = m.get("structure", {}).get("exports", [])
         all_exports.update(exports)
 
+    # Call graph pass: symbols that appear as callees anywhere are definitely live
+    call_graph_called = _build_call_graph_refs(modules)
+    if call_graph_called:
+        logger.info(f"[deadcode] call graph shows {len(call_graph_called)} live callees")
+
     # Vulture pass: get set of symbols vulture considers live in Python files
     python_source_mods = [m for m in source_modules if m.get("ext") == ".py"]
     vulture_live = _get_vulture_live_symbols(python_source_mods)
@@ -184,6 +204,8 @@ def detect_dead_code(modules: list[dict]) -> dict:
                 continue
             if fn in all_exports:
                 continue  # exported via __all__ — always live
+            if fn in call_graph_called:
+                continue  # appears as callee in call graph — definitely live
             if not references.get(fn):
                 # For Python files: if vulture says it's live, skip (vulture wins)
                 if is_python and vulture_live and fn in vulture_live:
@@ -196,6 +218,8 @@ def detect_dead_code(modules: list[dict]) -> dict:
                 continue
             if cls in all_exports:
                 continue  # exported via __all__ — always live
+            if cls in call_graph_called:
+                continue  # appears as callee in call graph — definitely live
             if not references.get(cls):
                 if is_python and vulture_live and cls in vulture_live:
                     continue

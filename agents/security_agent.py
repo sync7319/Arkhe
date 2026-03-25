@@ -14,6 +14,7 @@ Output: docs/SECURITY_REPORT.md
 """
 import asyncio
 import logging
+import os
 import subprocess
 import sys
 import json
@@ -85,7 +86,10 @@ def _run_bandit(python_modules: list[dict]) -> str:
 
     try:
         result = subprocess.run(
-            [sys.executable, "-m", "bandit", "-f", "json", "-q", "--exit-zero"] + abs_paths,
+            [
+                sys.executable, "-m", "bandit", "-f", "json", "-q", "--exit-zero",
+                "--skip", "B404,B603,B607",  # subprocess import/usage noise — intentional in analysis tools
+            ] + abs_paths,
             capture_output=True, text=True, timeout=60,
         )
         data = json.loads(result.stdout) if result.stdout.strip() else {}
@@ -126,7 +130,67 @@ def _run_bandit(python_modules: list[dict]) -> str:
     return "\n".join(lines)
 
 
-# ── LLM scan (all files, pass 2) ─────────────────────────────────────────────
+# ── Semgrep multi-language scan (pass 2, optional) ───────────────────────────
+
+def _run_semgrep(modules: list[dict]) -> str:
+    """
+    Run Semgrep with community rules for multi-language security scanning.
+    Infers the repo root from the first module's abs_path and relative path.
+    Returns formatted findings or empty string if Semgrep is unavailable.
+    """
+    # Derive repo absolute path from first module that has abs_path
+    repo_root = None
+    for m in modules:
+        abs_p = m.get("abs_path", "")
+        rel_p = m.get("path", "")
+        if abs_p and rel_p and abs_p.endswith(rel_p.replace("\\", "/")):
+            repo_root = abs_p[: -len(rel_p)].rstrip("/")
+            break
+    if not repo_root:
+        return ""
+
+    try:
+        result = subprocess.run(
+            [
+                "semgrep", "--config=auto", "--json",
+                "--no-git-ignore", "--timeout", "30",
+                repo_root,
+            ],
+            capture_output=True, text=True, timeout=120,
+        )
+        data = json.loads(result.stdout) if result.stdout.strip() else {}
+    except FileNotFoundError:
+        logger.debug("[security] semgrep not installed — skipping")
+        return ""
+    except (subprocess.TimeoutExpired, json.JSONDecodeError, Exception) as e:
+        logger.warning(f"[security] semgrep failed: {e}")
+        return ""
+
+    findings = data.get("results", [])
+    if not findings:
+        return ""
+
+    sev_map = {"ERROR": "HIGH", "WARNING": "MEDIUM", "INFO": "LOW"}
+    lines   = ["## Static Analysis (Semgrep)\n"]
+    for f in findings:
+        rel_path = os.path.relpath(f.get("path", ""), repo_root)
+        sev      = sev_map.get(f.get("extra", {}).get("severity", "WARNING").upper(), "LOW")
+        message  = f.get("extra", {}).get("message", "").split("\n")[0][:120]
+        check_id = f.get("check_id", "")
+        line     = f.get("start", {}).get("line", "")
+        lines.append(
+            f"FILE: {rel_path}\n"
+            f"SEVERITY: {sev}\n"
+            f"ISSUE: {message}\n"
+            f"CODE: line {line}\n"
+            f"FIX: See semgrep rule {check_id}\n"
+        )
+
+    logger.info(f"[security] semgrep found {len(findings)} issues")
+    return "\n".join(lines)
+
+
+# ── LLM scan (all files, pass 3) ─────────────────────────────────────────────
 
 def _build_prompt(batch: list[dict]) -> str:
     parts = []
@@ -153,7 +217,10 @@ async def run_security_audit(modules: list[dict]) -> str:
     if bandit_section:
         logger.info(f"[security] bandit scanned {len(python_modules)} Python files")
 
-    # Pass 2: LLM semantic scan on all files
+    # Pass 2: Semgrep multi-language scan (free, AST-based, requires semgrep binary)
+    semgrep_section = _run_semgrep(source)
+
+    # Pass 3: LLM semantic scan on all files
     batches = [source[i:i + BATCH_SIZE] for i in range(0, len(source), BATCH_SIZE)]
     sem     = asyncio.Semaphore(3)
     tasks   = [_audit_batch(b, i, sem) for i, b in enumerate(batches)]
@@ -166,7 +233,7 @@ async def run_security_audit(modules: list[dict]) -> str:
         else:
             sections.append(r)
 
-    if not sections and not bandit_section:
+    if not sections and not bandit_section and not semgrep_section:
         return "# Security Report\n\nAll batches failed — check your API key and rate limits.\n"
 
     llm_section = "\n\n---\n\n".join(sections) if sections else ""
@@ -178,8 +245,10 @@ async def run_security_audit(modules: list[dict]) -> str:
     ]
     if bandit_section:
         parts.append(bandit_section)
+    if semgrep_section:
+        parts.append(semgrep_section)
     if llm_section:
-        if bandit_section:
+        if bandit_section or semgrep_section:
             parts.append("\n## LLM Semantic Scan\n")
         parts.append(llm_section)
 
