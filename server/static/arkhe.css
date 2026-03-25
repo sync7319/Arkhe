@@ -6,21 +6,21 @@
 
 /* ── Theme Variables ── */
 :root, [data-theme="dark"] {
-  --bg:         #07071a;
-  --bg2:        #0d0d2a;
-  --surface:    rgba(99,102,241,0.05);
-  --surface-hi: rgba(99,102,241,0.10);
-  --border:     rgba(99,102,241,0.14);
-  --border-hi:  rgba(99,102,241,0.30);
-  --text:       #e8e8ff;
-  --text-2:     #7878b8;
-  --text-3:     #38386a;
-  --accent:     #6366f1;
-  --accent-hi:  #818cf8;
-  --accent-bg:  rgba(99,102,241,0.12);
-  --nav-bg:     rgba(7,7,26,0.84);
-  --code-bg:    rgba(0,0,0,0.5);
-  --shadow:     0 1px 3px rgba(0,0,0,0.5);
+  --bg:         #0a0a18;
+  --bg2:        #0f0f22;
+  --surface:    rgba(255,255,255,0.04);
+  --surface-hi: rgba(255,255,255,0.08);
+  --border:     rgba(255,255,255,0.10);
+  --border-hi:  rgba(255,255,255,0.22);
+  --text:       #f1f5f9;
+  --text-2:     #94a3b8;
+  --text-3:     #475569;
+  --accent:     #10b981;
+  --accent-hi:  #34d399;
+  --accent-bg:  rgba(16,185,129,0.12);
+  --nav-bg:     rgba(10,10,24,0.88);
+  --code-bg:    rgba(0,0,0,0.45);
+  --shadow:     0 1px 3px rgba(0,0,0,0.6);
 }
 
 [data-theme="light"] {

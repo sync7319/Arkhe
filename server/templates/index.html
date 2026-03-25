@@ -13,10 +13,10 @@
       transition: opacity 1.1s cubic-bezier(0.4,0,0.2,1);
     }
     /* Dark scenes */
-    #bg-0 { background: radial-gradient(ellipse 900px 600px at 50% 30%, rgba(99,102,241,0.18) 0%, transparent 70%); }
-    #bg-1 { background: radial-gradient(ellipse 800px 600px at 20% 60%, rgba(139,92,246,0.15) 0%, transparent 70%); }
-    #bg-2 { background: radial-gradient(ellipse 900px 500px at 75% 55%, rgba(56,189,248,0.10) 0%, transparent 70%); }
-    #bg-3 { background: radial-gradient(ellipse 700px 500px at 50% 65%, rgba(244,63,94,0.10) 0%, transparent 70%); }
+    #bg-0 { background: radial-gradient(ellipse 900px 600px at 50% 30%, rgba(16,185,129,0.10) 0%, transparent 70%); }
+    #bg-1 { background: radial-gradient(ellipse 800px 600px at 20% 60%, rgba(52,211,153,0.08) 0%, transparent 70%); }
+    #bg-2 { background: radial-gradient(ellipse 900px 500px at 75% 55%, rgba(5,150,105,0.07) 0%, transparent 70%); }
+    #bg-3 { background: radial-gradient(ellipse 700px 500px at 50% 65%, rgba(16,185,129,0.09) 0%, transparent 70%); }
     /* Light scenes */
     #bg-l0 { background: radial-gradient(ellipse 900px 600px at 50% 30%, rgba(16,185,129,0.14) 0%, transparent 70%); }
     #bg-l1 { background: radial-gradient(ellipse 800px 600px at 25% 55%, rgba(20,184,166,0.10) 0%, transparent 70%); }
@@ -68,7 +68,7 @@
     }
     .hero-h1 em {
       font-style: normal;
-      background: linear-gradient(135deg, var(--accent-hi) 0%, #c4b5fd 100%);
+      background: linear-gradient(135deg, #10b981 0%, #34d399 60%, #6ee7b7 100%);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
@@ -78,13 +78,37 @@
       -webkit-background-clip: text;
       background-clip: text;
     }
-    .hero-sub {
+
+    /* ── Rotating tagline ── */
+    .tagline-wrap {
       margin-top: 1.5rem;
-      font-size: 1.1rem;
+      min-height: 5rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      max-width: 640px;
+      width: 100%;
+    }
+    .tagline-item {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.02rem;
       color: var(--text-2);
       line-height: 1.7;
-      max-width: 540px;
       font-weight: 400;
+      opacity: 0;
+      transition: opacity 1s ease;
+      text-align: center;
+      padding: 0 0.75rem;
+      pointer-events: none;
+    }
+    .tagline-item.active {
+      opacity: 1;
+      pointer-events: auto;
     }
 
     /* ── Provider pills ── */
@@ -92,7 +116,7 @@
       display: flex;
       align-items: center;
       gap: 0.5rem;
-      margin-top: 1.25rem;
+      margin-top: 1.5rem;
       flex-wrap: wrap;
       justify-content: center;
     }
@@ -281,8 +305,46 @@
     .progress-steps span.done   { color: var(--accent); }
     .progress-steps span.active { color: var(--text-2); }
 
+    /* ── How it works ── */
+    .steps-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1px;
+      background: var(--border);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+    }
+    @media (max-width: 640px) { .steps-grid { grid-template-columns: 1fr; } }
+    .step-cell {
+      background: var(--bg);
+      padding: 2rem;
+      position: relative;
+    }
+    [data-theme="light"] .step-cell { background: var(--bg2); }
+    .step-num {
+      font-size: 0.68rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--accent-hi);
+      margin-bottom: 1rem;
+    }
+    .step-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 0.5rem;
+      letter-spacing: -0.3px;
+    }
+    .step-desc {
+      font-size: 0.855rem;
+      color: var(--text-2);
+      line-height: 1.6;
+    }
+
     /* ── Outputs grid ── */
-    .output-icon-lg { font-size: 1.15rem; margin-bottom: 0.8rem; opacity: 0.75; }
+    .output-icon-lg { font-size: 1.15rem; margin-bottom: 0.8rem; opacity: 0.85; }
     .output-name  { font-size: 0.95rem; font-weight: 700; color: var(--text); margin-bottom: 0.4rem; letter-spacing: -0.2px; }
     .output-desc  { font-size: 0.82rem; color: var(--text-2); line-height: 1.55; }
     .output-tag   {
@@ -316,9 +378,29 @@
       background: var(--code-bg);
       border: 1px solid var(--border);
       border-radius: 8px; padding: 1rem 1.4rem;
-      font-size: 0.82rem; color: #a5f3fc; line-height: 1.9;
+      font-size: 0.82rem; color: var(--accent-hi); line-height: 1.9;
     }
     [data-theme="light"] .cli-code pre { color: #065f46; }
+
+    /* ── ASCII art dep graph ── */
+    .hero-ascii {
+      margin-top: 3rem;
+      font-family: "SF Mono", "Fira Code", Menlo, monospace;
+      font-size: 0.72rem;
+      line-height: 1.5;
+      color: var(--text-3);
+      text-align: left;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.25rem 1.5rem;
+      max-width: 560px;
+      width: 100%;
+      user-select: none;
+    }
+    .ascii-accent { color: var(--accent-hi); }
+    .ascii-dim    { color: var(--text-3); opacity: 0.6; }
+    [data-theme="light"] .hero-ascii { color: var(--text-3); }
   </style>
 </head>
 <body>
@@ -356,10 +438,24 @@
     Your codebase,<br><em>fully understood.</em>
   </h1>
 
-  <p class="hero-sub">
-    Paste any GitHub or GitLab URL. Arkhe maps every dependency, answers
-    "what breaks if I change this?", and packs the right files into any AI context window.
-  </p>
+  <!-- Rotating taglines -->
+  <div class="tagline-wrap" id="tagline-wrap">
+    <div class="tagline-item active">Paste any GitHub or GitLab URL. Arkhe maps every dependency, answers "what breaks if I change this?", and packs the right files into any AI context window.</div>
+    <div class="tagline-item">Arkhe — from the Ancient Greek <em>&#x1F08;&#x03C1;&#x03C7;&#x03AE;</em> meaning "origin" or "beginning." Like its namesake, Arkhe starts where understanding does: at the source.</div>
+    <div class="tagline-item">Onboarding a new engineer? Share the Arkhe map. They'll understand your architecture in minutes, not weeks.</div>
+    <div class="tagline-item">Before merging that PR, know exactly which files it touches — and which untested functions it puts at risk.</div>
+    <div class="tagline-item">Dead code costs you in maintenance, security surface, and cognitive load. Arkhe finds it statically, for free.</div>
+    <div class="tagline-item">Your codebase has secrets. Hidden cycles. Untested public APIs. Files that everything depends on. Arkhe surfaces them all.</div>
+    <div class="tagline-item">Every PR, automatically documented. Every change, blast-radius mapped. Every dependency, visualized.</div>
+    <div class="tagline-item">Arkhe runs in your CI pipeline or on demand. It never forgets to update the docs.</div>
+    <div class="tagline-item">Five minutes with Arkhe &gt; five hours reading unfamiliar code.</div>
+    <div class="tagline-item">Built for teams who ship fast and can't afford to guess what breaks.</div>
+    <div class="tagline-item">BYOK — Bring Your Own Key. Your code stays yours. Arkhe never stores it.</div>
+    <div class="tagline-item">From 10-file scripts to 10,000-file monorepos, Arkhe scales with your codebase.</div>
+    <div class="tagline-item">The dependency graph isn't just pretty — click any node to see what imports it and what it imports.</div>
+    <div class="tagline-item">Security audit, dead code scan, test gap report — all in one run, zero manual effort.</div>
+    <div class="tagline-item">Arkhe doesn't guess. Every function name, every import, every dependency is extracted from your actual AST.</div>
+  </div>
 
   <div class="provider-pills">
     <div class="provider-pill"><span class="dot"></span> GitHub</div>
@@ -371,13 +467,13 @@
   <div class="form-wrap">
     <div class="input-row">
       <input type="text" id="repo-url" placeholder="https://github.com/owner/repo" autocomplete="off" />
-      <button class="btn-analyze" id="analyze-btn" onclick="submitRepo()">Analyze →</button>
+      <button class="btn-analyze" id="analyze-btn" onclick="submitRepo()">Analyze &rarr;</button>
     </div>
 
     <div class="form-meta">
       <span class="form-hint">GitHub &amp; GitLab · Public repos · Instant results</span>
       <button class="btn-options" id="options-btn" onclick="toggleOptions()">
-        Options <span class="chevron">▾</span>
+        Options <span class="chevron">&#9662;</span>
       </button>
     </div>
     <div class="error-msg" id="error-msg"></div>
@@ -464,124 +560,115 @@
       </div>
     </div>
   </div>
+
+  <!-- ASCII dep graph visual -->
+  <div class="hero-ascii" aria-hidden="true">
+<span class="ascii-accent">main.py</span>
+<span class="ascii-dim"> ├──</span> config/<span class="ascii-accent">settings.py</span>
+<span class="ascii-dim"> │    └──</span> config/<span class="ascii-accent">llm_client.py</span>
+<span class="ascii-dim"> ├──</span> agents/<span class="ascii-accent">analyst_agent.py</span>   <span class="ascii-dim">← 14 importers</span>
+<span class="ascii-dim"> │    └──</span> agents/<span class="ascii-accent">parser_agent.py</span>   <span class="ascii-dim">← AST · 7 langs</span>
+<span class="ascii-dim"> ├──</span> agents/<span class="ascii-accent">synthesizer_agent.py</span>
+<span class="ascii-dim"> └──</span> agents/<span class="ascii-accent">visualizer_agent.py</span>  <span class="ascii-dim">← D3 · heatmap</span>
+  </div>
 </div>
 
-<!-- Outputs -->
+<!-- How it works -->
 <section class="ark-section">
+  <p class="section-eyebrow">How it works</p>
+  <h2 class="section-h2">Three steps to full<br>codebase understanding.</h2>
+  <p class="section-sub">No configuration. No setup. Paste a URL and walk away.</p>
+
+  <div class="steps-grid">
+    <div class="step-cell">
+      <div class="step-num">Step 01</div>
+      <div class="step-title">Paste any repo URL</div>
+      <div class="step-desc">GitHub or GitLab. Public repos work instantly — no account or API keys needed on the web tier.</div>
+    </div>
+    <div class="step-cell">
+      <div class="step-num">Step 02</div>
+      <div class="step-title">Arkhe runs the pipeline</div>
+      <div class="step-desc">Clone → AST parse → dependency graph → AI analysis → synthesis → write. Parallel where possible, cached for reruns.</div>
+    </div>
+    <div class="step-cell">
+      <div class="step-num">Step 03</div>
+      <div class="step-title">Get every report</div>
+      <div class="step-desc">Codebase map, dependency graph, security audit, dead code report, blast radius explorer — ready in minutes.</div>
+    </div>
+  </div>
+</section>
+
+<!-- Outputs -->
+<section class="ark-section" style="padding-top:0">
   <p class="section-eyebrow">What Arkhe produces</p>
   <h2 class="section-h2">Every output you need,<br>generated automatically.</h2>
   <p class="section-sub">One URL. Six outputs — starting with the two things every AI coding tool gets wrong.</p>
 
   <div class="ark-grid ark-grid-3">
     <div class="ark-cell">
-      <div class="output-icon-lg">💥</div>
+      <div class="output-icon-lg">&#x1F4A5;</div>
       <div class="output-name">Blast Radius Explorer</div>
       <div class="output-desc">"What breaks if I change this?" — transitive impact across the full dependency graph. Every direct and indirect dependent, instantly.</div>
       <div class="output-tag">Free · Interactive</div>
     </div>
     <div class="ark-cell">
-      <div class="output-icon-lg">🎯</div>
+      <div class="output-icon-lg">&#x1F3AF;</div>
       <div class="output-name">Smart Context Picker</div>
       <div class="output-desc">Describe your task. Arkhe ranks the most relevant files and fits them to your token budget. Stop stuffing AI agents with irrelevant code.</div>
       <div class="output-tag">Free · API</div>
     </div>
     <div class="ark-cell">
-      <div class="output-icon-lg">🕸</div>
+      <div class="output-icon-lg">&#x1F578;</div>
       <div class="output-name">Dependency Graph</div>
-      <div class="output-desc">Interactive D3.js visualization of every file and its import relationships. AST-parsed — not guessed.</div>
+      <div class="output-desc">Interactive D3.js visualization of every file and its import relationships. AST-parsed — not guessed. Click any node to explore.</div>
       <div class="output-tag">Free · HTML</div>
     </div>
     <div class="ark-cell">
-      <div class="output-icon-lg">📄</div>
+      <div class="output-icon-lg">&#x1F4C4;</div>
       <div class="output-name">Codebase Map</div>
-      <div class="output-desc">AI narrative covering architecture, data flows, module roles, and gotchas. Auto-regenerated on every PR.</div>
+      <div class="output-desc">AI narrative covering architecture, data flows, module roles, and gotchas. Auto-regenerated on every PR. Ground-truth function names from AST.</div>
       <div class="output-tag ai">AI · Markdown</div>
     </div>
     <div class="ark-cell">
-      <div class="output-icon-lg">🔒</div>
+      <div class="output-icon-lg">&#x1F512;</div>
       <div class="output-name">Security Audit</div>
-      <div class="output-desc">LLM scan for OWASP Top 10: hardcoded secrets, injection risks, weak crypto.</div>
+      <div class="output-desc">Three-pass scan: Bandit (Python static) + Semgrep (30+ languages) + LLM (OWASP Top 10 semantic). Zero false positives by design.</div>
       <div class="output-tag ai">AI · Markdown</div>
     </div>
     <div class="ark-cell">
-      <div class="output-icon-lg">📊</div>
+      <div class="output-icon-lg">&#x1F4CA;</div>
       <div class="output-name">Executive Report</div>
-      <div class="output-desc">Stakeholder-ready Word document: strengths, risks, and recommendations.</div>
+      <div class="output-desc">Stakeholder-ready Word document: strengths, risks, and recommendations. Complexity-gated model selection for quality on large repos.</div>
       <div class="output-tag ai">AI · Word</div>
     </div>
   </div>
 </section>
 
-<!-- BYOK / Self-hostable / Enterprise -->
-<section class="ark-section">
+<!-- BYOK / Self-hostable -->
+<section class="ark-section" style="padding-top:0">
   <p class="section-eyebrow">Enterprise-ready</p>
   <h2 class="section-h2">Your code never leaves<br>your infrastructure.</h2>
   <p class="section-sub">The only codebase intelligence tool built for teams that can't send their code to external APIs.</p>
 
   <div class="ark-grid ark-grid-3">
     <div class="ark-cell">
-      <div class="output-icon-lg">🔑</div>
+      <div class="output-icon-lg">&#x1F511;</div>
       <div class="output-name">Bring Your Own Keys</div>
       <div class="output-desc">Plug in your Groq, Gemini, Anthropic, or OpenAI API keys. We never store or proxy them. Groq and Gemini free tiers work out of the box — most users pay $0.</div>
       <div class="output-tag">BYOK</div>
     </div>
     <div class="ark-cell">
-      <div class="output-icon-lg">🏠</div>
+      <div class="output-icon-lg">&#x1F3E0;</div>
       <div class="output-name">Fully Self-Hostable</div>
-      <div class="output-desc">One command install. Run on your laptop, your server, or air-gapped behind a firewall. Banks, defense contractors, healthcare — your code stays yours.</div>
+      <div class="output-desc">One command install. Run on your laptop, your server, or air-gapped behind a firewall. Your code stays yours — always.</div>
       <div class="output-tag">On-Prem</div>
     </div>
     <div class="ark-cell">
-      <div class="output-icon-lg">💡</div>
+      <div class="output-icon-lg">&#x1F4A1;</div>
       <div class="output-name">Zero Vendor Lock-In</div>
       <div class="output-desc">Swap LLM providers in one line. Every output is plain Markdown, HTML, or Word — no proprietary format. MIT license. Fork it, host it, own it.</div>
       <div class="output-tag">MIT License</div>
     </div>
-  </div>
-
-  <div style="margin-top:2.5rem;max-width:720px;margin-left:auto;margin-right:auto">
-    <table style="width:100%;border-collapse:collapse;font-size:0.875rem">
-      <thead>
-        <tr style="border-bottom:1px solid var(--border)">
-          <th style="text-align:left;padding:0.6rem 1rem;color:var(--text-3);font-weight:600;font-size:0.75rem;text-transform:uppercase;letter-spacing:.5px">Feature</th>
-          <th style="text-align:center;padding:0.6rem 1rem;color:var(--accent-hi);font-weight:700">Arkhe</th>
-          <th style="text-align:center;padding:0.6rem 1rem;color:var(--text-3);font-weight:600">Greptile</th>
-          <th style="text-align:center;padding:0.6rem 1rem;color:var(--text-3);font-weight:600">Sourcegraph</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr style="border-bottom:1px solid var(--border)">
-          <td style="padding:0.65rem 1rem;color:var(--text-2)">Self-hostable</td>
-          <td style="text-align:center;padding:0.65rem 1rem;color:#4ade80;font-weight:700">Yes</td>
-          <td style="text-align:center;padding:0.65rem 1rem;color:#f87171">No</td>
-          <td style="text-align:center;padding:0.65rem 1rem;color:var(--text-3)">$$$</td>
-        </tr>
-        <tr style="border-bottom:1px solid var(--border)">
-          <td style="padding:0.65rem 1rem;color:var(--text-2)">Bring Your Own Keys</td>
-          <td style="text-align:center;padding:0.65rem 1rem;color:#4ade80;font-weight:700">Yes</td>
-          <td style="text-align:center;padding:0.65rem 1rem;color:#f87171">No</td>
-          <td style="text-align:center;padding:0.65rem 1rem;color:#f87171">No</td>
-        </tr>
-        <tr style="border-bottom:1px solid var(--border)">
-          <td style="padding:0.65rem 1rem;color:var(--text-2)">Free tier</td>
-          <td style="text-align:center;padding:0.65rem 1rem;color:#4ade80;font-weight:700">Yes</td>
-          <td style="text-align:center;padding:0.65rem 1rem;color:var(--text-3)">Limited</td>
-          <td style="text-align:center;padding:0.65rem 1rem;color:#f87171">No</td>
-        </tr>
-        <tr style="border-bottom:1px solid var(--border)">
-          <td style="padding:0.65rem 1rem;color:var(--text-2)">AST-parsed dep graph</td>
-          <td style="text-align:center;padding:0.65rem 1rem;color:#4ade80;font-weight:700">Yes</td>
-          <td style="text-align:center;padding:0.65rem 1rem;color:#f87171">No</td>
-          <td style="text-align:center;padding:0.65rem 1rem;color:#4ade80">Yes</td>
-        </tr>
-        <tr>
-          <td style="padding:0.65rem 1rem;color:var(--text-2)">Open source (MIT)</td>
-          <td style="text-align:center;padding:0.65rem 1rem;color:#4ade80;font-weight:700">Yes</td>
-          <td style="text-align:center;padding:0.65rem 1rem;color:#f87171">No</td>
-          <td style="text-align:center;padding:0.65rem 1rem;color:#f87171">No</td>
-        </tr>
-      </tbody>
-    </table>
   </div>
 </section>
 
@@ -593,10 +680,11 @@
     <div class="cli-body">
       <div class="cli-text">
         <h3>Run it on any local directory.</h3>
-        <p>Install the CLI and point it at any repo on your machine. Bring your own API keys — Groq and Gemini free tiers are supported, so most users pay nothing.</p>
+        <p>Install the CLI and point it at any repo on your machine. Bring your own API keys — Groq and Gemini free tiers are supported, so most users pay nothing. SQLite cache means reruns only process what changed.</p>
       </div>
       <div class="cli-code">
         <pre>pip install arkhe
+
 arkhe ./my-project
 arkhe ./my-project --refactor</pre>
       </div>
@@ -674,16 +762,43 @@ arkhe ./my-project --refactor</pre>
     document.addEventListener("DOMContentLoaded", onScroll);
   })();
 
+  // ── Rotating taglines ──────────────────────────────────────
+  (function () {
+    let current = 0;
+    const items = document.querySelectorAll(".tagline-item");
+    if (!items.length) return;
+    function rotate() {
+      items[current].classList.remove("active");
+      current = (current + 1) % items.length;
+      items[current].classList.add("active");
+    }
+    setInterval(rotate, 12000);
+  })();
+
   // ── Form logic ─────────────────────────────────────────────
   let _activeStream = null;
+
+  // Pipeline step indices (matches main.py _progress() calls exactly)
+  // 0=clone (server), 1=scan, 2=parse, 3=graph+static, 4=AI analyze, 5=synthesize, 6=write
+  const STEP_PCT = {
+    0:  5,   // clone
+    1:  14,  // scan
+    2:  26,  // parse
+    3:  38,  // graph + dead code + test gap
+    4:  72,  // AI analyze — the long one (concurrent file analysis)
+    5:  90,  // synthesize + security + PR impact
+    6:  97,  // write all outputs
+  };
+
+  // Step indicator elements mapped to pipeline step indices
   const STEPS = [
-    { id:"step-clone",     label:"Cloning repository...",              pct:5  },
-    { id:"step-scan",      label:"Scanning files...",                   pct:15 },
-    { id:"step-parse",     label:"Parsing AST structure...",            pct:25 },
-    { id:"step-graph",     label:"Building dependency graph...",        pct:35 },
-    { id:"step-analyze",   label:"Analyzing with AI...",                pct:70 },
-    { id:"step-synthesize",label:"Synthesizing + parallel analyses...", pct:90 },
-    { id:"step-write",     label:"Writing outputs...",                  pct:98 },
+    { id:"step-clone",     idx:0  },
+    { id:"step-scan",      idx:1  },
+    { id:"step-parse",     idx:2  },
+    { id:"step-graph",     idx:3  },
+    { id:"step-analyze",   idx:4  },
+    { id:"step-synthesize",idx:5  },
+    { id:"step-write",     idx:6  },
   ];
 
   function toggleOptions() {
@@ -747,7 +862,6 @@ arkhe ./my-project --refactor</pre>
     document.getElementById("status-bar").style.display = "block";
     setProgress(0);
 
-    // Close any existing stream
     if (_activeStream) { _activeStream.close(); _activeStream = null; }
 
     const es = new EventSource(`/stream/${jobId}`);
@@ -758,7 +872,7 @@ arkhe ./my-project --refactor</pre>
       if (data.status === "complete") {
         es.close(); _activeStream = null;
         localStorage.removeItem("arkhe-active-job");
-        setProgress(STEPS.length - 1, true);
+        setProgressPct(100, "Complete!");
         setTimeout(() => window.location.href = `/results/${jobId}`, 500);
       } else if (data.status === "error") {
         es.close(); _activeStream = null;
@@ -768,18 +882,26 @@ arkhe ./my-project --refactor</pre>
         resetBtn();
       } else {
         const step = data.step ?? 0;
-        // Use server's step_label if available and meaningful
-        setProgress(Math.min(step, STEPS.length - 1), false, data.step_label);
+        const pct  = STEP_PCT[step] ?? Math.round((step / 11) * 98);
+        const label = data.step_label || "";
+        setProgressPct(pct, label);
+        // Update step indicators
+        STEPS.forEach(s => {
+          const el = document.getElementById(s.id);
+          if (!el) return;
+          if (step > s.idx)      el.className = "done";
+          else if (step === s.idx) el.className = "active";
+          else                   el.className = "";
+        });
       }
     };
 
     es.onerror = () => {
-      // EventSource auto-reconnects on network blips — only close if job ended
       if (!_activeStream || _activeStream.readyState === EventSource.CLOSED) return;
     };
   }
 
-  // On page load, resume any active job via SSE
+  // Resume any active job on page load
   document.addEventListener("DOMContentLoaded", () => {
     const saved = JSON.parse(localStorage.getItem("arkhe-active-job") || "null");
     if (!saved) return;
@@ -793,25 +915,22 @@ arkhe ./my-project --refactor</pre>
     }).catch(() => localStorage.removeItem("arkhe-active-job"));
   });
 
-  function setProgress(stepIdx, complete = false, serverLabel = "") {
-    const step = STEPS[stepIdx] || STEPS[STEPS.length - 1];
-    const pct  = complete ? 100 : step.pct;
-    // Prefer server's real-time label when provided
-    const label = complete ? "Complete!" : (serverLabel || step.label);
-    document.getElementById("status-text").textContent = label;
+  function setProgress(stepIdx) {
+    // Legacy: map old step index to pct
+    const pct = STEP_PCT[stepIdx] ?? 5;
+    setProgressPct(pct, "");
+  }
+
+  function setProgressPct(pct, label) {
     document.getElementById("status-pct").textContent  = pct + "%";
     document.getElementById("progress-fill").style.width = pct + "%";
-    STEPS.forEach((s, i) => {
-      const el = document.getElementById(s.id);
-      if (el) el.className = i < stepIdx ? "done" : i === stepIdx ? "active" : "";
-    });
+    if (label) document.getElementById("status-text").textContent = label;
   }
 
   function showError(msg, retryJobId = null) {
     const errEl = document.getElementById("error-msg");
     let html = msg;
     if (retryJobId) {
-      // Rate limit error — offer to retry (cache will pick up from where it left off)
       html += ` <button onclick="retryJob('${retryJobId}')" style="
         margin-left:0.5rem;font-size:0.78rem;font-weight:600;
         padding:0.2rem 0.65rem;border-radius:5px;cursor:pointer;
@@ -822,8 +941,12 @@ arkhe ./my-project --refactor</pre>
     errEl.innerHTML = html;
   }
 
+  function resetBtn() {
+    const btn = document.getElementById("analyze-btn");
+    btn.disabled = false; btn.textContent = "Analyze →";
+  }
+
   async function retryJob(prevJobId) {
-    // Re-submit same URL — the pipeline cache will skip already-analyzed files
     const url = document.getElementById("repo-url").value.trim();
     if (!url) return;
     document.getElementById("error-msg").innerHTML = "";
@@ -842,12 +965,6 @@ arkhe ./my-project --refactor</pre>
       localStorage.setItem("arkhe-active-job", JSON.stringify({ jobId: data.job_id, url }));
       streamStatus(data.job_id);
     } catch (e) { showError("Network error — please try again."); resetBtn(); }
-  }
-
-  function resetBtn() {
-    const btn = document.getElementById("analyze-btn");
-    btn.disabled = false; btn.textContent = "Analyze →";
-    document.getElementById("status-bar").style.display = "none";
   }
 </script>
 
