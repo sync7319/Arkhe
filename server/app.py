@@ -517,6 +517,36 @@ async def analyze(request: Request, background_tasks: BackgroundTasks):
         if user_key:
             options["_nvidia_key"] = user_key
 
+    # Pre-clone cache check — hit the API to get commit SHA without cloning
+    from scripts.clone_repo import get_head_commit_sha
+    cache_options = {k: v for k, v in options.items() if not k.startswith("_")}
+    early_sha = await asyncio.get_running_loop().run_in_executor(None, get_head_commit_sha, url)
+    if early_sha:
+        early_cache_key = hashlib.sha256(
+            (url + early_sha + json.dumps(cache_options, sort_keys=True)).encode()
+        ).hexdigest()
+        db = get_db()
+        cached = await db.get_analysis_by_cache_key(early_cache_key)
+        if cached and cached.status == "complete":
+            cached_dir = RESULTS_DIR / cached.id
+            if cached_dir.exists():
+                # Return a new job_id pointing to copied cached results — instant
+                hit_id = str(uuid.uuid4())
+                hit_dir = RESULTS_DIR / hit_id
+                shutil.copytree(cached_dir, hit_dir)
+                _save_meta(hit_id, url, list(cached.result_paths.keys()))
+                jobs[hit_id] = {
+                    "status":     JobStatus.COMPLETE,
+                    "url":        url,
+                    "outputs":    [{"filename": fn, "kind": "file"} for fn in cached.result_paths],
+                    "error":      None,
+                    "step":       10,
+                    "step_label": "Complete (cached)",
+                    "created_at": time.time(),
+                }
+                logger.info(f"[cache] pre-clone hit for {url} → reusing {cached.id} as {hit_id}")
+                return JSONResponse({"job_id": hit_id})
+
     analysis_id = str(uuid.uuid4())
     user_id = "00000000-0000-0000-0000-000000000001"  # demo user
     db = get_db()

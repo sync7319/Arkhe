@@ -66,6 +66,39 @@ def parse_repo_url(url: str) -> tuple[str, str]:
     return clean_url, repo_name
 
 
+def get_head_commit_sha(url: str, timeout: int = 5) -> str | None:
+    """
+    Fetch the HEAD commit SHA via the hosting API without cloning.
+    Returns the SHA string on success, None on any failure (caller falls back to clone).
+    """
+    import urllib.request
+    import json as _json
+
+    try:
+        clean_url, repo_name = parse_repo_url(url)
+        parsed = urlparse(clean_url)
+        host = parsed.netloc.lower()
+
+        if host == "github.com":
+            api_url = f"https://api.github.com/repos/{repo_name}/commits/HEAD"
+            req = urllib.request.Request(api_url, headers={"Accept": "application/vnd.github.sha"})
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                return resp.read().decode().strip().strip('"')
+
+        if host == "gitlab.com":
+            encoded = repo_name.replace("/", "%2F")
+            api_url = f"https://gitlab.com/api/v4/projects/{encoded}/repository/commits/HEAD"
+            req = urllib.request.Request(api_url)
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                data = _json.loads(resp.read())
+                return data.get("id")
+
+    except Exception as e:
+        logger.debug(f"[clone] get_head_commit_sha failed (will clone instead): {e}")
+
+    return None
+
+
 def _run_git_clone(url: str, dest: str, depth: int = 1) -> None:
     """
     Run git clone into dest. Raises CloneError on failure.
