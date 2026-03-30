@@ -36,6 +36,9 @@ dependencies = [
     "lizard>=1.21.2",
     "jedi>=0.19.2",
     "chromadb>=1.5.5",
+    "asyncpg>=0.29.0",
+    "aioboto3>=13.0.0",
+    "supabase>=2.0.0",
 ]
 
 [project.scripts]
