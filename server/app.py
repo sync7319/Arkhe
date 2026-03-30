@@ -281,7 +281,11 @@ async def _run_pipeline(analysis_id: str, url: str, options: dict, user_id: str)
         with clone_repo(url) as repo_path:
             # Get commit SHA for cache key
             commit_sha = _get_commit_sha(repo_path)
-            cache_key = hashlib.sha256((url + commit_sha).encode()).hexdigest()
+            # Include options in cache key so different feature flags get fresh results
+            # Exclude _nvidia_key — it's auth, not output-affecting
+            cache_options = {k: v for k, v in options.items() if not k.startswith("_")}
+            cache_input = url + commit_sha + json.dumps(cache_options, sort_keys=True)
+            cache_key = hashlib.sha256(cache_input.encode()).hexdigest()
 
             # Persist real cache_key and commit_sha to DB (replaces pending placeholder)
             await db.update_analysis_cache_key(analysis_id, cache_key, commit_sha)
