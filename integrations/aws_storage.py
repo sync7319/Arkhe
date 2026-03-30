@@ -1,15 +1,20 @@
 """
 AWS S3 storage backend implementation.
+Features: error handling, structured logging, health checks, presigned URLs.
 """
 import os
-import logging
-from datetime import timedelta
+import time
 
 import aioboto3
 
 from integrations.base import BaseStorage
+from integrations.exceptions import (
+    BackendConnectionError,
+    BackendStorageError,
+)
+from integrations.logging import get_logger
 
-logger = logging.getLogger("arkhe.aws_storage")
+log = get_logger("aws-s3")
 
 
 class S3Storage(BaseStorage):
@@ -22,6 +27,13 @@ class S3Storage(BaseStorage):
         self.access_key = os.getenv("AWS_ACCESS_KEY_ID")
         self.secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
 
+        log.debug(
+            "Initializing S3 storage",
+            bucket=self.bucket,
+            region=self.region,
+            credentials="IAM role" if not self.access_key else "explicit keys"
+        )
+
         self.session = aioboto3.Session(
             aws_access_key_id=self.access_key,
             aws_secret_access_key=self.secret_key,
@@ -30,13 +42,32 @@ class S3Storage(BaseStorage):
 
     async def init(self) -> None:
         """Initialize S3 connection and verify bucket exists."""
-        async with self.session.client("s3") as s3:
-            try:
+        log.operation_start("init", bucket=self.bucket, region=self.region)
+
+        try:
+            start = time.time()
+            async with self.session.client("s3") as s3:
                 await s3.head_bucket(Bucket=self.bucket)
-                logger.info(f"[s3_storage] Connected to bucket '{self.bucket}'")
-            except Exception as e:
-                logger.warning(f"[s3_storage] Could not verify bucket: {e}")
-                logger.warning(f"[s3_storage] Create bucket '{self.bucket}' in AWS console")
+            duration = (time.time() - start) * 1000
+
+            log.operation_success("init", duration_ms=duration, bucket=self.bucket)
+        except Exception as e:
+            log.operation_error("init", e, bucket=self.bucket)
+            raise BackendConnectionError(
+                "aws-s3",
+                f"Failed to access bucket '{self.bucket}': {str(e)}",
+                {"bucket": self.bucket, "region": self.region, "error_type": type(e).__name__}
+            )
+
+    async def health_check(self) -> bool:
+        """Check if S3 is responsive."""
+        try:
+            async with self.session.client("s3") as s3:
+                await s3.head_bucket(Bucket=self.bucket)
+            return True
+        except Exception as e:
+            log.warning(f"Health check failed", exception=e)
+            return False
 
     async def upload_file(self, cache_key: str, filename: str, content: bytes) -> str:
         """
@@ -44,20 +75,42 @@ class S3Storage(BaseStorage):
         Returns the public URL (or presigned URL for private files).
         """
         key = f"{cache_key}/{filename}"
+        log.operation_start("upload_file", cache_key=cache_key, filename=filename, size_bytes=len(content))
 
-        async with self.session.client("s3") as s3:
-            await s3.put_object(
-                Bucket=self.bucket,
-                Key=key,
-                Body=content,
-                ContentType=self._get_content_type(filename),
-                ACL="public-read",  # Make publicly readable
+        try:
+            start = time.time()
+
+            async with self.session.client("s3") as s3:
+                await s3.put_object(
+                    Bucket=self.bucket,
+                    Key=key,
+                    Body=content,
+                    ContentType=self._get_content_type(filename),
+                    ACL="public-read",  # Make publicly readable
+                )
+
+            # Return public URL
+            url = f"https://{self.bucket}.s3.{self.region}.amazonaws.com/{key}"
+
+            duration = (time.time() - start) * 1000
+            log.operation_success(
+                "upload_file",
+                duration_ms=duration,
+                cache_key=cache_key,
+                filename=filename,
+                size_bytes=len(content)
             )
 
-        # Return public URL
-        url = f"https://{self.bucket}.s3.{self.region}.amazonaws.com/{key}"
-        logger.debug(f"[s3_storage] Uploaded {key} → {url}")
-        return url
+            return url
+        except Exception as e:
+            log.operation_error("upload_file", e, cache_key=cache_key, filename=filename)
+            raise BackendStorageError(
+                "aws-s3",
+                "upload",
+                filename,
+                str(e),
+                {"cache_key": cache_key, "size_bytes": len(content), "bucket": self.bucket}
+            )
 
     async def upload_text(self, cache_key: str, filename: str, content: str) -> str:
         """
@@ -72,22 +125,41 @@ class S3Storage(BaseStorage):
         expires_in: seconds until URL expires (default 1 hour).
         """
         key = f"{cache_key}/{filename}"
+        log.operation_start("get_signed_url", cache_key=cache_key, filename=filename, expires_in=expires_in)
 
-        async with self.session.client("s3") as s3:
-            url = await s3.generate_presigned_url(
-                "get_object",
-                Params={"Bucket": self.bucket, "Key": key},
-                ExpiresIn=expires_in,
+        try:
+            start = time.time()
+
+            async with self.session.client("s3") as s3:
+                url = await s3.generate_presigned_url(
+                    "get_object",
+                    Params={"Bucket": self.bucket, "Key": key},
+                    ExpiresIn=expires_in,
+                )
+
+            duration = (time.time() - start) * 1000
+            log.operation_success("get_signed_url", duration_ms=duration, cache_key=cache_key, filename=filename)
+
+            return url
+        except Exception as e:
+            log.operation_error("get_signed_url", e, cache_key=cache_key, filename=filename)
+            raise BackendStorageError(
+                "aws-s3",
+                "get_signed_url",
+                filename,
+                str(e),
+                {"cache_key": cache_key, "bucket": self.bucket}
             )
-
-        logger.debug(f"[s3_storage] Presigned URL for {key} expires in {expires_in}s")
-        return url
 
     async def delete_analysis_files(self, cache_key: str) -> None:
         """
         Delete all files for a given analysis.
         """
+        log.operation_start("delete_analysis_files", cache_key=cache_key)
+
         try:
+            start = time.time()
+
             async with self.session.client("s3") as s3:
                 # List all objects with this cache_key prefix
                 paginator = s3.get_paginator("list_objects_v2")
@@ -105,9 +177,25 @@ class S3Storage(BaseStorage):
                         Bucket=self.bucket,
                         Delete={"Objects": delete_list},
                     )
-                    logger.info(f"[s3_storage] Deleted {len(delete_list)} files for {cache_key}")
+
+                    duration = (time.time() - start) * 1000
+                    log.operation_success(
+                        "delete_analysis_files",
+                        duration_ms=duration,
+                        cache_key=cache_key,
+                        count=len(delete_list)
+                    )
+                else:
+                    log.debug("delete_analysis_files - no files found", cache_key=cache_key)
         except Exception as e:
-            logger.warning(f"[s3_storage] Could not delete files for {cache_key}: {e}")
+            log.operation_error("delete_analysis_files", e, cache_key=cache_key)
+            raise BackendStorageError(
+                "aws-s3",
+                "delete",
+                cache_key,
+                str(e),
+                {"cache_key": cache_key, "bucket": self.bucket}
+            )
 
     def _get_content_type(self, filename: str) -> str:
         """Infer Content-Type from filename."""
