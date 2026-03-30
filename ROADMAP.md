@@ -209,7 +209,7 @@ At 1,000 users on $15/mo Pro: **$15,000 MRR vs ~$40 infra.**
 | Stage 0 — Foundation | ✅ Complete | $0 |
 | Stage 1 — Robust Core | ✅ Complete | $0 |
 | Stage 2 — CLI Product | ✅ Complete | $0–1 |
-| Stage 3 — Website + Platform Integrations | In progress | $7–23 |
+| Stage 3 — Website + Platform Integrations | ✅ Live on AWS (http://18.208.132.250:8000) | $7–23 |
 | Stage 4 — Web Dashboard | Upcoming | $8–88 |
 | Stage 5 — Launch | Upcoming | $0 |
 | Stage 6 — Monetization | Future | Self-funded |

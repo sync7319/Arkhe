@@ -160,6 +160,35 @@ Everything through Stage 2 is genuinely $0.
 
 ## Progress Log
 
+### 2026-03-30 (session — Omar)
+- **AWS production deployment — live at http://18.208.132.250:8000:**
+  - Provisioned full AWS stack: RDS PostgreSQL (t4g.micro), S3 bucket, EC2 t3.micro (Ubuntu 24.04), IAM user `arkhe-app`
+  - RDS endpoint: `arkhe-db.cyhssyqwmu5w.us-east-1.rds.amazonaws.com`, database: `postgres`
+  - S3 bucket: `arkhe-results-528564298697-us-east-1-an` (Account Regional namespace)
+  - EC2 public IP: `18.208.132.250`, SSH key in `GITIGNOREKEYS/arkhe-key.pem` (gitignored)
+  - Server managed via SSH from Claude Code; restart command: `fuser -k 8000/tcp && nohup /home/ubuntu/.local/bin/uv run uvicorn server.app:app --host 0.0.0.0 --port 8000 > ~/arkhe.log 2>&1 &`
+  - uv must be called with full path `/home/ubuntu/.local/bin/uv` in non-interactive SSH
+
+- **Gate page (`server/templates/gate.html`, `server/app.py`):**
+  - `/gate` page with two modes: Developer (password-protected, uses server's NVIDIA key) and User (enter own NVIDIA key)
+  - `POST /auth` sets httponly cookies (`arkhe_mode`, `arkhe_key`, 7-day expiry)
+  - `GET /` redirects to `/gate` if no `arkhe_mode` cookie
+  - Developer password: `Dev16523!!` (in `.env` as `ARKHE_DEV_PASSWORD`)
+  - NVIDIA key injected into pipeline via `options["_nvidia_key"]`, overrides `cs.NVIDIA_API_KEY` in `_run_pipeline`
+
+- **Bug fixes during deployment:**
+  - Circular import: removed `config.backends` import from `integrations/__init__.py`
+  - `.env` not loaded before `DB_BACKEND` read: added `load_dotenv()` to top of `config/backends.py`
+  - Invalid UUID demo user: changed to `"00000000-0000-0000-0000-000000000001"`
+  - `result_paths` dict not serialized: added `json.dumps()` in `aws_db.py` for JSONB inserts
+  - Short 16-char `analysis_id`: switched to full `str(uuid4())`
+  - Duplicate `cache_key="pending"`: changed to `f"pending-{analysis_id}"`
+  - `analysis_id` mismatch: added optional `analysis_id` param to `create_analysis` so DB and app use same UUID
+  - OOM crash after pipeline: `embed_agent.py` was downloading 79MB ONNX model via ChromaDB fallback — fixed by returning `False` early when no embedding backend available, skipping index build entirely
+  - "File not found" on View Report: `_rebuild_job()` loaded `outputs` from `meta.json` as plain strings but template expected `{filename, label, kind}` dicts — fixed normalization in fast-path
+
+- **End-to-end verified:** clone → analyze (NVIDIA/Nemotron-253B) → synthesize → RDS record → results page → View Report / Download all working
+
 ### 2026-03-25 (session — Shreeyut)
 - **Production hardening — Sprint 1 + 2 + 3 (from march_24_plan.txt production roadmap):**
   - **Rate limiting** (`server/app.py`) — `slowapi` 5 analyses/hour per IP; `POST /analyze` decorated with `@limiter.limit("5/hour")`
