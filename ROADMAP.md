@@ -10,9 +10,6 @@ Users bring their own API keys. Groq and Gemini are free tiers, so most CLI user
 **Website — our keys, rate-limited by tier.**
 Users paste a repo URL and get results instantly. No install, no API keys. Free tier is capped; paid tiers remove limits. The model fallback router handles rate limits automatically on the backend.
 
-**GitLab Duo flow — zero setup, GitLab's AI tokens.**
-Users mention the Arkhe agent in any MR. No install, no API keys, no webhook setup. Runs on GitLab's compute. Entry point for GitLab users. See `hackathon/ROADMAP.md` for the GitLab Duo track.
-
 ---
 
 ## Python App / CLI / Web

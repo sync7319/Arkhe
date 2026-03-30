@@ -148,31 +148,7 @@ main  ← stable releases only
 **Stage 2 — CLI Product: COMPLETE**
 
 See `ROADMAP.md` for the full 6-stage plan. Full cost breakdown is in there too.
-Stage 3 hosting is Google Cloud Run (free tier covers demo traffic — chosen to qualify for the "Most Impactful on GitLab & Google" $10,000 hackathon category prize, on top of the Anthropic prize already covered by the existing Anthropic provider integration).
 Everything through Stage 2 is genuinely $0.
-
-## GitLab Duo Agent Platform Hackathon — Rules Summary
-
-- **Deadline:** March 25, 2026 at 2:00 PM ET
-- **Judging:** March 30 – April 17, 2026. Winners announced ~April 22.
-- **Requirement:** Must be a working AI agent/flow built on the GitLab Duo Agent Platform that helps with the SDLC. Must perform a specific action or workflow automation (not just chat).
-- **Must run on** the GitLab Duo Agent Platform and be published in `gitlab.com/gitlab-ai-hackathon` group.
-- **Existing projects allowed** if significantly updated during the submission period — judges expect explanation of what changed.
-- **Demo video:** <3 min, must clearly show a trigger → action, must be public on YouTube/Vimeo.
-- **Live demo URL required** — judges must be able to access and test the project free of charge through the judging period.
-- **License:** MIT License required for all original work. YAML config files must be original.
-- **Judging criteria (equally weighted):** Technological implementation, Design (ease of use), Potential Impact, Quality of Idea.
-
-### Prize strategy
-| Prize | Amount | Requirement |
-|---|---|---|
-| Grand Prize | $15,000 | Best overall |
-| Most Impactful on GitLab & Google | $10,000 | Uses GitLab + Google Cloud |
-| Most Impactful on GitLab & Anthropic | $10,000 | Uses GitLab + Anthropic |
-
-- A project can win **one Grand Prize + one Category Prize** maximum.
-- Arkhe qualifies for **both** category prizes: Google Cloud Run (hosting decision) + Anthropic (already integrated as a provider).
-- Being eligible for two category prizes doubles the chance of winning one.
 
 ## Known limitations
 
@@ -343,7 +319,7 @@ Everything through Stage 2 is genuinely $0.
 123
 - **CI/CD:**
   - `.github/workflows/ci.yml` — GitHub Actions: installs uv, runs `uv sync --dev`, runs `pytest tests/ -v` on every push/PR to `dev` and `main`
-  - `.gitlab-ci.yml` — GitLab CI: identical pipeline, required for GitLab Hackathon eligibility
+  - `.gitlab-ci.yml` — GitLab CI: identical pipeline
   - Both are machine-agnostic — fresh environment built from `uv.lock` each run, no local venv or API keys needed
 
 - **Unit tests (`tests/`):**
@@ -394,90 +370,6 @@ Everything through Stage 2 is genuinely $0.
 - **`config/model_router.py` — cooldowns now persisted to DB** (via `cache/db.py`)
 - **`main.py` — pipeline expanded** to orchestrate all new agents in correct order; `--format json` exit preserved; rich progress spinner for every step
 
-### 2026-03-12 (session — Shreeyut)
-- **GitLab Duo flow file created:**
-  - `flows/arkhe.yml` — custom flow YAML for GitLab Duo Agent Platform
-  - Committed to hackathon repo (`gitlab-ai-hackathon/participants/35223940`) via Web IDE
-  - CI pipeline running to validate YAML
-  - Tools used: `list_repository_tree`, `read_file`, `read_files`, `find_files`, `grep`, `get_merge_request`, `list_merge_request_diffs`, `get_commit_diff`, `gitlab_blob_search`, `create_merge_request_note`, `get_project`
-  - Trigger: mention `@ai-arkhe-...` in any MR or issue
-  - Output: full analysis posted as MR comment (architecture, dependencies, PR impact, security, gotchas)
-
-- **GitLab hackathon group access granted** — email received March 12
-  - Participant project: `gitlab.com/gitlab-ai-hackathon/participants/35223940`
-  - Partner (sync7319) added as member
-  - nshreeyut1 is the Representative for the team submission
-  - Partner's participant repo stays unused — one submission from nshreeyut1's repo
-  - Flow template structure: `agents/agent.yml.template`, `flows/flow.yml.template` at repo root
-
-- **GitLab Duo Agent Platform — architecture confirmed from 8-part blog series:**
-  - Arkhe is a **custom flow** (not external agent, not foundational)
-  - Flows run on **GitLab's CI/CD compute** — no Cloud Run webhook needed for hackathon
-  - Requires **Premium or Ultimate** GitLab tier — hackathon group has this
-  - Three trigger types: mention, assign, assign_reviewer
-  - Auto-injected variables: `$AI_FLOW_CONTEXT` (MR JSON + diff), `$AI_FLOW_INPUT` (user comment), `$AI_FLOW_EVENT` (trigger type)
-  - `AGENTS.md` confirmed correct — GitLab reads it at workspace root for flow context
-  - Tool list confirmed from `tool_mapping.json` — 89 tools available including all needed ones
-  - Flow YAML schema: `version: v1`, `environment: ambient`, `components`, `prompts`, `routers`, `flow.entry_point`
-  - Results posted back via `create_merge_request_note` tool — no external URL needed
-  - Monitoring: Project → Automate → Sessions
-
-- **Three delivery methods now confirmed:**
-  - Website (our Gemini/Groq keys, Cloud Run) — anyone, paste URL
-  - CLI pip install (BYOK, user's own keys) — developers, local
-  - GitLab Duo flow (GitLab's AI Gateway tokens, CI/CD compute) — GitLab teams, MR trigger
-
-- **Hackathon next steps remaining:**
-  - Wait for CI pipeline to pass on flow.yml
-  - Create a tag to publish flow to the public catalog
-  - Enable flow in the project
-  - Test by mentioning @ai-arkhe handle in an MR comment
-  - Record demo video (<3 min): trigger → analysis runs → MR comment posted
-  - Submit on Devpost before March 25
-
-### 2026-03-12 (session 2 — Shreeyut)
-- **CI pipeline now passing** — both `placeholder-test` and `validate-items` jobs green
-  - Resolved through iterative schema debugging across many attempts
-  - **Correct schema (single-agent):**
-    - `flows/flow.yml` component: `type: AgentComponent`, `prompt_id` (required), plain string `toolset`, `inputs: ["context:goal"]`
-    - `agents/agent.yml`: `name`, `description`, `public`, `system_prompt`, plain string `tools` list
-    - `tool_name` on component is ONLY for `DeterministicStepComponent` (no LLM, calls one tool directly) — not for AgentComponent
-    - `prompt_id` and `tool_name` are mutually exclusive — `AgentComponent` uses `prompt_id`, `DeterministicStepComponent` uses `tool_name`
-  - `flows/arkhe.yml` renamed to `flows/flow.yml` to match hackathon repo convention
-
-- **Git setup clarified — two repos, clear ownership:**
-  - GitHub (`sync7319/Arkhe`) — source of truth for all work (Python app + hackathon files)
-  - GitLab hackathon (`gitlab-ai-hackathon/participants/35223940`) — submission repo, deploy by copying from `hackathon/` via Web IDE
-  - GitLab personal mirror (`nshreeyut/Arkhe`) — removed, no longer needed
-  - Hackathon files live in `hackathon/` subfolder — completely separate from Python app
-  - Both collaborators can edit hackathon repo via Web IDE; coordinate before editing same files
-
-- **Python app vs GitLab Duo flow — key distinction:**
-  - Python app: local/Cloud Run, BYOK, 6-stage pipeline, multi-agent, outputs files to `docs/`
-  - GitLab Duo flow: runs on GitLab's compute, GitLab's AI tokens, 3-agent pipeline, posts MR comment + commits docs
-  - GitLab flow is the hackathon integration layer — same idea, different delivery method
-  - GitLab flow does NOT run any Python code — uses GitLab's built-in tools via AI Gateway
-
-- **Partner's token optimization changes pulled in** (`git pull origin dev --no-rebase`):
-  - `config/model_router.py` — major rework, multi-model Groq routing, proactive throttle
-  - `agents/synthesizer_agent.py` — hierarchical synthesis
-  - `config/llm_client.py`, `agents/analyst_agent.py`, `agents/report_agent.py`, `config/settings.py`, `options.env`
-
-- **Hackathon next steps remaining:**
-  - Create a git tag (`v1.0.0`) to publish flow to the GitLab catalog
-  - Enable flow in the project
-  - Test by mentioning agent in an MR comment
-  - Record demo video (<3 min): trigger → analysis runs → reports committed + MR comment posted
-  - Submit on Devpost before March 25
-
-- **Token optimization — partner working on:**
-  - Filter non-code files before LLM (certs, docs, CI configs, Makefiles)
-  - AST parser handles dependency mapping for ALL files at zero LLM cost
-  - Only source code (.py, .js, .ts, .go, .rs, .java, .rb) hits LLM
-  - Expected reduction: 119 files → ~20 LLM calls (~83% token reduction)
-  - Early abort after 3 consecutive all-model failures (already built in analyst_agent.py)
-  - Persistent cache per repo URL in server/cache/ (already built in server/app.py)
-
 ### 2026-03-11 (session 2 — Shreeyut)
 - **Stage 3 web server — initial build:**
   - `scripts/clone_repo.py` — clones GitHub/GitLab URLs to temp dir, context manager auto-cleans, `CloneError` for bad URLs/auth failures, shallow clone (depth=1)
@@ -497,42 +389,8 @@ Everything through Stage 2 is genuinely $0.
   - Persistent cache on website (GCS/Firestore keyed by repo URL + commit SHA) — currently temp dir wipes cache every run
   - Token optimization research in progress — will implement before website goes live
 
-- **Hosting decision finalized:** Google Cloud Run (free tier, qualifies for Google hackathon prize)
+- **Hosting decision finalized:** Google Cloud Run (free tier)
 - **Model strategy finalized:** Gemini for all roles on website free tier; Anthropic locked behind Pro tier; CLI users BYOK unlimited
-
-### 2026-03-11 (session — Shreeyut)
-- **GitLab Duo Agent Platform Hackathon — registration in progress:**
-  - Deadline: March 25, 2026 at 2:00 PM ET (~14 days away)
-  - Both Shreeyut (nshreeyut) and Om (sync7319) have created Devpost accounts and joined as a team
-  - Both have submitted the GitLab access request form (https://forms.gle/EeCH2WWUewK3eGmVA) — awaiting response
-  - Access to `gitlab.com/gitlab-ai-hackathon` group is pending — repo must be published there for submission
-  - GitLab Duo Agent Platform docs not yet obtained — needed for `.gitlab/duo/flows/arkhe.yaml` YAML schema
-
-- **Files created:**
-  - `LICENSE` — MIT license, 2026, Shreeyut Neupane and Om Arvadia
-  - `AGENTS.md` — GitLab Duo agent context file: what Arkhe produces, triggers, pipeline, providers, feature toggles, key files
-
-- **Hackathon integration plan (pending platform docs):**
-  - All existing agents and pipeline logic are unchanged — they are complete
-  - Only an integration layer needs to be added:
-    1. `.gitlab/duo/flows/arkhe.yaml` — registers Arkhe as a GitLab Duo external agent (blocked on schema docs)
-    2. Update `.gitlab-ci.yml` — add agent-triggered job (blocked on CI variable names from docs)
-  - `AGENTS.md` is already written and ready
-  - `LICENSE` is already written and ready
-  - Target prizes: "Most Impactful on GitLab & Anthropic" ($10,000) + "Most Impactful on GitLab & Google" ($10,000) + Grand Prize ($15,000)
-  - Hosting on Google Cloud Run qualifies for the Google category prize; Anthropic provider already in codebase qualifies for the Anthropic category prize
-  - Hosting on Google Cloud Run qualifies for the Google category prize; Anthropic provider already in codebase qualifies for the Anthropic category prize
-  - A project can win one Grand Prize + one Category Prize — eligible for two category prizes doubles the chances
-
-- **Next steps (in order):**
-  1. Wait for GitLab hackathon group access confirmation
-  2. Get GitLab Duo Agent Platform docs from the group
-  3. Fork/import repo into `gitlab.com/gitlab-ai-hackathon`
-  4. Write `.gitlab/duo/flows/arkhe.yaml` using the official schema
-  5. Update `.gitlab-ci.yml` with the agent-triggered job
-  6. Push `LICENSE` + `AGENTS.md` to GitHub (auto-mirrors to GitLab)
-  7. Record demo video (<3 min): trigger → analysis runs → output produced
-  8. Submit on Devpost before March 25
 
 ### 2026-03-09 (session 2)
 - **Dependency map visual overhaul:**
