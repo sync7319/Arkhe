@@ -506,10 +506,9 @@ async def analyze(request: Request, background_tasks: BackgroundTasks):
             repo_url=url,
             commit_sha="pending",  # Will be filled during pipeline
             cache_key=f"pending-{analysis_id}",  # unique placeholder, updated after clone
-            status="pending"
+            status="pending",
+            analysis_id=analysis_id,
         )
-        # Override the auto-generated ID with our analysis_id for consistency
-        # (In production, you'd want to use the DB-generated ID instead)
     except Exception as e:
         logger.error(f"Failed to create analysis record: {e}")
         return JSONResponse(

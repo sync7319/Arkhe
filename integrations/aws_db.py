@@ -164,6 +164,7 @@ class AWSDB(BaseDB):
         commit_sha: str,
         cache_key: str,
         status: str = "pending",
+        analysis_id: str | None = None,
     ) -> Analysis:
         """Create a new analysis record."""
         log.operation_start(
@@ -173,7 +174,7 @@ class AWSDB(BaseDB):
             cache_key=cache_key
         )
 
-        analysis_id = str(uuid4())
+        analysis_id = analysis_id or str(uuid4())
         analysis = Analysis(
             id=analysis_id,
             user_id=user_id,
