@@ -120,7 +120,7 @@ async def _lifespan(app_: FastAPI):
         logger.info("[backends] Initialized successfully")
 
         # Create demo/system user for web interface
-        demo_user_id = "demo-user-web"
+        demo_user_id = "00000000-0000-0000-0000-000000000001"
         try:
             existing = await db.get_user(demo_user_id)
             if not existing:
@@ -496,7 +496,7 @@ async def analyze(request: Request, background_tasks: BackgroundTasks):
             options["_nvidia_key"] = user_key
 
     analysis_id = str(uuid.uuid4()).replace("-", "")[:16]
-    user_id = "demo-user-web"  # Use demo user for web interface
+    user_id = "00000000-0000-0000-0000-000000000001"  # demo user
     db = get_db()
 
     # Create analysis record in database
