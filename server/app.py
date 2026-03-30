@@ -622,10 +622,20 @@ def _reconstruct_job_from_disk(job_id: str) -> dict | None:
     if meta_path.exists():
         try:
             meta = json.loads(meta_path.read_text())
+            raw_outputs = meta.get("outputs", [])
+            # Normalize: meta.json stores plain filenames, template needs dicts
+            label_map = {f: (l, k) for f, l, k in OUTPUT_FILES}
+            outputs = []
+            for item in raw_outputs:
+                if isinstance(item, dict):
+                    outputs.append(item)
+                else:
+                    l, k = label_map.get(item, (item, "file"))
+                    outputs.append({"filename": item, "label": l, "kind": k})
             return {
                 "status":     meta.get("status", "complete"),
                 "url":        meta.get("url", ""),
-                "outputs":    meta.get("outputs", []),
+                "outputs":    outputs,
                 "error":      meta.get("error"),
                 "created_at": meta.get("created_at", 0),
             }
