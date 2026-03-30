@@ -126,9 +126,10 @@
 
 ### Focus (high impact, directly grows users)
 - **Output quality** — this IS the product. If the codebase map is mediocre, nothing else matters
-- **GitHub integration** — this is the retention mechanism. Manual URL paste is for try-once; auto-PR-update is for daily use
+- **GitHub Action / CI integration** — YC data is clear: workflow-embedded dev tools win, standalone dashboards die (CodeSee's lesson). A GitHub Action that runs on every PR and posts a comment with updated docs is the #1 retention mechanism
 - **Landing page** — first impression. If someone can't understand Arkhe in 10 seconds, they leave
 - **Speed** — if analysis takes 8 minutes, people close the tab. Target: < 3 min for repos under 50 files
+- **Sell onboarding, not docs** — "new hire productive in 1 week instead of 4" is the value prop that gets budget approved. Individual devs don't pay for doc tools; engineering leads do
 
 ### Skip for now (low impact or premature)
 - ~~GitLab integration~~ — GitHub has 10x the market. Do GitLab after GitHub works perfectly
@@ -137,6 +138,11 @@
 - ~~Enterprise (SSO, SOC2)~~ — way too early. This is a post-YC conversation
 - ~~Mobile/PWA~~ — developers don't analyze codebases on their phone
 - ~~Multi-region deployment~~ — one EC2 in us-east-1 is fine until you have 1000+ users
+
+### Lessons from failed competitors
+- **CodeSee (shut down 2024):** sold to engineering managers, not developers. Visualization-only — pretty graphs don't retain users without workflow integration
+- **Swimm ($25M+ raised):** auto-generated docs coupled to code — closest direct competitor. Survived because they embedded in the workflow
+- **Sourcegraph:** code search works but $49/user/mo prices out SMBs. Pivoted to AI assistant (Cody) as core search business plateaued
 
 ---
 
@@ -158,13 +164,22 @@
 
 | Competitor | Status | Arkhe's Advantage |
 |-----------|--------|-------------------|
+| **Greptile** (YC S2023) | AI codebase understanding API. Closest funded competitor. Query-based, no persistent artifacts. | Arkhe produces docs/reports/maps, not just answers. Broader analysis (security, dead code, test gaps). BYOK = different cost model. |
 | **CodeSee** | Shut down (2024) | Market vacuum. Their users need a replacement. |
-| **Sourcegraph** | Enterprise-only, expensive ($49+/user) | Arkhe is free tier + $15 Pro. Accessible. |
-| **GitHub Copilot** | Code generation, not architecture | Different product entirely. Complementary. |
-| **Swimm / Mintlify** | Manual docs with AI assist | Arkhe is fully automatic. Zero prompting. |
-| **Mermaid / draw.io** | Static diagrams, manual | Arkhe auto-generates and stays current. |
+| **Sourcegraph / Cody** | Enterprise-only ($49+/user), pivoted to AI assistant | Arkhe is free tier + $15 Pro. Accessible to SMBs. |
+| **Swimm** | $25M+ raised, auto-docs coupled to code | Closest direct competitor. Arkhe is fully automatic + includes security/dead code/dependency analysis. |
+| **GitHub Copilot** | Code generation, not architecture | Different product. But **biggest risk**: Copilot adding "explain this codebase" that's "good enough" for most devs. |
+| **Mintlify** | AI docs, focused on public API docs | Arkhe is internal codebase intelligence, not public docs. |
 
 **Positioning:** "The architecture docs that write themselves."
+
+**YC pitch angle:** "CodeSee shut down. Sourcegraph is $49/user. Greptile answers questions but doesn't produce artifacts. We auto-generate what all three tried to sell, at zero marginal cost via BYOK, integrated into CI."
+
+### Biggest risk
+Copilot or Cursor adding a built-in "explain this codebase" feature that's good enough for most developers. Mitigation: Arkhe's output is richer (security, dead code, dependency graphs, blast radius) and runs in CI (not just in-editor).
+
+### Biggest opportunity
+Enterprise onboarding and compliance. SOC2 audits require documentation — Arkhe could auto-generate it. "New hire productive in 1 week instead of 4" is the value prop that gets budget approved.
 
 ---
 
