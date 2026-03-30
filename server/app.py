@@ -505,7 +505,7 @@ async def analyze(request: Request, background_tasks: BackgroundTasks):
             user_id=user_id,
             repo_url=url,
             commit_sha="pending",  # Will be filled during pipeline
-            cache_key="pending",   # Will be filled during pipeline
+            cache_key=f"pending-{analysis_id}",  # unique placeholder, updated after clone
             status="pending"
         )
         # Override the auto-generated ID with our analysis_id for consistency
