@@ -495,7 +495,7 @@ async def analyze(request: Request, background_tasks: BackgroundTasks):
         if user_key:
             options["_nvidia_key"] = user_key
 
-    analysis_id = str(uuid.uuid4()).replace("-", "")[:16]
+    analysis_id = str(uuid.uuid4())
     user_id = "00000000-0000-0000-0000-000000000001"  # demo user
     db = get_db()
 
