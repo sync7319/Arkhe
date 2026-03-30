@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Arkhe — Access</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="stylesheet" href="/static/arkhe.css" />
+  <style>
+    .gate-wrap {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+    }
+    .gate-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 2.5rem 2.25rem;
+      width: 100%;
+      max-width: 420px;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.3);
+    }
+    .gate-logo {
+      font-size: 1.5rem;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      color: var(--text);
+      text-align: center;
+      margin-bottom: 0.4rem;
+    }
+    .gate-logo span { color: var(--accent); }
+    .gate-subtitle {
+      text-align: center;
+      color: var(--text-2);
+      font-size: 0.88rem;
+      margin-bottom: 2rem;
+    }
+    .gate-choices {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem;
+      margin-bottom: 1.5rem;
+    }
+    .gate-choice {
+      padding: 1rem;
+      border: 1.5px solid var(--border);
+      border-radius: 10px;
+      background: var(--bg2);
+      cursor: pointer;
+      text-align: center;
+      transition: border-color 0.15s, background 0.15s;
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .gate-choice:hover { border-color: var(--accent); background: var(--accent-bg); }
+    .gate-choice.active { border-color: var(--accent); background: var(--accent-bg); color: var(--accent-hi); }
+    .gate-choice-icon { font-size: 1.4rem; margin-bottom: 0.35rem; }
+    .gate-form { display: none; }
+    .gate-form.visible { display: block; }
+    .gate-label {
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: var(--text-2);
+      margin-bottom: 0.4rem;
+      display: block;
+    }
+    .gate-input {
+      width: 100%;
+      padding: 0.65rem 0.9rem;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 0.9rem;
+      margin-bottom: 1rem;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .gate-input:focus { border-color: var(--accent); }
+    .gate-btn {
+      width: 100%;
+      padding: 0.7rem;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, opacity 0.15s;
+    }
+    .gate-btn:hover { background: var(--accent-hi); }
+    .gate-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .gate-error {
+      color: #f87171;
+      font-size: 0.82rem;
+      text-align: center;
+      margin-top: 0.5rem;
+      display: none;
+    }
+    .gate-error.visible { display: block; }
+    .theme-toggle {
+      position: fixed;
+      top: 1rem;
+      right: 1rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text-2);
+      padding: 0.4rem 0.75rem;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.8rem;
+    }
+  </style>
+</head>
+<body>
+  <button class="theme-toggle" onclick="toggleTheme()">🌙 / ☀️</button>
+
+  <div class="gate-wrap">
+    <div class="gate-card">
+      <div class="gate-logo">Arkhe<span>.</span></div>
+      <div class="gate-subtitle">Autonomous codebase intelligence</div>
+
+      <div class="gate-choices">
+        <div class="gate-choice" id="btn-dev" onclick="selectMode('dev')">
+          <div class="gate-choice-icon">🔑</div>
+          Developer
+        </div>
+        <div class="gate-choice" id="btn-user" onclick="selectMode('user')">
+          <div class="gate-choice-icon">🧑‍💻</div>
+          User
+        </div>
+      </div>
+
+      <!-- Developer form -->
+      <div class="gate-form" id="form-dev">
+        <label class="gate-label" for="dev-password">Developer Password</label>
+        <input class="gate-input" type="password" id="dev-password" placeholder="Enter password" />
+        <button class="gate-btn" id="dev-submit" onclick="submitDev()">Enter</button>
+        <div class="gate-error" id="dev-error">Incorrect password.</div>
+      </div>
+
+      <!-- User form -->
+      <div class="gate-form" id="form-user">
+        <label class="gate-label" for="user-key">Your NVIDIA API Key</label>
+        <input class="gate-input" type="password" id="user-key" placeholder="nvapi-..." />
+        <button class="gate-btn" id="user-submit" onclick="submitUser()">Continue</button>
+        <div class="gate-error" id="user-error">Please enter a valid key.</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Restore theme
+    const savedTheme = localStorage.getItem("theme") || "dark";
+    document.documentElement.setAttribute("data-theme", savedTheme);
+
+    function toggleTheme() {
+      const t = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+      document.documentElement.setAttribute("data-theme", t);
+      localStorage.setItem("theme", t);
+    }
+
+    function selectMode(mode) {
+      document.getElementById("btn-dev").classList.toggle("active", mode === "dev");
+      document.getElementById("btn-user").classList.toggle("active", mode === "user");
+      document.getElementById("form-dev").classList.toggle("visible", mode === "dev");
+      document.getElementById("form-user").classList.toggle("visible", mode === "user");
+    }
+
+    async function submitDev() {
+      const password = document.getElementById("dev-password").value;
+      const btn = document.getElementById("dev-submit");
+      const err = document.getElementById("dev-error");
+      btn.disabled = true;
+      err.classList.remove("visible");
+      try {
+        const res = await fetch("/auth", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({mode: "dev", password})
+        });
+        if (res.ok) {
+          window.location.href = "/";
+        } else {
+          err.classList.add("visible");
+          btn.disabled = false;
+        }
+      } catch {
+        err.textContent = "Network error. Try again.";
+        err.classList.add("visible");
+        btn.disabled = false;
+      }
+    }
+
+    async function submitUser() {
+      const key = document.getElementById("user-key").value.trim();
+      const btn = document.getElementById("user-submit");
+      const err = document.getElementById("user-error");
+      if (!key) { err.classList.add("visible"); return; }
+      btn.disabled = true;
+      err.classList.remove("visible");
+      try {
+        const res = await fetch("/auth", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({mode: "user", key})
+        });
+        if (res.ok) {
+          window.location.href = "/";
+        } else {
+          err.textContent = "Invalid key. Try again.";
+          err.classList.add("visible");
+          btn.disabled = false;
+        }
+      } catch {
+        err.textContent = "Network error. Try again.";
+        err.classList.add("visible");
+        btn.disabled = false;
+      }
+    }
+
+    // Allow Enter key on password/key fields
+    document.getElementById("dev-password").addEventListener("keydown", e => { if (e.key === "Enter") submitDev(); });
+    document.getElementById("user-key").addEventListener("keydown", e => { if (e.key === "Enter") submitUser(); });
+  </script>
+</body>
+</html>

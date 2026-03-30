@@ -35,7 +35,7 @@ from pathlib import Path
 from contextlib import asynccontextmanager
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request, Security
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.security.api_key import APIKeyHeader
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -250,8 +250,15 @@ async def _run_pipeline(analysis_id: str, url: str, options: dict, user_id: str)
     _apply_options(options)
 
     # Ensure model pools are built before the pipeline runs
-    from config.settings import GROQ_API_KEY, GEMINI_API_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY, NVIDIA_API_KEY
+    import config.settings as _cs
     from config.model_router import build_available_pools
+
+    # Override NVIDIA key if user supplied their own
+    _user_nvidia_key = options.pop("_nvidia_key", None)
+    if _user_nvidia_key:
+        _cs.NVIDIA_API_KEY = _user_nvidia_key
+
+    from config.settings import GROQ_API_KEY, GEMINI_API_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY, NVIDIA_API_KEY
     logger.info(f"[pipeline] API keys present: groq={'yes' if GROQ_API_KEY else 'no'}, gemini={'yes' if GEMINI_API_KEY else 'no'}, nvidia={'yes' if NVIDIA_API_KEY else 'no'}, anthropic={'yes' if ANTHROPIC_API_KEY else 'no'}")
     build_available_pools({
         "groq":      GROQ_API_KEY,
@@ -398,8 +405,47 @@ async def manifest():
     return FileResponse(str(SERVER_DIR / "static" / "manifest.json"), media_type="application/manifest+json")
 
 
+@app.get("/gate", response_class=HTMLResponse)
+async def gate(request: Request):
+    return templates.TemplateResponse(request, "gate.html")
+
+
+_DEV_PASSWORD = "Dev16523!!"
+
+
+@app.post("/auth")
+async def auth(request: Request):
+    body = await request.json()
+    mode = body.get("mode")
+    if mode == "dev":
+        if body.get("password") == _DEV_PASSWORD:
+            response = JSONResponse({"ok": True})
+            response.set_cookie("arkhe_mode", "dev", httponly=True, samesite="lax", max_age=86400 * 7)
+            return response
+        return JSONResponse({"error": "Invalid password"}, status_code=401)
+    elif mode == "user":
+        key = (body.get("key") or "").strip()
+        if not key:
+            return JSONResponse({"error": "Key required"}, status_code=400)
+        response = JSONResponse({"ok": True})
+        response.set_cookie("arkhe_mode", "user", httponly=True, samesite="lax", max_age=86400 * 7)
+        response.set_cookie("arkhe_key", key, httponly=True, samesite="lax", max_age=86400 * 7)
+        return response
+    return JSONResponse({"error": "Invalid mode"}, status_code=400)
+
+
+@app.get("/logout")
+async def logout():
+    response = RedirectResponse(url="/gate")
+    response.delete_cookie("arkhe_mode")
+    response.delete_cookie("arkhe_key")
+    return response
+
+
 @app.get("/", response_class=HTMLResponse)
 async def landing(request: Request):
+    if not request.cookies.get("arkhe_mode"):
+        return RedirectResponse(url="/gate")
     return templates.TemplateResponse(request, "index.html")
 
 
@@ -441,6 +487,14 @@ async def analyze(request: Request, background_tasks: BackgroundTasks):
         return JSONResponse({"error": str(e)}, status_code=400)
 
     options = body.get("options") or {}
+
+    # Inject user-provided NVIDIA key if in user mode
+    mode = request.cookies.get("arkhe_mode")
+    if mode == "user":
+        user_key = request.cookies.get("arkhe_key", "")
+        if user_key:
+            options["_nvidia_key"] = user_key
+
     analysis_id = str(uuid.uuid4()).replace("-", "")[:16]
     user_id = "demo-user-web"  # Use demo user for web interface
     db = get_db()
