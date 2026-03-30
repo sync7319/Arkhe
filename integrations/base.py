@@ -23,6 +23,7 @@ class Analysis:
     result_paths: dict  # {"CODEBASE_MAP.md": "url", ...}
     created_at: datetime
     expires_at: Optional[datetime] = None
+    error_message: Optional[str] = None
 
     def validate(self) -> None:
         """Validate analysis data before storage."""

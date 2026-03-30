@@ -44,6 +44,9 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 from scripts.clone_repo import CloneError, clone_repo
+from config.backends import init_backends, get_db, get_storage
+from integrations.base import Analysis, User
+from integrations.logging import get_logger as get_backend_logger
 
 # ── Debug inspector — set ARKHE_DEBUG=false to disable completely ─────────────
 DEBUG_MODE = os.getenv("ARKHE_DEBUG", "false").lower() != "false"
@@ -108,6 +111,27 @@ async def _lifespan(app_: FastAPI):
     global _JOB_SEMAPHORE
     _JOB_SEMAPHORE = asyncio.Semaphore(MAX_CONCURRENT_JOBS)
     asyncio.create_task(_cleanup_old_results())
+
+    # Initialize database and storage backends
+    try:
+        db, storage = await init_backends()
+        app_.state.db = db
+        app_.state.storage = storage
+        logger.info("[backends] Initialized successfully")
+
+        # Create demo/system user for web interface
+        demo_user_id = "demo-user-web"
+        try:
+            existing = await db.get_user(demo_user_id)
+            if not existing:
+                await db.create_user(demo_user_id, "demo@arkhe.local", tier="free")
+                logger.info("[backends] Created demo user")
+        except Exception as e:
+            logger.warning(f"[backends] Could not create/verify demo user: {e}")
+    except Exception as e:
+        logger.error(f"[backends] Initialization failed: {e}")
+        raise
+
     yield
 
 
@@ -193,12 +217,33 @@ def _apply_options(options: dict) -> None:
             setattr(s, attr, bool(options[key]))
 
 
+# ── Helper: get commit SHA from cloned repo ───────────────────────────────────
+
+def _get_commit_sha(repo_path: str) -> str:
+    """Extract current HEAD commit SHA from cloned repo."""
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except Exception as e:
+        logger.warning(f"Could not get commit SHA: {e}")
+    return "unknown"
+
+
 # ── Background pipeline ───────────────────────────────────────────────────────
 
-async def _run_pipeline(job_id: str, url: str, options: dict) -> None:
+async def _run_pipeline(analysis_id: str, url: str, options: dict, user_id: str) -> None:
+    """Run analysis pipeline, persist results to database."""
     await _JOB_SEMAPHORE.acquire()
-    jobs[job_id]["status"] = JobStatus.RUNNING
-    job_results_dir = RESULTS_DIR / job_id
+    db = get_db()
+    job_results_dir = RESULTS_DIR / analysis_id
     job_results_dir.mkdir(exist_ok=True)
 
     persistent_cache = _repo_cache_dir(url)
@@ -221,17 +266,25 @@ async def _run_pipeline(job_id: str, url: str, options: dict) -> None:
 
     try:
         def _step(step: int, label: str) -> None:
-            if job_id in jobs:
-                jobs[job_id]["step"]       = step
-                jobs[job_id]["step_label"] = label
+            # Progress callback — keep in-memory for live status
+            if analysis_id in jobs:
+                jobs[analysis_id]["step"]       = step
+                jobs[analysis_id]["step_label"] = label
 
         with clone_repo(url) as repo_path:
+            # Get commit SHA for cache key
+            commit_sha = _get_commit_sha(repo_path)
+            cache_key = hashlib.sha256((url + commit_sha).encode()).hexdigest()
+
+            # Update analysis record with commit_sha
+            logger.info(f"[analysis {analysis_id}] commit_sha={commit_sha}, cache_key={cache_key[:16]}")
+
             temp_cache = Path(repo_path) / ".arkhe_cache"
             temp_cache.mkdir(exist_ok=True)
             cached_db = persistent_cache / "arkhe.db"
             if cached_db.exists():
                 shutil.copy2(cached_db, temp_cache / "arkhe.db")
-                logger.info(f"[job {job_id}] restored cache from previous run")
+                logger.info(f"[analysis {analysis_id}] restored cache from previous run")
 
             import config.settings as _s
             refactor_enabled = _s.REFACTOR_ENABLED
@@ -243,23 +296,22 @@ async def _run_pipeline(job_id: str, url: str, options: dict) -> None:
                 live_db = temp_cache / "arkhe.db"
                 if live_db.exists():
                     shutil.copy2(live_db, cached_db)
-                    logger.info(f"[job {job_id}] saved cache for future retries")
+                    logger.info(f"[analysis {analysis_id}] saved cache for future retries")
 
             docs_dir = Path(repo_path) / "docs"
-            outputs = []
+            result_paths = {}
             if docs_dir.exists():
                 for filename, label, kind in OUTPUT_FILES:
                     src = docs_dir / filename
                     if src.exists():
                         dst = job_results_dir / filename
                         dst.write_bytes(src.read_bytes())
-                        # Internal data files are copied but not shown in UI
+                        # Internal data files are copied but not indexed
                         if filename not in _INTERNAL_FILES:
-                            outputs.append({"filename": filename, "label": label, "kind": kind})
+                            result_paths[filename] = f"/results/{analysis_id}/{filename}"
 
             # Zip refactored code if refactor was enabled
             if refactor_enabled:
-                import zipfile
                 refactored_dir = Path(repo_path + "_refactored")
                 if refactored_dir.exists():
                     zip_path = job_results_dir / "REFACTORED_CODE.zip"
@@ -267,15 +319,19 @@ async def _run_pipeline(job_id: str, url: str, options: dict) -> None:
                         for file in refactored_dir.rglob("*"):
                             if file.is_file():
                                 zf.write(file, file.relative_to(refactored_dir))
-                    outputs.append({"filename": "REFACTORED_CODE.zip", "label": "Refactored Code", "kind": "zip"})
-                    logger.info(f"[job {job_id}] zipped refactored code → {zip_path}")
+                    result_paths["REFACTORED_CODE.zip"] = f"/results/{analysis_id}/REFACTORED_CODE.zip"
+                    logger.info(f"[analysis {analysis_id}] zipped refactored code → {zip_path}")
 
-            jobs[job_id]["outputs"] = outputs
-            jobs[job_id]["status"]  = JobStatus.COMPLETE
-            logger.info(f"[job {job_id}] complete — {len(outputs)} output(s)")
+            # Update database with results
+            await db.update_analysis_results(analysis_id, result_paths, status="complete")
+
+            if analysis_id in jobs:
+                jobs[analysis_id]["outputs"] = [{"filename": fn, "kind": "file"} for fn in result_paths.keys()]
+                jobs[analysis_id]["status"] = JobStatus.COMPLETE
+            logger.info(f"[analysis {analysis_id}] complete — {len(result_paths)} output(s)")
 
             # Persist minimal metadata so results survive server restarts
-            _save_meta(job_id, url, outputs)
+            _save_meta(analysis_id, url, list(result_paths.keys()))
 
             # Build semantic search index from embed index (non-blocking, best-effort)
             embed_src = job_results_dir / "EMBED_INDEX.json"
@@ -284,39 +340,47 @@ async def _run_pipeline(job_id: str, url: str, options: dict) -> None:
                     from agents.embed_agent import build_index as _build_embed
                     modules_for_embed = json.loads(embed_src.read_text(encoding="utf-8"))
                     asyncio.create_task(asyncio.to_thread(_build_embed, modules_for_embed, job_results_dir))
-                    logger.info(f"[job {job_id}] building semantic search index")
+                    logger.info(f"[analysis {analysis_id}] building semantic search index")
                 except Exception as e:
-                    logger.warning(f"[job {job_id}] embed index skipped: {e}")
+                    logger.warning(f"[analysis {analysis_id}] embed index skipped: {e}")
 
     except CloneError as e:
-        jobs[job_id]["status"] = JobStatus.ERROR
-        jobs[job_id]["error"]  = str(e)
-        logger.error(f"[job {job_id}] clone error: {e}")
+        error_msg = str(e)
+        await db.update_analysis_status(analysis_id, "error")
+        if analysis_id in jobs:
+            jobs[analysis_id]["status"] = JobStatus.ERROR
+            jobs[analysis_id]["error"] = error_msg
+        logger.error(f"[analysis {analysis_id}] clone error: {e}")
     except RuntimeError as e:
         import traceback
         with open(str(SERVER_DIR / "error.log"), "a") as f:
-            f.write(f"\n[JOB {job_id}] RuntimeError: {e}\n")
+            f.write(f"\n[ANALYSIS {analysis_id}] RuntimeError: {e}\n")
             traceback.print_exc(file=f)
         err = str(e)
         if "rate-limited or failed" in err or "All models" in err:
-            jobs[job_id]["status"] = JobStatus.ERROR
-            jobs[job_id]["error"]  = (
+            error_msg = (
                 "All AI models are currently rate-limited. "
                 "Your progress has been saved — resubmit the same URL in "
                 "a few minutes and it will resume from where it stopped."
             )
         else:
-            jobs[job_id]["status"] = JobStatus.ERROR
-            jobs[job_id]["error"]  = f"Pipeline error: {err[:300]}"
-        logger.error(f"[job {job_id}] runtime error: {e}")
+            error_msg = f"Pipeline error: {err[:300]}"
+        await db.update_analysis_status(analysis_id, "error")
+        if analysis_id in jobs:
+            jobs[analysis_id]["status"] = JobStatus.ERROR
+            jobs[analysis_id]["error"] = error_msg
+        logger.error(f"[analysis {analysis_id}] runtime error: {e}")
     except Exception as e:
         import traceback
         with open(str(SERVER_DIR / "error.log"), "a") as f:
-            f.write(f"\n[JOB {job_id}] Exception: {type(e).__name__}: {e}\n")
+            f.write(f"\n[ANALYSIS {analysis_id}] Exception: {type(e).__name__}: {e}\n")
             traceback.print_exc(file=f)
-        jobs[job_id]["status"] = JobStatus.ERROR
-        jobs[job_id]["error"]  = f"Unexpected error: {str(e)[:300]}"
-        logger.exception(f"[job {job_id}] pipeline error")
+        error_msg = f"Unexpected error: {str(e)[:300]}"
+        await db.update_analysis_status(analysis_id, "error")
+        if analysis_id in jobs:
+            jobs[analysis_id]["status"] = JobStatus.ERROR
+            jobs[analysis_id]["error"] = error_msg
+        logger.exception(f"[analysis {analysis_id}] pipeline error")
     finally:
         _JOB_SEMAPHORE.release()
 
@@ -377,8 +441,30 @@ async def analyze(request: Request, background_tasks: BackgroundTasks):
         return JSONResponse({"error": str(e)}, status_code=400)
 
     options = body.get("options") or {}
-    job_id  = str(uuid.uuid4()).replace("-", "")[:16]
-    jobs[job_id] = {
+    analysis_id = str(uuid.uuid4()).replace("-", "")[:16]
+    user_id = "demo-user-web"  # Use demo user for web interface
+    db = get_db()
+
+    # Create analysis record in database
+    try:
+        analysis = await db.create_analysis(
+            user_id=user_id,
+            repo_url=url,
+            commit_sha="pending",  # Will be filled during pipeline
+            cache_key="pending",   # Will be filled during pipeline
+            status="pending"
+        )
+        # Override the auto-generated ID with our analysis_id for consistency
+        # (In production, you'd want to use the DB-generated ID instead)
+    except Exception as e:
+        logger.error(f"Failed to create analysis record: {e}")
+        return JSONResponse(
+            {"error": "Failed to create analysis record"},
+            status_code=500
+        )
+
+    # Maintain jobs dict for live status (backward compatibility)
+    jobs[analysis_id] = {
         "status":     JobStatus.PENDING,
         "url":        url,
         "outputs":    [],
@@ -391,9 +477,9 @@ async def analyze(request: Request, background_tasks: BackgroundTasks):
     # Strip credentials from URL before logging (https://token@host → https://host)
     import re as _re
     _safe_url = _re.sub(r"(https?://)([^@/]+@)", r"\1", url)
-    background_tasks.add_task(_run_pipeline, job_id, url, options)
-    logger.info(f"[job {job_id}] queued: {_safe_url}")
-    return JSONResponse({"job_id": job_id})
+    background_tasks.add_task(_run_pipeline, analysis_id, url, options, user_id)
+    logger.info(f"[analysis {analysis_id}] queued: {_safe_url}")
+    return JSONResponse({"job_id": analysis_id})
 
 
 @app.get("/status/{job_id}")

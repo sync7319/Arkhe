@@ -194,11 +194,11 @@ class AWSDB(BaseDB):
             async with self.pool.acquire() as conn:
                 await conn.execute(
                     """
-                    INSERT INTO analyses (id, user_id, repo_url, commit_sha, cache_key, status, result_paths, created_at)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                    INSERT INTO analyses (id, user_id, repo_url, commit_sha, cache_key, status, result_paths, error_message, created_at)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
                     """,
                     analysis.id, analysis.user_id, analysis.repo_url, analysis.commit_sha,
-                    analysis.cache_key, analysis.status, analysis.result_paths, analysis.created_at,
+                    analysis.cache_key, analysis.status, analysis.result_paths, analysis.error_message, analysis.created_at,
                 )
             log.operation_success("create_analysis", analysis_id=analysis_id)
             return analysis
@@ -360,6 +360,7 @@ CREATE TABLE IF NOT EXISTS analyses (
   cache_key TEXT UNIQUE NOT NULL,
   status TEXT DEFAULT 'pending',
   result_paths JSONB DEFAULT '{}'::jsonb,
+  error_message TEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   expires_at TIMESTAMP
 );

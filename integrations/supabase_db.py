@@ -314,6 +314,7 @@ CREATE TABLE IF NOT EXISTS analyses (
   cache_key TEXT UNIQUE NOT NULL,
   status TEXT DEFAULT 'pending',
   result_paths JSONB DEFAULT '{}'::jsonb,
+  error_message TEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   expires_at TIMESTAMP
 );
