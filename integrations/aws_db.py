@@ -9,6 +9,7 @@ import logging
 from datetime import datetime
 from uuid import uuid4
 
+import json
 import asyncpg
 
 from integrations.base import BaseDB, Analysis, User
@@ -198,7 +199,7 @@ class AWSDB(BaseDB):
                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
                     """,
                     analysis.id, analysis.user_id, analysis.repo_url, analysis.commit_sha,
-                    analysis.cache_key, analysis.status, analysis.result_paths, analysis.error_message, analysis.created_at,
+                    analysis.cache_key, analysis.status, json.dumps(analysis.result_paths), analysis.error_message, analysis.created_at,
                 )
             log.operation_success("create_analysis", analysis_id=analysis_id)
             return analysis
@@ -323,7 +324,7 @@ class AWSDB(BaseDB):
             async with self.pool.acquire() as conn:
                 row = await conn.fetchrow(
                     "UPDATE analyses SET status = $1, result_paths = $2 WHERE id = $3 RETURNING *",
-                    status, result_paths, analysis_id,
+                    status, json.dumps(result_paths), analysis_id,
                 )
                 if row:
                     analysis = Analysis(**dict(row))
