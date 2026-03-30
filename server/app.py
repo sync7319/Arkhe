@@ -283,8 +283,26 @@ async def _run_pipeline(analysis_id: str, url: str, options: dict, user_id: str)
             commit_sha = _get_commit_sha(repo_path)
             cache_key = hashlib.sha256((url + commit_sha).encode()).hexdigest()
 
-            # Update analysis record with commit_sha
+            # Persist real cache_key and commit_sha to DB (replaces pending placeholder)
+            await db.update_analysis_cache_key(analysis_id, cache_key, commit_sha)
             logger.info(f"[analysis {analysis_id}] commit_sha={commit_sha}, cache_key={cache_key[:16]}")
+
+            # Cache hit — reuse existing results if same repo+commit already completed
+            cached = await db.get_analysis_by_cache_key(cache_key)
+            if cached and cached.status == "complete" and cached.id != analysis_id:
+                cached_dir = RESULTS_DIR / cached.id
+                if cached_dir.exists():
+                    logger.info(f"[analysis {analysis_id}] cache hit → reusing {cached.id}")
+                    for f in cached_dir.iterdir():
+                        if f.is_file():
+                            shutil.copy2(f, job_results_dir / f.name)
+                    await db.update_analysis_results(analysis_id, cached.result_paths, status="complete")
+                    if analysis_id in jobs:
+                        outputs = [{"filename": fn, "kind": "file"} for fn in cached.result_paths]
+                        jobs[analysis_id]["outputs"] = outputs
+                        jobs[analysis_id]["status"]  = JobStatus.COMPLETE
+                    _save_meta(analysis_id, url, list(cached.result_paths.keys()))
+                    return
 
             temp_cache = Path(repo_path) / ".arkhe_cache"
             temp_cache.mkdir(exist_ok=True)

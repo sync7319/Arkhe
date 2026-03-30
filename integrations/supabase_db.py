@@ -294,6 +294,15 @@ class SupabaseDB(BaseDB):
                 {"analysis_id": analysis_id, "files_uploaded": len(result_paths)}
             )
 
+    async def update_analysis_cache_key(self, analysis_id: str, cache_key: str, commit_sha: str) -> None:
+        """Update cache_key and commit_sha after cloning (replaces pending placeholder)."""
+        try:
+            self.client.table("analyses").update(
+                {"cache_key": cache_key, "commit_sha": commit_sha}
+            ).eq("id", analysis_id).execute()
+        except Exception as e:
+            log.warning(f"update_analysis_cache_key failed", error=str(e), analysis_id=analysis_id)
+
     def _schema_migration(self) -> str:
         """Return SQL to create tables in Supabase."""
         return """

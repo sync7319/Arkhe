@@ -344,6 +344,17 @@ class AWSDB(BaseDB):
                 {"analysis_id": analysis_id, "files_uploaded": len(result_paths)}
             )
 
+    async def update_analysis_cache_key(self, analysis_id: str, cache_key: str, commit_sha: str) -> None:
+        """Update cache_key and commit_sha after cloning (replaces pending placeholder)."""
+        try:
+            async with self.pool.acquire() as conn:
+                await conn.execute(
+                    "UPDATE analyses SET cache_key = $1, commit_sha = $2 WHERE id = $3",
+                    cache_key, commit_sha, analysis_id,
+                )
+        except Exception as e:
+            log.warning(f"update_analysis_cache_key failed", error=str(e), analysis_id=analysis_id)
+
     def _schema_migration(self) -> str:
         """Return SQL to create tables."""
         return """

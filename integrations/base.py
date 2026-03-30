@@ -153,6 +153,11 @@ class BaseDB(ABC):
         """Update analysis with result URLs after pipeline completes."""
         pass
 
+    @abstractmethod
+    async def update_analysis_cache_key(self, analysis_id: str, cache_key: str, commit_sha: str) -> None:
+        """Update the cache_key and commit_sha after cloning (replaces pending placeholder)."""
+        pass
+
 
 class BaseStorage(ABC):
     """
