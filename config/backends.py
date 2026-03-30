@@ -6,6 +6,8 @@ Example .env:
   STORAGE_BACKEND=supabase     # or: aws
 """
 import os
+from dotenv import load_dotenv
+load_dotenv()
 from integrations.base import BaseDB, BaseStorage
 
 # Determine which backends to use
