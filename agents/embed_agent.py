@@ -51,15 +51,19 @@ def _get_embedding_function():
         except Exception as e:
             logger.warning(f"[embed] OpenAI embedding unavailable: {e}")
 
-    # Local fallback — no API key needed
+    # Local fallback — only if sentence_transformers is actually installed
     try:
+        import sentence_transformers  # noqa: F401
         from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
         logger.info("[embed] using local all-MiniLM-L6-v2 (no API key)")
         return SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
+    except ImportError:
+        logger.warning("[embed] sentence-transformers not installed, skipping local embed")
     except Exception as e:
         logger.warning(f"[embed] sentence-transformers unavailable: {e}")
 
-    return None  # ChromaDB will use its own default
+    # No embedding backend available — don't let ChromaDB download ONNX models
+    return False
 
 
 # ── Index builder ─────────────────────────────────────────────────────────────
@@ -77,6 +81,11 @@ def build_index(modules: list[dict], job_results_dir: str | Path) -> bool:
     """
     import chromadb
 
+    ef = _get_embedding_function()
+    if ef is False:
+        logger.info("[embed] no embedding backend available, skipping index build")
+        return False
+
     embeddable = [m for m in modules if m.get("analysis")]
     if not embeddable:
         logger.info("[embed] no analysis content to index")
@@ -87,7 +96,6 @@ def build_index(modules: list[dict], job_results_dir: str | Path) -> bool:
 
     try:
         client     = chromadb.PersistentClient(path=str(chroma_dir))
-        ef         = _get_embedding_function()
         collection = client.get_or_create_collection(
             name=_COLLECTION_NAME,
             embedding_function=ef,
