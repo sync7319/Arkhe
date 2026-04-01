@@ -422,7 +422,13 @@
   <div class="ark-nav-right">
     <a href="/pricing">Pricing</a>
     <a href="https://github.com/sync7319/Arkhe" target="_blank">GitHub</a>
-    <a href="#install" class="ark-nav-cta">Install CLI</a>
+    {% if logged_in %}
+      <a href="/settings/keys" style="color:var(--text-2);font-size:0.85rem">{{ user_email }}</a>
+      <a href="/logout" style="color:var(--text-2);font-size:0.85rem">Log out</a>
+    {% else %}
+      <a href="/login">Log in</a>
+      <a href="/signup" class="ark-nav-cta">Sign up free</a>
+    {% endif %}
     <button class="theme-toggle" id="theme-toggle">
       <span class="t-icon" id="t-icon">☀️</span>
       <span id="t-label">Light</span>
@@ -852,6 +858,7 @@ arkhe ./my-project --refactor</pre>
         body: JSON.stringify({ url, options: collectOptions() }),
       });
       const data = await res.json();
+      if (res.status === 401) { window.location.href = "/login?next=/"; return; }
       if (!res.ok) { showError(data.error || "Something went wrong."); resetBtn(); return; }
       localStorage.setItem("arkhe-active-job", JSON.stringify({ jobId: data.job_id, url }));
       streamStatus(data.job_id);
@@ -963,6 +970,7 @@ arkhe ./my-project --refactor</pre>
         body: JSON.stringify({ url, options: collectOptions() }),
       });
       const data = await res.json();
+      if (res.status === 401) { window.location.href = "/login?next=/"; return; }
       if (!res.ok) { showError(data.error || "Retry failed."); resetBtn(); return; }
       localStorage.setItem("arkhe-active-job", JSON.stringify({ jobId: data.job_id, url }));
       streamStatus(data.job_id);

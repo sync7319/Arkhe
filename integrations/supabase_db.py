@@ -1,6 +1,15 @@
 """
 Supabase database backend implementation.
-Features: error handling, structured logging, health checks.
+Features: error handling, structured logging, health checks, auth, per-user API keys.
+
+Schema additions (run once in Supabase SQL editor):
+  CREATE TABLE IF NOT EXISTS user_api_keys (
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    provider TEXT NOT NULL,
+    api_key TEXT NOT NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, provider)
+  );
 """
 import os
 import time
@@ -25,21 +34,24 @@ log = get_logger("supabase")
 class SupabaseDB(BaseDB):
     def __init__(self):
         self.url = os.getenv("SUPABASE_URL")
-        self.key = os.getenv("SUPABASE_ANON_KEY")
+        self.key = os.getenv("SUPABASE_SERVICE_KEY") or os.getenv("SUPABASE_ANON_KEY")
 
         if not self.url or not self.key:
             log.error(
                 "Missing Supabase credentials",
                 SUPABASE_URL=bool(self.url),
-                SUPABASE_ANON_KEY=bool(self.key)
+                SUPABASE_SERVICE_KEY=bool(os.getenv("SUPABASE_SERVICE_KEY")),
+                SUPABASE_ANON_KEY=bool(os.getenv("SUPABASE_ANON_KEY")),
             )
             raise BackendConnectionError(
                 "supabase",
-                "Missing SUPABASE_URL or SUPABASE_ANON_KEY in environment",
+                "Missing SUPABASE_URL and SUPABASE_SERVICE_KEY (or SUPABASE_ANON_KEY) in environment",
                 {"url_set": bool(self.url), "key_set": bool(self.key)}
             )
 
+        self.anon_key = os.getenv("SUPABASE_ANON_KEY") or self.key
         self.client: AsyncClient | None = None
+        self.auth_client: AsyncClient | None = None
 
     async def init(self) -> None:
         """Initialize Supabase connection and verify schema."""
@@ -47,6 +59,8 @@ class SupabaseDB(BaseDB):
 
         try:
             self.client = AsyncClient(self.url, self.key)
+            # Separate client using anon key for user-facing auth operations
+            self.auth_client = AsyncClient(self.url, self.anon_key)
 
             # Test connection by querying users table
             start = time.time()
@@ -76,9 +90,9 @@ class SupabaseDB(BaseDB):
         log.operation_start("get_user", user_id=user_id)
 
         try:
-            response = await self.client.table("users").select("*").eq("id", user_id).single().execute()
+            response = await self.client.table("users").select("*").eq("id", user_id).maybe_single().execute()
 
-            if response.data:
+            if response and response.data:
                 user = User(**response.data)
                 log.operation_success("get_user", user_id=user_id)
                 return user
@@ -112,7 +126,12 @@ class SupabaseDB(BaseDB):
             raise
 
         try:
-            await self.client.table("users").insert(user.__dict__).execute()
+            await self.client.table("users").insert({
+                "id": user.id,
+                "email": user.email,
+                "tier": user.tier,
+                "created_at": user.created_at.isoformat() if user.created_at else None,
+            }).execute()
             log.operation_success("create_user", user_id=user_id)
             return user
         except Exception as e:
@@ -131,6 +150,7 @@ class SupabaseDB(BaseDB):
         commit_sha: str,
         cache_key: str,
         status: str = "pending",
+        analysis_id: str | None = None,
     ) -> Analysis:
         """Create a new analysis record."""
         log.operation_start(
@@ -140,7 +160,7 @@ class SupabaseDB(BaseDB):
             cache_key=cache_key
         )
 
-        analysis_id = str(uuid4())
+        analysis_id = analysis_id or str(uuid4())
         analysis = Analysis(
             id=analysis_id,
             user_id=user_id,
@@ -159,7 +179,18 @@ class SupabaseDB(BaseDB):
             raise
 
         try:
-            await self.client.table("analyses").insert(analysis.__dict__).execute()
+            await self.client.table("analyses").insert({
+                "id": analysis.id,
+                "user_id": analysis.user_id,
+                "repo_url": analysis.repo_url,
+                "commit_sha": analysis.commit_sha,
+                "cache_key": analysis.cache_key,
+                "status": analysis.status,
+                "result_paths": analysis.result_paths,
+                "error_message": analysis.error_message,
+                "created_at": analysis.created_at.isoformat() if analysis.created_at else None,
+                "expires_at": analysis.expires_at.isoformat() if analysis.expires_at else None,
+            }).execute()
             log.operation_success("create_analysis", analysis_id=analysis_id)
             return analysis
         except Exception as e:
@@ -176,9 +207,9 @@ class SupabaseDB(BaseDB):
         log.operation_start("get_analysis", analysis_id=analysis_id)
 
         try:
-            response = await self.client.table("analyses").select("*").eq("id", analysis_id).single().execute()
+            response = await self.client.table("analyses").select("*").eq("id", analysis_id).maybe_single().execute()
 
-            if response.data:
+            if response and response.data:
                 analysis = Analysis(**response.data)
                 log.operation_success("get_analysis", analysis_id=analysis_id)
                 return analysis
@@ -297,11 +328,111 @@ class SupabaseDB(BaseDB):
     async def update_analysis_cache_key(self, analysis_id: str, cache_key: str, commit_sha: str) -> None:
         """Update cache_key and commit_sha after cloning (replaces pending placeholder)."""
         try:
-            self.client.table("analyses").update(
+            await self.client.table("analyses").update(
                 {"cache_key": cache_key, "commit_sha": commit_sha}
             ).eq("id", analysis_id).execute()
         except Exception as e:
             log.warning(f"update_analysis_cache_key failed", error=str(e), analysis_id=analysis_id)
+
+    # ── Auth operations ───────────────────────────────────────────────────────
+
+    async def sign_in(self, email: str, password: str) -> dict:
+        """Sign in with email/password. Returns {access_token, refresh_token, user_id, email}."""
+        try:
+            response = await self.auth_client.auth.sign_in_with_password(
+                {"email": email, "password": password}
+            )
+            if not response.session:
+                raise ValueError("No session returned")
+            return {
+                "access_token":  response.session.access_token,
+                "refresh_token": response.session.refresh_token,
+                "user_id":       str(response.user.id),
+                "email":         response.user.email,
+            }
+        except Exception as e:
+            raise ValueError(f"Invalid email or password: {e}") from e
+
+    async def sign_up(self, email: str, password: str) -> dict:
+        """Sign up with email/password. Returns {access_token, refresh_token, user_id, email}."""
+        try:
+            response = await self.auth_client.auth.sign_up(
+                {"email": email, "password": password}
+            )
+            if not response.user:
+                raise ValueError("Sign-up failed")
+            user_id = str(response.user.id)
+            # Mirror user into public.users table (best-effort)
+            try:
+                existing = await self.get_user(user_id)
+                if not existing:
+                    await self.create_user(user_id, email, tier="free")
+            except Exception:
+                pass
+            # Supabase may require email confirmation; session can be None
+            if response.session:
+                return {
+                    "access_token":  response.session.access_token,
+                    "refresh_token": response.session.refresh_token,
+                    "user_id":       user_id,
+                    "email":         response.user.email,
+                }
+            # Email confirmation required — return user info without tokens
+            return {"user_id": user_id, "email": response.user.email, "confirm_required": True}
+        except Exception as e:
+            raise ValueError(f"Sign-up error: {e}") from e
+
+    async def verify_token(self, access_token: str) -> dict | None:
+        """Verify JWT. Returns {user_id, email} or None if invalid/expired."""
+        try:
+            response = await self.auth_client.auth.get_user(jwt=access_token)
+            if response and response.user:
+                return {"user_id": str(response.user.id), "email": response.user.email}
+            return None
+        except Exception:
+            return None
+
+    async def refresh_session(self, refresh_token: str) -> dict | None:
+        """Refresh an expired access token. Returns new tokens or None."""
+        try:
+            response = await self.auth_client.auth.refresh_session(refresh_token)
+            if response.session:
+                return {
+                    "access_token":  response.session.access_token,
+                    "refresh_token": response.session.refresh_token,
+                    "user_id":       str(response.user.id),
+                    "email":         response.user.email,
+                }
+            return None
+        except Exception:
+            return None
+
+    # ── Per-user API keys ─────────────────────────────────────────────────────
+
+    async def get_user_api_keys(self, user_id: str) -> dict[str, str]:
+        """Get all saved API keys for a user. Returns {provider: key} dict."""
+        try:
+            response = await self.client.table("user_api_keys") \
+                .select("provider,api_key").eq("user_id", user_id).execute()
+            return {row["provider"]: row["api_key"] for row in (response.data or [])}
+        except Exception as e:
+            log.warning("get_user_api_keys failed", error=str(e), user_id=user_id)
+            return {}
+
+    async def save_user_api_keys(self, user_id: str, keys: dict[str, str]) -> None:
+        """Upsert API keys for a user. Only saves non-empty values."""
+        for provider, key in keys.items():
+            if not key or not key.strip():
+                continue
+            try:
+                await self.client.table("user_api_keys").upsert({
+                    "user_id":    user_id,
+                    "provider":   provider,
+                    "api_key":    key.strip(),
+                    "updated_at": datetime.utcnow().isoformat(),
+                }).execute()
+            except Exception as e:
+                log.warning("save_user_api_keys failed", error=str(e), user_id=user_id, provider=provider)
 
     def _schema_migration(self) -> str:
         """Return SQL to create tables in Supabase."""
@@ -332,4 +463,13 @@ CREATE TABLE IF NOT EXISTS analyses (
 CREATE INDEX IF NOT EXISTS idx_analyses_user_id ON analyses(user_id);
 CREATE INDEX IF NOT EXISTS idx_analyses_cache_key ON analyses(cache_key);
 CREATE INDEX IF NOT EXISTS idx_analyses_status ON analyses(status);
+
+-- Per-user BYOK API keys
+CREATE TABLE IF NOT EXISTS user_api_keys (
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  provider TEXT NOT NULL,
+  api_key TEXT NOT NULL,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (user_id, provider)
+);
         """

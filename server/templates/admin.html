@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Arkhe — Admin</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/static/arkhe.css" />
+  <style>
+    .admin-wrap { max-width:800px; margin:0 auto; padding:6rem 1.5rem 4rem; }
+    .admin-wrap h1 { font-size:1.7rem; font-weight:800; letter-spacing:-0.5px; margin:0 0 0.4rem; }
+    .admin-wrap p.subtitle { color:var(--text-2); font-size:0.9rem; margin:0 0 2.5rem; }
+    .stat-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:1rem; margin-bottom:2rem; }
+    .stat-card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:1.25rem; text-align:center; }
+    .stat-num { font-size:2rem; font-weight:800; color:var(--accent-hi); }
+    .stat-label { font-size:0.8rem; color:var(--text-2); margin-top:0.2rem; }
+    .admin-links { display:flex; gap:0.75rem; flex-wrap:wrap; }
+    .admin-link { padding:0.6rem 1.2rem; background:var(--surface); border:1px solid var(--border); border-radius:8px; color:var(--text); text-decoration:none; font-size:0.88rem; transition:border-color 0.15s; }
+    .admin-link:hover { border-color:var(--accent); }
+    .admin-link.danger { color:#f87171; border-color:rgba(248,113,113,0.3); }
+    .admin-link.danger:hover { border-color:#f87171; background:rgba(248,113,113,0.05); }
+  </style>
+</head>
+<body>
+  <nav class="ark-nav">
+    <a class="ark-logo" href="/">Arkhe<span>.</span></a>
+    <div class="ark-nav-right">
+      <a href="/">Home</a>
+      {% if debug %}<a href="/debug">Debug Inspector</a>{% endif %}
+      <a href="/admin/logout" style="color:var(--text-2)">Exit Admin</a>
+    </div>
+  </nav>
+
+  <div class="admin-wrap">
+    <h1>Developer Dashboard</h1>
+    <p class="subtitle">Server-side session. Uses server's own LLM keys.</p>
+
+    <div class="stat-grid">
+      <div class="stat-card">
+        <div class="stat-num">{{ running_count }}</div>
+        <div class="stat-label">Running jobs</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num">{{ complete_count }}</div>
+        <div class="stat-label">Complete jobs</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num">{{ total_count }}</div>
+        <div class="stat-label">Total in memory</div>
+      </div>
+    </div>
+
+    <div class="admin-links">
+      <a href="/" class="admin-link">Run Analysis →</a>
+      <a href="/debug" class="admin-link">Debug Inspector</a>
+      <a href="/_health" class="admin-link">Health Check</a>
+      <a href="/admin/logout" class="admin-link danger">Exit Admin Mode</a>
+    </div>
+  </div>
+
+  <script>
+    const t = localStorage.getItem("theme") || "dark";
+    document.documentElement.setAttribute("data-theme", t);
+  </script>
+</body>
+</html>

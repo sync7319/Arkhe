@@ -20,7 +20,7 @@ log = get_logger("supabase-storage")
 class SupabaseStorage(BaseStorage):
     def __init__(self):
         self.url = os.getenv("SUPABASE_URL")
-        self.key = os.getenv("SUPABASE_ANON_KEY")
+        self.key = os.getenv("SUPABASE_SERVICE_KEY") or os.getenv("SUPABASE_ANON_KEY")
         self.bucket = os.getenv("SUPABASE_STORAGE_BUCKET", "arkhe-results")
 
         if not self.url or not self.key:

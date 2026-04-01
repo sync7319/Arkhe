@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Arkhe — API Keys</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="stylesheet" href="/static/arkhe.css" />
+  <style>
+    .settings-wrap {
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 6rem 1.5rem 4rem;
+    }
+    .settings-header {
+      margin-bottom: 2.5rem;
+    }
+    .settings-header h1 {
+      font-size: 1.7rem;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      color: var(--text);
+      margin: 0 0 0.4rem;
+    }
+    .settings-header p {
+      color: var(--text-2);
+      font-size: 0.9rem;
+      margin: 0;
+    }
+    .settings-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 1.75rem;
+      margin-bottom: 1.5rem;
+    }
+    .settings-card h2 {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--text);
+      margin: 0 0 0.25rem;
+    }
+    .settings-card .card-desc {
+      font-size: 0.82rem;
+      color: var(--text-2);
+      margin: 0 0 1.5rem;
+    }
+    .field-group {
+      margin-bottom: 1.1rem;
+    }
+    .field-label {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--text-2);
+      margin-bottom: 0.4rem;
+    }
+    .field-badge {
+      font-size: 0.7rem;
+      font-weight: 500;
+      background: var(--accent-bg);
+      color: var(--accent-hi);
+      border: 1px solid var(--accent);
+      border-radius: 4px;
+      padding: 0.1rem 0.4rem;
+    }
+    .field-badge.free { background: rgba(16,185,129,0.1); color: #34d399; border-color: rgba(16,185,129,0.3); }
+    .key-row {
+      display: flex;
+      gap: 0.5rem;
+    }
+    .key-input {
+      flex: 1;
+      padding: 0.6rem 0.85rem;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 0.88rem;
+      font-family: 'Courier New', monospace;
+      outline: none;
+      transition: border-color 0.15s;
+      min-width: 0;
+    }
+    .key-input:focus { border-color: var(--accent); }
+    .key-input::placeholder { font-family: inherit; color: var(--text-2); }
+    .key-existing {
+      font-size: 0.78rem;
+      color: var(--text-2);
+      margin-top: 0.3rem;
+    }
+    .key-existing span { color: var(--accent-hi); font-family: monospace; }
+    .save-btn {
+      padding: 0.65rem 1.5rem;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: filter 0.15s, opacity 0.15s;
+    }
+    .save-btn:hover { filter: brightness(1.1); }
+    .save-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .status-msg {
+      font-size: 0.85rem;
+      margin-top: 0.75rem;
+      display: none;
+    }
+    .status-msg.ok { color: #34d399; display: block; }
+    .status-msg.err { color: #f87171; display: block; }
+    .info-box {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.85rem 1rem;
+      font-size: 0.82rem;
+      color: var(--text-2);
+      line-height: 1.6;
+    }
+    .info-box a { color: var(--accent-hi); }
+  </style>
+</head>
+<body>
+  <nav class="ark-nav">
+    <a class="ark-logo" href="/">Arkhe<span>.</span></a>
+    <div class="ark-nav-right">
+      <a href="/">Home</a>
+      <a href="/pricing">Pricing</a>
+      <span style="color:var(--text-2);font-size:0.85rem">{{ user_email }}</span>
+      <a href="/logout" style="color:var(--text-2)">Log out</a>
+      <button class="theme-toggle" id="theme-toggle">
+        <span class="t-icon" id="t-icon">☀️</span>
+        <span id="t-label">Light</span>
+      </button>
+    </div>
+  </nav>
+
+  <div class="settings-wrap">
+    <div class="settings-header">
+      <h1>API Keys</h1>
+      <p>Add your own LLM provider keys. Arkhe uses them in order of priority when running analyses.</p>
+    </div>
+
+    {% if saved %}
+    <div style="background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);border-radius:8px;padding:0.85rem 1rem;font-size:0.85rem;color:#34d399;margin-bottom:1.5rem;">
+      Keys saved successfully.
+    </div>
+    {% endif %}
+
+    <div class="settings-card">
+      <h2>LLM Provider Keys</h2>
+      <p class="card-desc">Keys are stored encrypted in Supabase and never logged. Leave a field blank to keep the existing key.</p>
+
+      <div class="field-group">
+        <div class="field-label">
+          NVIDIA NIM <span class="field-badge">Recommended</span>
+        </div>
+        <div class="key-row">
+          <input class="key-input" id="key-nvidia" type="password" placeholder="nvapi-…" autocomplete="off" />
+        </div>
+        {% if keys.nvidia %}<div class="key-existing">Current: <span>{{ keys.nvidia }}</span></div>{% endif %}
+      </div>
+
+      <div class="field-group">
+        <div class="field-label">
+          Groq <span class="field-badge free">Free tier</span>
+        </div>
+        <div class="key-row">
+          <input class="key-input" id="key-groq" type="password" placeholder="gsk_…" autocomplete="off" />
+        </div>
+        {% if keys.groq %}<div class="key-existing">Current: <span>{{ keys.groq }}</span></div>{% endif %}
+      </div>
+
+      <div class="field-group">
+        <div class="field-label">
+          Gemini <span class="field-badge free">Free tier</span>
+        </div>
+        <div class="key-row">
+          <input class="key-input" id="key-gemini" type="password" placeholder="AIza…" autocomplete="off" />
+        </div>
+        {% if keys.gemini %}<div class="key-existing">Current: <span>{{ keys.gemini }}</span></div>{% endif %}
+      </div>
+
+      <div class="field-group">
+        <div class="field-label">Anthropic</div>
+        <div class="key-row">
+          <input class="key-input" id="key-anthropic" type="password" placeholder="sk-ant-…" autocomplete="off" />
+        </div>
+        {% if keys.anthropic %}<div class="key-existing">Current: <span>{{ keys.anthropic }}</span></div>{% endif %}
+      </div>
+
+      <div class="field-group">
+        <div class="field-label">OpenAI</div>
+        <div class="key-row">
+          <input class="key-input" id="key-openai" type="password" placeholder="sk-…" autocomplete="off" />
+        </div>
+        {% if keys.openai %}<div class="key-existing">Current: <span>{{ keys.openai }}</span></div>{% endif %}
+      </div>
+
+      <button class="save-btn" id="save-btn" onclick="saveKeys()">Save Keys</button>
+      <div class="status-msg" id="status-msg"></div>
+    </div>
+
+    <div class="info-box">
+      <strong>BYOK model priority:</strong> Arkhe uses keys you provide here, in order: NVIDIA → Groq → Gemini → Anthropic → OpenAI.
+      You only need one. Groq and Gemini both have generous free tiers.
+      Get keys at:
+      <a href="https://build.nvidia.com" target="_blank">NVIDIA NIM</a> ·
+      <a href="https://console.groq.com" target="_blank">Groq</a> ·
+      <a href="https://aistudio.google.com" target="_blank">Gemini</a>
+    </div>
+  </div>
+
+  <script>
+    // Theme
+    const saved = localStorage.getItem("theme") || "dark";
+    document.documentElement.setAttribute("data-theme", saved);
+    const tBtn = document.getElementById("theme-toggle");
+    const tIcon = document.getElementById("t-icon");
+    const tLabel = document.getElementById("t-label");
+    function applyTheme(t) {
+      document.documentElement.setAttribute("data-theme", t);
+      localStorage.setItem("theme", t);
+      tIcon.textContent = t === "dark" ? "☀️" : "🌙";
+      tLabel.textContent = t === "dark" ? "Light" : "Dark";
+    }
+    applyTheme(saved);
+    tBtn.addEventListener("click", () => {
+      applyTheme(document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark");
+    });
+
+    async function saveKeys() {
+      const btn = document.getElementById("save-btn");
+      const msg = document.getElementById("status-msg");
+      msg.className = "status-msg";
+      btn.disabled = true; btn.textContent = "Saving…";
+      try {
+        const res = await fetch("/settings/keys", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({
+            nvidia:    document.getElementById("key-nvidia").value.trim(),
+            groq:      document.getElementById("key-groq").value.trim(),
+            gemini:    document.getElementById("key-gemini").value.trim(),
+            anthropic: document.getElementById("key-anthropic").value.trim(),
+            openai:    document.getElementById("key-openai").value.trim(),
+          }),
+        });
+        const data = await res.json();
+        if (res.ok) {
+          msg.textContent = "Keys saved.";
+          msg.className = "status-msg ok";
+          // Clear the inputs (keys are now saved)
+          ["nvidia","groq","gemini","anthropic","openai"].forEach(p => {
+            document.getElementById("key-" + p).value = "";
+          });
+        } else {
+          msg.textContent = data.error || "Failed to save.";
+          msg.className = "status-msg err";
+        }
+      } catch {
+        msg.textContent = "Network error.";
+        msg.className = "status-msg err";
+      }
+      btn.disabled = false; btn.textContent = "Save Keys";
+    }
+  </script>
+</body>
+</html>

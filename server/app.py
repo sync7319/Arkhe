@@ -47,6 +47,7 @@ from scripts.clone_repo import CloneError, clone_repo
 from config.backends import init_backends, get_db, get_storage
 from integrations.base import Analysis, User
 from integrations.logging import get_logger as get_backend_logger
+import server.auth_supabase as _auth
 
 # ── Debug inspector — set ARKHE_DEBUG=false to disable completely ─────────────
 DEBUG_MODE = os.getenv("ARKHE_DEBUG", "false").lower() != "false"
@@ -253,19 +254,30 @@ async def _run_pipeline(analysis_id: str, url: str, options: dict, user_id: str)
     import config.settings as _cs
     from config.model_router import build_available_pools
 
-    # Override NVIDIA key if user supplied their own
-    _user_nvidia_key = options.pop("_nvidia_key", None)
-    if _user_nvidia_key:
-        _cs.NVIDIA_API_KEY = _user_nvidia_key
+    # Override API keys from user's saved BYOK keys and legacy _nvidia_key
+    _user_keys: dict = options.pop("_user_keys", None) or {}
+    _legacy_nvidia = options.pop("_nvidia_key", None)
+    if _legacy_nvidia:
+        _user_keys.setdefault("nvidia", _legacy_nvidia)
+    _key_attrs = {
+        "groq":      "GROQ_API_KEY",
+        "gemini":    "GEMINI_API_KEY",
+        "anthropic": "ANTHROPIC_API_KEY",
+        "openai":    "OPENAI_API_KEY",
+        "nvidia":    "NVIDIA_API_KEY",
+    }
+    for _provider, _key in _user_keys.items():
+        if _key and _provider in _key_attrs:
+            setattr(_cs, _key_attrs[_provider], _key)
 
-    from config.settings import GROQ_API_KEY, GEMINI_API_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY, NVIDIA_API_KEY
-    logger.info(f"[pipeline] API keys present: groq={'yes' if GROQ_API_KEY else 'no'}, gemini={'yes' if GEMINI_API_KEY else 'no'}, nvidia={'yes' if NVIDIA_API_KEY else 'no'}, anthropic={'yes' if ANTHROPIC_API_KEY else 'no'}")
+    # Read keys from _cs after any user-key overrides above
+    logger.info(f"[pipeline] API keys present: groq={'yes' if _cs.GROQ_API_KEY else 'no'}, gemini={'yes' if _cs.GEMINI_API_KEY else 'no'}, nvidia={'yes' if _cs.NVIDIA_API_KEY else 'no'}, anthropic={'yes' if _cs.ANTHROPIC_API_KEY else 'no'}")
     build_available_pools({
-        "groq":      GROQ_API_KEY,
-        "gemini":    GEMINI_API_KEY,
-        "anthropic": ANTHROPIC_API_KEY,
-        "openai":    OPENAI_API_KEY,
-        "nvidia":    NVIDIA_API_KEY,
+        "groq":      _cs.GROQ_API_KEY,
+        "gemini":    _cs.GEMINI_API_KEY,
+        "anthropic": _cs.ANTHROPIC_API_KEY,
+        "openai":    _cs.OPENAI_API_KEY,
+        "nvidia":    _cs.NVIDIA_API_KEY,
     })
 
     from config.dispatcher import start_dispatcher
@@ -427,48 +439,207 @@ async def manifest():
     return FileResponse(str(SERVER_DIR / "static" / "manifest.json"), media_type="application/manifest+json")
 
 
+# ── Auth helpers ──────────────────────────────────────────────────────────────
+
+_DEV_PASSWORD = os.getenv("ARKHE_DEV_PASSWORD", "Dev16523!!")
+_COOKIE_MAX_AGE = 86400 * 7  # 7 days
+_SESSION_COOKIE = "arkhe_session"
+_REFRESH_COOKIE = "arkhe_refresh"
+_ADMIN_COOKIE   = "arkhe_admin"
+
+
+async def _get_session_user(request: Request) -> dict | None:
+    """Read arkhe_session cookie and verify with Supabase Auth. Returns {user_id, email} or None."""
+    token = request.cookies.get(_SESSION_COOKIE)
+    if not token:
+        return None
+    try:
+        user = await _auth.verify_token(token)
+        if user:
+            return user
+        # Access token may be expired — try refresh
+        refresh = request.cookies.get(_REFRESH_COOKIE)
+        if refresh:
+            new_session = await _auth.refresh_session(refresh)
+            if new_session:
+                new_session["_refreshed"] = True
+                return new_session
+        return None
+    except Exception:
+        return None
+
+
+def _check_admin_cookie(request: Request) -> bool:
+    """Returns True if the request carries a valid admin cookie."""
+    return request.cookies.get(_ADMIN_COOKIE) == _DEV_PASSWORD
+
+
+def _set_session_cookies(response, session: dict) -> None:
+    """Write access + refresh tokens into httponly cookies."""
+    response.set_cookie(_SESSION_COOKIE, session["access_token"],
+                        httponly=True, samesite="lax", max_age=_COOKIE_MAX_AGE)
+    if session.get("refresh_token"):
+        response.set_cookie(_REFRESH_COOKIE, session["refresh_token"],
+                            httponly=True, samesite="lax", max_age=_COOKIE_MAX_AGE)
+
+
+# ── Auth routes ───────────────────────────────────────────────────────────────
+
 @app.get("/gate", response_class=HTMLResponse)
-async def gate(request: Request):
-    return templates.TemplateResponse(request, "gate.html")
+async def gate_redirect():
+    """Legacy redirect — gate.html is gone."""
+    return RedirectResponse(url="/login")
 
 
-_DEV_PASSWORD = "Dev16523!!"
+@app.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request):
+    next_url = request.query_params.get("next", "/")
+    return templates.TemplateResponse(request, "login.html", {"next": next_url})
 
 
-@app.post("/auth")
-async def auth(request: Request):
+@app.post("/login")
+async def login(request: Request):
     body = await request.json()
-    mode = body.get("mode")
-    if mode == "dev":
-        if body.get("password") == _DEV_PASSWORD:
-            response = JSONResponse({"ok": True})
-            response.set_cookie("arkhe_mode", "dev", httponly=True, samesite="lax", max_age=86400 * 7)
-            return response
-        return JSONResponse({"error": "Invalid password"}, status_code=401)
-    elif mode == "user":
-        key = (body.get("key") or "").strip()
-        if not key:
-            return JSONResponse({"error": "Key required"}, status_code=400)
-        response = JSONResponse({"ok": True})
-        response.set_cookie("arkhe_mode", "user", httponly=True, samesite="lax", max_age=86400 * 7)
-        response.set_cookie("arkhe_key", key, httponly=True, samesite="lax", max_age=86400 * 7)
-        return response
-    return JSONResponse({"error": "Invalid mode"}, status_code=400)
+    email    = (body.get("email") or "").strip()
+    password = (body.get("password") or "").strip()
+    if not email or not password:
+        return JSONResponse({"error": "Email and password required"}, status_code=400)
+    try:
+        db = get_db()
+        session = await db.sign_in(email, password)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=401)
+    response = JSONResponse({"ok": True})
+    _set_session_cookies(response, session)
+    return response
+
+
+@app.get("/signup", response_class=HTMLResponse)
+async def signup_page(request: Request):
+    return templates.TemplateResponse(request, "signup.html", {})
+
+
+@app.post("/signup")
+async def signup(request: Request):
+    body = await request.json()
+    email    = (body.get("email") or "").strip()
+    password = (body.get("password") or "").strip()
+    if not email or not password:
+        return JSONResponse({"error": "Email and password required"}, status_code=400)
+    if len(password) < 8:
+        return JSONResponse({"error": "Password must be at least 8 characters"}, status_code=400)
+    try:
+        db = get_db()
+        result = await db.sign_up(email, password)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    if result.get("confirm_required"):
+        return JSONResponse({"ok": True, "confirm_required": True})
+    response = JSONResponse({"ok": True})
+    _set_session_cookies(response, result)
+    return response
 
 
 @app.get("/logout")
 async def logout():
-    response = RedirectResponse(url="/gate")
-    response.delete_cookie("arkhe_mode")
-    response.delete_cookie("arkhe_key")
+    response = RedirectResponse(url="/")
+    response.delete_cookie(_SESSION_COOKIE)
+    response.delete_cookie(_REFRESH_COOKIE)
     return response
 
 
+@app.get("/me")
+async def me(request: Request):
+    """Quick auth check — used by the frontend to know whether user is logged in."""
+    user = await _get_session_user(request)
+    is_admin = _check_admin_cookie(request)
+    if user:
+        return JSONResponse({"logged_in": True, "email": user["email"], "admin": is_admin})
+    return JSONResponse({"logged_in": False, "admin": is_admin})
+
+
+# ── Settings — per-user API keys ──────────────────────────────────────────────
+
+@app.get("/settings/keys", response_class=HTMLResponse)
+async def settings_keys_page(request: Request):
+    user = await _get_session_user(request)
+    if not user:
+        return RedirectResponse(url="/login?next=/settings/keys")
+    db = get_db()
+    raw_keys = await db.get_user_api_keys(user["user_id"])
+    # Mask keys for display — show first 8 chars + "…"
+    masked = {p: (k[:8] + "…" if len(k) > 8 else k) for p, k in raw_keys.items()}
+    return templates.TemplateResponse(request, "settings_keys.html", {
+        "user_email": user["email"],
+        "keys":       masked,
+        "saved":      request.query_params.get("saved") == "1",
+    })
+
+
+@app.post("/settings/keys")
+async def settings_keys_save(request: Request):
+    user = await _get_session_user(request)
+    if not user:
+        return JSONResponse({"error": "Login required"}, status_code=401)
+    body = await request.json()
+    providers = ["groq", "gemini", "anthropic", "openai", "nvidia"]
+    keys = {p: (body.get(p) or "").strip() for p in providers}
+    db = get_db()
+    await db.save_user_api_keys(user["user_id"], keys)
+    return JSONResponse({"ok": True})
+
+
+# ── Admin ─────────────────────────────────────────────────────────────────────
+
+@app.get("/admin/login", response_class=HTMLResponse)
+async def admin_login_page(request: Request):
+    error = request.query_params.get("error")
+    return templates.TemplateResponse(request, "admin_login.html", {"error": error})
+
+
+@app.post("/admin/login")
+async def admin_login(request: Request):
+    body = await request.json()
+    if (body.get("password") or "") == _DEV_PASSWORD:
+        response = JSONResponse({"ok": True})
+        response.set_cookie(_ADMIN_COOKIE, _DEV_PASSWORD,
+                            httponly=True, samesite="lax", max_age=_COOKIE_MAX_AGE)
+        return response
+    return JSONResponse({"error": "Incorrect password"}, status_code=401)
+
+
+@app.get("/admin", response_class=HTMLResponse)
+async def admin_dashboard(request: Request):
+    if not _check_admin_cookie(request):
+        return RedirectResponse(url="/admin/login")
+    running = [j for j in jobs.values() if j["status"] == JobStatus.RUNNING]
+    complete = [j for j in jobs.values() if j["status"] == JobStatus.COMPLETE]
+    return templates.TemplateResponse(request, "admin.html", {
+        "running_count":  len(running),
+        "complete_count": len(complete),
+        "total_count":    len(jobs),
+        "debug":          DEBUG_MODE,
+    })
+
+
+@app.get("/admin/logout")
+async def admin_logout():
+    response = RedirectResponse(url="/")
+    response.delete_cookie(_ADMIN_COOKIE)
+    return response
+
+
+# ── Landing page ──────────────────────────────────────────────────────────────
+
 @app.get("/", response_class=HTMLResponse)
 async def landing(request: Request):
-    if not request.cookies.get("arkhe_mode"):
-        return RedirectResponse(url="/gate")
-    return templates.TemplateResponse(request, "index.html")
+    user = await _get_session_user(request)
+    is_admin = _check_admin_cookie(request)
+    return templates.TemplateResponse(request, "index.html", {
+        "logged_in":  bool(user or is_admin),
+        "user_email": user["email"] if user else ("Admin" if is_admin else ""),
+        "is_admin":   is_admin,
+    })
 
 
 @app.get("/pricing", response_class=HTMLResponse)
@@ -508,14 +679,21 @@ async def analyze(request: Request, background_tasks: BackgroundTasks):
     except CloneError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
 
+    # ── Auth gate — require login or admin cookie ─────────────────────────────
+    session_user = await _get_session_user(request)
+    is_admin = _check_admin_cookie(request)
+    if not session_user and not is_admin:
+        return JSONResponse({"error": "Login required"}, status_code=401)
+
     options = body.get("options") or {}
 
-    # Inject user-provided NVIDIA key if in user mode
-    mode = request.cookies.get("arkhe_mode")
-    if mode == "user":
-        user_key = request.cookies.get("arkhe_key", "")
-        if user_key:
-            options["_nvidia_key"] = user_key
+    # Inject user's saved API keys (regular logged-in users)
+    if session_user and not is_admin:
+        db_tmp = get_db()
+        user_keys = await db_tmp.get_user_api_keys(session_user["user_id"])
+        if user_keys:
+            options["_user_keys"] = user_keys
+    # Admin uses server's own keys from .env — no injection needed
 
     # Pre-clone cache check — hit the API to get commit SHA without cloning
     from scripts.clone_repo import get_head_commit_sha
@@ -548,7 +726,7 @@ async def analyze(request: Request, background_tasks: BackgroundTasks):
                 return JSONResponse({"job_id": hit_id})
 
     analysis_id = str(uuid.uuid4())
-    user_id = "00000000-0000-0000-0000-000000000001"  # demo user
+    user_id = session_user["user_id"] if session_user else "00000000-0000-0000-0000-000000000001"
     db = get_db()
 
     # Create analysis record in database

@@ -57,7 +57,7 @@ class User:
 
     def validate(self) -> None:
         """Validate user data before storage."""
-        valid_tiers = {"free", "paid"}
+        valid_tiers = {"free", "paid", "dev"}
 
         if not self.id or not isinstance(self.id, str):
             raise BackendValidationError("id", self.id, "non-empty UUID string")

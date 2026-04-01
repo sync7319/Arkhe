@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Arkhe — Sign Up</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="stylesheet" href="/static/arkhe.css" />
+  <style>
+    .auth-wrap {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+    }
+    .auth-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 2.5rem 2.25rem;
+      width: 100%;
+      max-width: 400px;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.3);
+    }
+    .auth-logo {
+      font-size: 1.5rem;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      color: var(--text);
+      text-align: center;
+      margin-bottom: 0.3rem;
+    }
+    .auth-logo span { color: var(--accent); }
+    .auth-subtitle {
+      text-align: center;
+      color: var(--text-2);
+      font-size: 0.88rem;
+      margin-bottom: 2rem;
+    }
+    .auth-label {
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: var(--text-2);
+      margin-bottom: 0.4rem;
+      display: block;
+    }
+    .auth-input {
+      width: 100%;
+      padding: 0.65rem 0.9rem;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 0.9rem;
+      margin-bottom: 1rem;
+      outline: none;
+      transition: border-color 0.15s;
+      box-sizing: border-box;
+    }
+    .auth-input:focus { border-color: var(--accent); }
+    .auth-btn {
+      width: 100%;
+      padding: 0.7rem;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: filter 0.15s, opacity 0.15s;
+      margin-top: 0.25rem;
+    }
+    .auth-btn:hover { filter: brightness(1.1); }
+    .auth-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .auth-error {
+      color: #f87171;
+      font-size: 0.82rem;
+      text-align: center;
+      margin-top: 0.75rem;
+      display: none;
+    }
+    .auth-error.visible { display: block; }
+    .auth-success {
+      background: rgba(16,185,129,0.1);
+      border: 1px solid rgba(16,185,129,0.3);
+      border-radius: 8px;
+      padding: 0.9rem;
+      font-size: 0.85rem;
+      color: #34d399;
+      text-align: center;
+      margin-top: 0.75rem;
+      display: none;
+    }
+    .auth-success.visible { display: block; }
+    .auth-footer {
+      text-align: center;
+      font-size: 0.82rem;
+      color: var(--text-2);
+      margin-top: 1.5rem;
+    }
+    .auth-footer a { color: var(--accent-hi); text-decoration: none; }
+    .auth-footer a:hover { text-decoration: underline; }
+    .theme-toggle {
+      position: fixed;
+      top: 1rem;
+      right: 1rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text-2);
+      padding: 0.4rem 0.75rem;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.8rem;
+    }
+    .back-link {
+      display: block;
+      text-align: center;
+      font-size: 0.82rem;
+      color: var(--text-2);
+      margin-bottom: 1.5rem;
+      text-decoration: none;
+    }
+    .back-link:hover { color: var(--text); }
+    .hint {
+      font-size: 0.78rem;
+      color: var(--text-2);
+      margin-top: -0.6rem;
+      margin-bottom: 1rem;
+    }
+  </style>
+</head>
+<body>
+  <button class="theme-toggle" onclick="toggleTheme()">🌙 / ☀️</button>
+
+  <div class="auth-wrap">
+    <div class="auth-card">
+      <a href="/" class="back-link">← Back to Arkhe</a>
+      <div class="auth-logo">Arkhe<span>.</span></div>
+      <div class="auth-subtitle">Create your free account</div>
+
+      <label class="auth-label" for="email">Email</label>
+      <input class="auth-input" type="email" id="email" placeholder="you@example.com" autocomplete="email" />
+
+      <label class="auth-label" for="password">Password</label>
+      <input class="auth-input" type="password" id="password" placeholder="Min 8 characters" autocomplete="new-password" />
+      <div class="hint">At least 8 characters</div>
+
+      <button class="auth-btn" id="submit-btn" onclick="submitSignup()">Create Account</button>
+      <div class="auth-error" id="error-msg"></div>
+      <div class="auth-success" id="success-msg"></div>
+
+      <div class="auth-footer">
+        Already have an account? <a href="/login">Log in</a>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const savedTheme = localStorage.getItem("theme") || "dark";
+    document.documentElement.setAttribute("data-theme", savedTheme);
+    function toggleTheme() {
+      const t = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+      document.documentElement.setAttribute("data-theme", t);
+      localStorage.setItem("theme", t);
+    }
+
+    document.getElementById("password").addEventListener("keydown", e => {
+      if (e.key === "Enter") submitSignup();
+    });
+    document.getElementById("email").addEventListener("keydown", e => {
+      if (e.key === "Enter") document.getElementById("password").focus();
+    });
+
+    async function submitSignup() {
+      const email    = document.getElementById("email").value.trim();
+      const password = document.getElementById("password").value;
+      const btn      = document.getElementById("submit-btn");
+      const errEl    = document.getElementById("error-msg");
+      const okEl     = document.getElementById("success-msg");
+      errEl.classList.remove("visible");
+      okEl.classList.remove("visible");
+      if (!email || !password) {
+        errEl.textContent = "Email and password required.";
+        errEl.classList.add("visible");
+        return;
+      }
+      btn.disabled = true; btn.textContent = "Creating account…";
+      try {
+        const res = await fetch("/signup", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({email, password}),
+        });
+        const data = await res.json();
+        if (res.ok) {
+          if (data.confirm_required) {
+            okEl.textContent = "Account created! Check your email to confirm before logging in.";
+            okEl.classList.add("visible");
+            btn.textContent = "Done";
+          } else {
+            window.location.href = "/";
+          }
+        } else {
+          errEl.textContent = data.error || "Sign-up failed.";
+          errEl.classList.add("visible");
+          btn.disabled = false; btn.textContent = "Create Account";
+        }
+      } catch {
+        errEl.textContent = "Network error — please try again.";
+        errEl.classList.add("visible");
+        btn.disabled = false; btn.textContent = "Create Account";
+      }
+    }
+  </script>
+</body>
+</html>
