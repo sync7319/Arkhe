@@ -1,0 +1,466 @@
+================================================================================
+  ARKHE — PRESENTATION TALKING POINTS
+  Slide division + what to say beyond what's on screen
+================================================================================
+
+SLIDE OWNERSHIP
+───────────────
+  SHREEYUT  →  Slides 1, 5, 6, 7, 8, 9, 10, 11, 12, 17
+  OM        →  Slides 2, 3, 4, 13, 14, 15, 16, 17
+
+  Logic: Shreeyut owns the engineering story (pipeline, agents, quality,
+  outputs). Om owns the market story (problem framing, infra, business,
+  competitive). Both open and close together.
+
+================================================================================
+SLIDE 1 — COVER
+Presenter: SHREEYUT (intro), OM (closes intro)
+================================================================================
+
+SHREEYUT:
+  "Arkhe is a tool we built that points at any GitHub repository and
+   produces a complete, AI-generated understanding of that codebase —
+   architecture docs, dependency graphs, security reports — automatically,
+   with no manual effort from the developer."
+
+  "The name Arkhe comes from ancient Greek — it means the fundamental
+   principle or origin of something. That's the idea: we're giving you
+   the origin story of any codebase, on demand."
+
+OM:
+  "I'll be covering the problem we're solving and the business side.
+   Shreeyut will walk you through everything we actually built."
+
+
+================================================================================
+SLIDE 2 — AI CODEBASE TOOLS ARE FRAGMENTED
+Presenter: OM
+================================================================================
+
+  "Every one of these tools exists. Every developer in this room has
+   probably used at least two of them. And none of them actually solve
+   the problem."
+
+  "Copilot is great at finishing a line of code — but ask it to explain
+   why the authentication system is structured the way it is, it can't.
+   It has no repo-level context."
+
+  "ChatGPT and Claude — you can paste some files in. But a real codebase
+   has hundreds of files. Token limits mean you're always working with a
+   slice, never the whole picture."
+
+  "And manual docs — we've all seen this. Someone writes a README in week
+   one, the architecture changes in week three, nobody updates the README,
+   and now new developers are being actively misled."
+
+  "The gap isn't that these tools are bad. The gap is that none of them
+   produce a complete, structured, always-current picture of a codebase.
+   That's what Arkhe does."
+
+
+================================================================================
+SLIDE 3 — USING POWERFUL AI ON CODEBASES IS EXPENSIVE
+Presenter: OM
+================================================================================
+
+  "The obvious approach is: just send every file to GPT-4o. Problem solved.
+   Except — look at these numbers."
+
+  "A 500-file repo generates roughly two million input tokens. At GPT-4o's
+   rate of $15 per million tokens, that's $30 per run. Per run. Every time
+   you want updated docs."
+
+  "And it's not just cost — you hit rate limits before the analysis even
+   finishes. The model times out. You get partial output."
+
+  "Here's the key insight we built around: expensive models are overkill
+   for 80% of this work. Analyzing a 10-line config file doesn't need
+   GPT-4o. Arkhe routes each task to the cheapest capable model — and uses
+   free API tiers by default. Most users pay nothing."
+
+
+================================================================================
+SLIDE 4 — DEVELOPERS ARE STUCK (STAT CARDS)
+Presenter: OM
+================================================================================
+
+  "Let me give you four numbers that frame why this matters."
+
+  "4 to 8 hours — that's how long it takes the average developer to get
+   oriented in an unfamiliar codebase before they can make their first
+   meaningful contribution. That's time the team is paying for but not
+   getting output from."
+
+  "Six to thirty dollars per run — we just showed that. That's what
+   it costs to analyze a real repo naively with frontier models. Every
+   single run."
+
+  "Zero tools — there is not a single tool on the market today that
+   produces a complete, structured map of a codebase that automatically
+   updates when the code changes. CodeSee tried. They shut down in 2024."
+
+  "And 100% — every team we've talked to says the same thing: their
+   documentation went stale within weeks. Not months. Weeks."
+
+  "These aren't hypothetical problems. Every engineering team has them."
+
+
+================================================================================
+SLIDE 5 — SEVEN OUTPUTS, ZERO MANUAL WORK
+Presenter: SHREEYUT
+================================================================================
+
+  "So here's what Arkhe actually produces. Point it at any repo and
+   you get all of these — or any subset you choose to enable."
+
+  "The most important one is the CODEBASE_MAP. This isn't a list of
+   files and functions. It's narrative — prose that explains why the
+   system is architected the way it is, what the key design decisions
+   were, and where the non-obvious gotchas are. The stuff that lives
+   in a senior developer's head."
+
+  "The DEPENDENCY_MAP is a fully interactive D3.js graph — every file
+   is a node, every import is an edge, and it's color-coded by
+   complexity. You can click any file and see exactly what it depends
+   on and what depends on it."
+
+  "The rest — security, dead code, test gaps, PR impact — we'll cover
+   each of those in detail. The point is: one command, seven outputs,
+   no prompting required."
+
+
+================================================================================
+SLIDE 6 — PIPELINE: RIGHT MODEL FOR EVERY JOB
+Presenter: SHREEYUT
+================================================================================
+
+  "This is the engineering core of Arkhe. The pipeline has six stages,
+   and the critical design decision is that we split them into two
+   categories: deterministic work and LLM work."
+
+  "Everything in green — scan, parse, the dependency graph, dead code
+   detection, security static passes — runs at zero LLM cost. It's
+   just code, running fast and producing ground-truth results."
+
+  "The LLM only handles what static analysis genuinely cannot: writing
+   the narrative, understanding semantic logic in security findings,
+   and generating plain-English summaries."
+
+  "This isn't just a cost optimization. It makes the output more
+   accurate. The LLM is given AST-extracted ground truth — actual
+   function names, actual import paths — and told to annotate it.
+   It can't hallucinate structure that tree-sitter already found."
+
+  "The result is a pipeline that's mostly deterministic, with LLM
+   intelligence applied only where it adds unique value."
+
+
+================================================================================
+SLIDE 7 — TIERED MODEL ROUTING
+Presenter: SHREEYUT
+================================================================================
+
+  "This is the model routing system that makes the cost story work."
+
+  "We have five tiers plus a heavy pool, and every file gets routed
+   based on its token count. A 200-line config file goes to Tier 1 —
+   a tiny cheap model, basically free. A 2,000-line core module goes
+   to Tier 3 or 4 where we need more capability."
+
+  "NVIDIA Nemotron-253B is our primary model on the web platform — it's
+   on a free dev tier, which means our server cost for LLM inference
+   is currently zero."
+
+  "The auto-cascade is what makes this robust: if the primary model
+   hits a rate limit, Arkhe immediately drops to the next model in
+   that tier without any waiting, any manual config, or any error
+   surfaced to the user. Cooldowns persist in SQLite across restarts."
+
+  "This is why a 500-file repo doesn't cost $30 per run. Most files
+   hit cheap or free tiers. The expensive models only see the files
+   that actually need them."
+
+
+================================================================================
+SLIDE 8 — NEAR-DETERMINISTIC RESULTS
+Presenter: SHREEYUT
+================================================================================
+
+  "This slide is about output quality — specifically, how we prevent
+   the LLM from hallucinating things."
+
+  "The AST-first approach is the key one. Before any LLM call, tree-sitter
+   has already extracted every function name, class, import, and call
+   relationship in the file. We inject those verbatim into the prompt
+   and tell the model: use only these names. Never invent."
+
+  "Early versions of Arkhe would produce docs that mentioned functions
+   called 'init_client' or 'TreeSitterParser' — functions that didn't
+   exist. Classic LLM hallucination. The AST grounding eliminated that."
+
+  "The quality scoring system is something I'm particularly proud of.
+   Every file analysis gets scored zero to one based on how much it
+   actually references the real code structure. If a file scores below
+   0.35, it automatically gets re-analyzed with a larger output budget.
+   This catches the cases where the model produced something too vague
+   or too short to be useful."
+
+  "And the SHA-256 cache means that on a re-run, we only spend compute
+   on what actually changed. Touch one file, one LLM call, not two hundred."
+
+
+================================================================================
+SLIDE 9 — CODEBASE MAP DEEP DIVE
+Presenter: SHREEYUT
+================================================================================
+
+  "The CODEBASE_MAP is the flagship output. It's what a senior dev would
+   write if you gave them two days and told them to document everything."
+
+  "The synthesis step is where the magic happens. After all the per-file
+   analyses come back, the heavy pool model — Nemotron-253B — reads the
+   full set of batch reports plus the AST-extracted import graph, and
+   writes one coherent narrative. One call. It sees the whole picture."
+
+  "The sections it generates aren't just descriptions of files. It writes
+   about how data flows through the system, which modules are load-bearing,
+   what the implicit contracts between components are, and where the
+   technical debt lives."
+
+  "We self-test on Arkhe itself — we run the tool on its own codebase.
+   The CODEBASE_MAP it produces is accurate. We've read it. It correctly
+   identified the dispatcher as the rate-limiting component and called out
+   the SQLite cache as a single-process bottleneck. That's exactly right."
+
+
+================================================================================
+SLIDE 10 — DEPENDENCY MAP DEEP DIVE
+Presenter: SHREEYUT
+================================================================================
+
+  "The dependency map is the only output that's completely deterministic —
+   no LLM involved at any step. Same repo, same commit, always produces
+   the same graph."
+
+  "It's an interactive D3.js force graph. Every file is a node. Every
+   import statement is a directed edge. The color of each node is its
+   cyclomatic complexity — green for simple, red for complex."
+
+  "The import resolution was harder than it sounds. Python has dotted
+   module paths and relative imports. JavaScript has relative paths
+   with and without extensions, index.js conventions, and TypeScript
+   path aliases. We handle all of these with separate resolution logic
+   per language."
+
+  "What makes this practically useful: you can instantly spot the hub
+   files — the ones everything else imports. Those are your highest-risk
+   files for changes. You can see circular dependencies as cycles in the
+   graph. And you can click any node and see exactly what its blast
+   radius would be if you changed it."
+
+
+================================================================================
+SLIDE 11 — SECURITY REPORT DEEP DIVE
+Presenter: SHREEYUT
+================================================================================
+
+  "The security report uses three passes — and the order matters."
+
+  "Bandit runs first on Python files. It's a static AST-based tool that
+   produces CWE-tagged findings. We tuned it to skip the noisy rules —
+   B404, B603, B607 — which flag subprocess usage. Arkhe is an analysis
+   tool that runs subprocesses by design. We'd be flagging our own code."
+
+  "Semgrep runs second. It covers 30+ languages with OWASP Top 10
+   patterns. This is where we catch things Bandit can't — SQL injection
+   in TypeScript, path traversal in Go, SSRF in any language."
+
+  "The LLM runs third, and only for what static analysis genuinely misses:
+   authentication logic, SSRF where the URL construction is spread across
+   multiple functions, business logic that's technically valid code but
+   semantically wrong."
+
+  "The output format — FILE / SEVERITY / ISSUE / CODE / FIX — is
+   structured so it can be parsed programmatically. You could pipe this
+   into a CI step that fails the build on HIGH severity findings."
+
+
+================================================================================
+SLIDE 12 — DEAD CODE + BLAST RADIUS
+Presenter: SHREEYUT
+================================================================================
+
+  "Two features on one slide because they share the same underlying
+   data structure: the call graph."
+
+  "Dead code detection: we scan every symbol in the codebase and check
+   whether it appears as a callee in the call graph. If yes, it's live.
+   If no, we do a cross-file regex scan. If still nothing, Vulture gets
+   a look. Three passes."
+
+  "The number I'm proud of: we went from 28 flagged symbols down to 4
+   genuine dead code findings. That 24-symbol reduction came entirely
+   from the decorator awareness — FastAPI routes decorated with @app.get
+   look dead because nothing in Python code calls them directly. They're
+   called by the HTTP framework. We detect those decorators and skip them."
+
+  "Blast radius is the reverse problem: instead of 'what calls this?'
+   it's 'what does this break if it changes?' We use NetworkX to walk
+   the dependency graph in reverse — not just direct importers, but
+   full transitive dependents. Change a shared utility and you'll see
+   every module in the chain, all the way out."
+
+  "Without this, you're merging PRs blind. You don't know you just broke
+   12 downstream modules until CI fails — or worse, until production."
+
+
+================================================================================
+SLIDE 13 — AWS ARCHITECTURE
+Presenter: OM
+================================================================================
+
+  "This is how the web platform is deployed. We built this from scratch
+   over a few sessions."
+
+  "EC2 t3.micro running FastAPI behind Nginx with Let's Encrypt for SSL.
+   RDS PostgreSQL for job records and the result cache. S3 for storing
+   output files per job."
+
+  "The architecture is intentionally simple. No Kubernetes, no Lambda,
+   no message queues yet. One server, managed state in Postgres, files
+   in S3. That's enough to handle real traffic at this stage."
+
+  "The cost line at the bottom is real: the entire AWS stack costs us
+   approximately twelve dollars per year. EC2 and RDS are on the 12-month
+   free tier. S3 is free tier. The only thing we pay for is the domain."
+
+  "When the free tier expires in December 2026, it goes to roughly
+   thirty to fifty dollars a month — which should be covered by revenue
+   well before then."
+
+
+================================================================================
+SLIDE 14 — DELIVERY CHANNELS
+Presenter: OM
+================================================================================
+
+  "We have two ways to use Arkhe, and they're designed for different users."
+
+  "The CLI is for developers who want full control. You bring your own
+   API keys, it runs entirely on your machine, nothing leaves your
+   environment. Private repos are supported. There's no account, no
+   rate limits from us, no dependency on our infrastructure at all.
+   It's genuinely free forever — we don't pay inference costs because
+   you do with your own keys."
+
+  "The web platform is for people who want to paste a URL and get a result
+   without setting anything up. You don't need API keys, you don't need
+   to install anything. Free tier is rate-limited but functional.
+   Pro is fifteen dollars a month."
+
+  "The separation was a deliberate product decision. We didn't try to
+   make one product serve both use cases with compromises. Developers
+   who want local control get local control. Non-technical stakeholders
+   who want to paste a URL get that experience."
+
+
+================================================================================
+SLIDE 15 — BUSINESS MODEL
+Presenter: OM
+================================================================================
+
+  "The unit economics here are unusual for an AI product — in a good way."
+
+  "Most AI tools pay inference costs that scale with every user. We don't
+   — CLI users bring their own keys, so adding a thousand CLI users adds
+   zero marginal cost to us. The only cost that scales is web platform
+   usage, and we control that with rate limits on the free tier."
+
+  "At a thousand Pro subscribers, that's fifteen thousand dollars MRR
+   against roughly forty dollars of infrastructure. That's not a typo."
+
+  "The pricing tiers are designed so the free experience is genuinely
+   useful — not a crippled demo. Free CLI is unlimited. Free web is
+   rate-limited but real. We want developers to use it, trust it, and
+   then upgrade when they need private repos or faster queues."
+
+  "Enterprise pricing is where the real revenue is — onboarding
+   automation and compliance documentation are budget items that
+   engineering managers can actually get approved."
+
+
+================================================================================
+SLIDE 16 — COMPETITIVE LANDSCAPE
+Presenter: OM
+================================================================================
+
+  "CodeSee is the most important competitor to understand — because
+   they're gone. They shut down in 2024 after raising real money. Their
+   users are actively looking for a replacement right now. That's not
+   a hypothetical market, those are real developers with a real need
+   and no solution."
+
+  "Sourcegraph is expensive — $49 per user per month. They've essentially
+   priced themselves out of the SMB market and are going upmarket. That
+   leaves a large gap we occupy."
+
+  "Greptile is the closest funded analog. They're YC-backed, they do
+   AI codebase understanding. But they're query-only — you ask a question,
+   you get an answer. No persistent artifacts, no security report, no
+   dependency graph. Every interaction is ephemeral."
+
+  "Swimm is the closest direct competitor. They raised twenty-five million.
+   They've survived where CodeSee didn't because they embedded in the
+   workflow. That's the lesson — tools that integrate into CI and run
+   automatically retain users. Standalone dashboards don't."
+
+  "Our position: we produce what all three tried to sell, we run
+   automatically, and we start free."
+
+
+================================================================================
+SLIDE 17 — CLOSING
+Presenter: SHREEYUT + OM (together)
+================================================================================
+
+SHREEYUT:
+  "To summarize what we built: seven output types, seven languages,
+   a five-stage pipeline, five model tiers, two caching layers,
+   and fifty-five passing tests with CI on every push."
+
+OM:
+  "It's live. It's deployed on AWS. We're using it ourselves.
+   The infrastructure cost is twelve dollars a year."
+
+SHREEYUT:
+  "The tool analyzes its own codebase — we run Arkhe on Arkhe.
+   The output is accurate. That's how we know it works."
+
+OM:
+  "We're happy to take questions."
+
+
+================================================================================
+GENERAL TIPS
+================================================================================
+
+- Don't read the slides. The slides are for the audience. Your job is
+  to add context, decisions, and story that isn't on screen.
+
+- When a slide has numbers, say them out loud with emphasis. Pause
+  after "zero tools" or "$12 a year" — let it land.
+
+- If asked "why not just use ChatGPT?": token limits, no full repo
+  context, no persistent output, no static analysis layer. ChatGPT
+  sees a slice. Arkhe processes the whole thing.
+
+- If asked about competitors: CodeSee is the cleanest answer. Real
+  company, real funding, real shutdown. Their users need something.
+
+- If asked about monetization: BYOK is the key. We never pay inference
+  costs for CLI users. The margin on Pro is essentially the full $15.
+
+- If asked "what's next?": GitHub webhook integration so it runs
+  automatically on every PR. That's the retention mechanism.
+
+================================================================================
