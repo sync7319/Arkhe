@@ -8,15 +8,16 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --bg:        #131720;
-  --bg2:       #1a2030;
-  --surface:   rgba(255,255,255,0.055);
-  --surface-hi:rgba(255,255,255,0.10);
-  --border:    rgba(255,255,255,0.09);
-  --border-hi: rgba(16,185,129,0.35);
-  --text:      #eef0f3;
-  --text-2:    #8a96a8;
-  --text-3:    #4a5568;
+  --bg:        #0d1117;
+  --bg2:       #161b22;
+  --bg3:       #1c2333;
+  --surface:   rgba(255,255,255,0.05);
+  --surface-hi:rgba(255,255,255,0.09);
+  --border:    rgba(255,255,255,0.08);
+  --border-hi: rgba(16,185,129,0.4);
+  --text:      #e6edf3;
+  --text-2:    #8b949e;
+  --text-3:    #3d444d;
   --accent:    #10b981;
   --accent-hi: #34d399;
   --accent-bg: rgba(16,185,129,0.10);
@@ -24,762 +25,825 @@
   --blue-bg:   rgba(96,165,250,0.10);
   --purple:    #a78bfa;
   --purple-bg: rgba(167,139,250,0.10);
+  --orange:    #fb923c;
+  --orange-bg: rgba(251,146,60,0.10);
   --red:       #f87171;
   --red-bg:    rgba(248,113,113,0.10);
   --yellow:    #fbbf24;
+  --yellow-bg: rgba(251,191,36,0.10);
 }
 
-html, body {
-  width: 100%; height: 100%;
-  overflow: hidden;
-  background: var(--bg);
-  color: var(--text);
-  font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Helvetica, Arial, sans-serif;
-  -webkit-font-smoothing: antialiased;
-}
+html, body { width:100%; height:100%; overflow:hidden; background:var(--bg); color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"Inter","Segoe UI",Helvetica,Arial,sans-serif;
+  -webkit-font-smoothing:antialiased; }
 
-/* ─── Canvas noise texture ─── */
-body::before {
-  content: '';
-  position: fixed; inset: 0;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
-  pointer-events: none; z-index: 0; opacity: 0.6;
-}
+/* Ambient glow */
+.orb { position:fixed; border-radius:50%; pointer-events:none; z-index:0; filter:blur(90px); opacity:0; transition:opacity 0.8s; }
+.orb-1 { width:60vw; height:55vh; top:-25vh; right:-20vw; background:radial-gradient(circle,rgba(16,185,129,0.10),transparent 70%); }
+.orb-2 { width:40vw; height:40vh; bottom:-15vh; left:-10vw; background:radial-gradient(circle,rgba(96,165,250,0.07),transparent 70%); }
+body.loaded .orb { opacity:1; }
 
-/* ─── Ambient glow orbs ─── */
-.orb {
-  position: fixed;
-  border-radius: 50%;
-  pointer-events: none;
-  z-index: 0;
-  filter: blur(80px);
-  opacity: 0;
-  transition: opacity 0.6s ease;
-}
-.orb-1 { width: 55vw; height: 55vh; top: -20vh; right: -15vw; background: radial-gradient(circle, rgba(16,185,129,0.12), transparent 70%); }
-.orb-2 { width: 40vw; height: 40vh; bottom: -15vh; left: -10vw;  background: radial-gradient(circle, rgba(96,165,250,0.08), transparent 70%); }
-.orb-3 { width: 30vw; height: 30vh; top: 30vh;   left: 30vw;    background: radial-gradient(circle, rgba(167,139,250,0.07), transparent 70%); }
-body.loaded .orb { opacity: 1; }
-
-/* ─── Deck ─── */
-#deck { width: 100vw; height: 100vh; position: relative; overflow: hidden; }
-
+/* Deck */
+#deck { width:100vw; height:100vh; position:relative; overflow:hidden; }
 .slide {
-  position: absolute; inset: 0;
-  display: flex; flex-direction: column; justify-content: center;
-  padding: 4.5vh 7vw;
-  opacity: 0;
-  transform: translateX(48px) scale(0.99);
-  transition: opacity 0.5s cubic-bezier(.4,0,.2,1), transform 0.5s cubic-bezier(.4,0,.2,1);
-  pointer-events: none;
-  z-index: 1;
+  position:absolute; inset:0; display:flex; flex-direction:column; justify-content:center;
+  padding:4vh 6.5vw; opacity:0; transform:translateX(40px) scale(0.99);
+  transition:opacity 0.45s cubic-bezier(.4,0,.2,1), transform 0.45s cubic-bezier(.4,0,.2,1);
+  pointer-events:none; z-index:1;
 }
-.slide.active  { opacity: 1; transform: translateX(0) scale(1); pointer-events: all; }
-.slide.exit    { opacity: 0; transform: translateX(-48px) scale(0.99); }
+.slide.active  { opacity:1; transform:translateX(0) scale(1); pointer-events:all; }
+.slide.exit    { opacity:0; transform:translateX(-40px) scale(0.99); }
 
-/* ─── Progress bar ─── */
-#progress {
-  position: fixed; top: 0; left: 0; height: 2.5px;
-  background: linear-gradient(90deg, var(--accent), var(--accent-hi));
-  transition: width 0.45s cubic-bezier(.4,0,.2,1);
-  z-index: 200;
-  box-shadow: 0 0 12px rgba(16,185,129,0.6);
-}
+/* Progress */
+#progress { position:fixed; top:0; left:0; height:2.5px; background:linear-gradient(90deg,var(--accent),var(--accent-hi)); transition:width 0.45s cubic-bezier(.4,0,.2,1); z-index:200; box-shadow:0 0 10px rgba(16,185,129,0.5); }
 
-/* ─── Slide counter ─── */
-#slide-num {
-  position: fixed; top: 1.2rem; right: 2rem;
-  font-size: 0.68rem; color: var(--text-3);
-  z-index: 100; font-variant-numeric: tabular-nums;
-  letter-spacing: 0.05em;
-}
+/* Top bar for non-cover slides */
+.slide-topbar { position:absolute; top:0; left:0; right:0; height:3px; background:linear-gradient(90deg,var(--accent),transparent); opacity:0.4; }
 
-/* ─── Nav controls ─── */
-#controls {
-  position: fixed; bottom: 1.8rem; right: 2.2rem;
-  display: flex; align-items: center; gap: 0.8rem; z-index: 100;
-}
-#slide-counter { font-size: 0.7rem; color: var(--text-2); min-width: 44px; text-align: center; font-variant-numeric: tabular-nums; }
-.nav-btn {
-  width: 34px; height: 34px; border-radius: 8px;
-  background: var(--surface); border: 1px solid var(--border);
-  color: var(--text-2); cursor: pointer; font-size: 0.9rem;
-  display: flex; align-items: center; justify-content: center;
-  transition: all 0.2s; user-select: none;
-}
-.nav-btn:hover:not(:disabled) { background: var(--accent-bg); border-color: var(--border-hi); color: var(--accent); }
-.nav-btn:disabled { opacity: 0.25; cursor: default; }
+#slide-num { position:fixed; top:1rem; right:1.8rem; font-size:0.65rem; color:var(--text-3); z-index:100; font-variant-numeric:tabular-nums; letter-spacing:0.05em; }
 
-/* ─── Hint ─── */
-#hint {
-  position: fixed; bottom: 1.8rem; left: 50%; transform: translateX(-50%);
-  font-size: 0.65rem; color: var(--text-3); letter-spacing: 0.08em;
-  text-transform: uppercase; z-index: 100;
-  opacity: 1; transition: opacity 1s;
-}
-#hint.gone { opacity: 0; pointer-events: none; }
+/* Controls */
+#controls { position:fixed; bottom:1.6rem; right:1.8rem; display:flex; align-items:center; gap:0.7rem; z-index:100; }
+#slide-counter { font-size:0.68rem; color:var(--text-2); min-width:44px; text-align:center; font-variant-numeric:tabular-nums; }
+.nav-btn { width:32px; height:32px; border-radius:7px; background:var(--surface); border:1px solid var(--border); color:var(--text-2); cursor:pointer; font-size:0.85rem; display:flex; align-items:center; justify-content:center; transition:all 0.18s; }
+.nav-btn:hover:not(:disabled) { background:var(--accent-bg); border-color:var(--border-hi); color:var(--accent); }
+.nav-btn:disabled { opacity:0.2; cursor:default; }
 
-/* ══════════════════════════════════
-   TYPOGRAPHY
-══════════════════════════════════ */
-.eyebrow {
-  font-size: 0.65rem; font-weight: 700; letter-spacing: 0.14em;
-  text-transform: uppercase; color: var(--accent);
-  margin-bottom: 0.85rem;
-  display: flex; align-items: center; gap: 0.5rem;
-}
-.eyebrow::before {
-  content: ''; display: block;
-  width: 20px; height: 2px;
-  background: var(--accent); border-radius: 1px; flex-shrink: 0;
-}
+#hint { position:fixed; bottom:1.6rem; left:50%; transform:translateX(-50%); font-size:0.62rem; color:var(--text-3); letter-spacing:0.09em; text-transform:uppercase; z-index:100; transition:opacity 0.8s; }
+#hint.gone { opacity:0; pointer-events:none; }
 
-h1 {
-  font-size: clamp(2.6rem, 5.5vw, 4.2rem);
-  font-weight: 800; letter-spacing: -0.035em; line-height: 1.06;
-}
-h1 em { color: var(--accent); font-style: normal; }
+/* ── Typography ── */
+.eyebrow { font-size:0.62rem; font-weight:700; letter-spacing:0.14em; text-transform:uppercase; color:var(--accent); margin-bottom:0.8rem; display:flex; align-items:center; gap:0.5rem; }
+.eyebrow::before { content:''; display:block; width:18px; height:2px; background:var(--accent); border-radius:1px; flex-shrink:0; }
 
-h2 {
-  font-size: clamp(1.6rem, 3.2vw, 2.4rem);
-  font-weight: 750; letter-spacing: -0.025em; line-height: 1.18;
-  margin-bottom: 1.6rem;
-}
-h2 em { color: var(--accent); font-style: normal; }
+h1 { font-size:clamp(2.8rem,5.5vw,4.5rem); font-weight:800; letter-spacing:-0.035em; line-height:1.04; }
+h1 em { color:var(--accent); font-style:normal; }
+h1 .dot { color:var(--accent); }
 
-.subtitle {
-  font-size: clamp(0.95rem, 1.8vw, 1.2rem);
-  color: var(--text-2); margin-top: 1.2rem; line-height: 1.6; max-width: 680px;
-}
+h2 { font-size:clamp(1.5rem,3vw,2.3rem); font-weight:750; letter-spacing:-0.025em; line-height:1.18; margin-bottom:1.5rem; }
+h2 em { color:var(--accent); font-style:normal; }
 
-p {
-  font-size: clamp(0.8rem, 1.3vw, 0.93rem);
-  color: var(--text-2); line-height: 1.75; margin-bottom: 0.5rem;
-}
-p strong { color: var(--text); font-weight: 600; }
+.subtitle { font-size:clamp(0.9rem,1.7vw,1.15rem); color:var(--text-2); margin-top:1rem; line-height:1.65; max-width:660px; }
+p { font-size:clamp(0.78rem,1.25vw,0.9rem); color:var(--text-2); line-height:1.75; margin-bottom:0.45rem; }
+p strong { color:var(--text); font-weight:600; }
 
-/* ══════════════════════════════════
-   LAYOUT PRIMITIVES
-══════════════════════════════════ */
-.cols-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.8rem; }
-.cols-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1.3rem; }
+/* ── Layout ── */
+.cols-2 { display:grid; grid-template-columns:1fr 1fr; gap:1.6rem; }
+.cols-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:1.2rem; }
 
-/* ─── Glass card ─── */
-.card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 1.3rem 1.5rem;
-  backdrop-filter: blur(6px);
-}
-.card.accent-border { border-color: rgba(16,185,129,0.28); }
-.card.blue-border   { border-color: rgba(96,165,250,0.28); }
-.card h3 { font-size: 0.88rem; font-weight: 700; color: var(--text); margin-bottom: 0.45rem; }
+/* ── Card ── */
+.card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:1.2rem 1.4rem; }
+.card.ab { border-color:rgba(16,185,129,0.25); }
+.card.bb { border-color:rgba(96,165,250,0.22); }
+.card.ob { border-color:rgba(251,146,60,0.22); }
+.card h3 { font-size:0.85rem; font-weight:700; color:var(--text); margin-bottom:0.4rem; }
 
-/* ─── Pill tags ─── */
-.tag {
-  display: inline-flex; align-items: center;
-  padding: 0.18rem 0.6rem;
-  border-radius: 999px; font-size: 0.68rem; font-weight: 600;
-  letter-spacing: 0.03em;
-}
-.tag         { background: var(--accent-bg);  border: 1px solid rgba(16,185,129,0.3);  color: var(--accent); }
-.tag.blue    { background: var(--blue-bg);    border: 1px solid rgba(96,165,250,0.3);   color: var(--blue); }
-.tag.purple  { background: var(--purple-bg);  border: 1px solid rgba(167,139,250,0.3);  color: var(--purple); }
-.tag.red     { background: var(--red-bg);     border: 1px solid rgba(248,113,113,0.3);  color: var(--red); }
+/* ── Tags ── */
+.tag { display:inline-flex; align-items:center; padding:0.16rem 0.55rem; border-radius:999px; font-size:0.66rem; font-weight:600; letter-spacing:0.03em; }
+.tag      { background:var(--accent-bg);  border:1px solid rgba(16,185,129,0.28); color:var(--accent); }
+.tag.blue { background:var(--blue-bg);    border:1px solid rgba(96,165,250,0.28);  color:var(--blue); }
+.tag.pur  { background:var(--purple-bg);  border:1px solid rgba(167,139,250,0.28); color:var(--purple); }
+.tag.red  { background:var(--red-bg);     border:1px solid rgba(248,113,113,0.28); color:var(--red); }
+.tag.ora  { background:var(--orange-bg);  border:1px solid rgba(251,146,60,0.28);  color:var(--orange); }
+.tag.yel  { background:var(--yellow-bg);  border:1px solid rgba(251,191,36,0.28);  color:var(--yellow); }
 
-/* ─── Bullet list ─── */
-.bullets { list-style: none; }
-.bullets li {
-  display: flex; align-items: flex-start; gap: 0.7rem;
-  font-size: clamp(0.8rem, 1.25vw, 0.9rem);
-  color: var(--text-2); line-height: 1.65; margin-bottom: 0.55rem;
-}
-.bullets li .arr { color: var(--accent); font-weight: 700; flex-shrink: 0; margin-top: 1px; }
-.bullets li strong { color: var(--text); font-weight: 600; }
+/* ── Bullets ── */
+.bullets { list-style:none; }
+.bullets li { display:flex; align-items:flex-start; gap:0.65rem; font-size:clamp(0.78rem,1.2vw,0.88rem); color:var(--text-2); line-height:1.65; margin-bottom:0.5rem; }
+.bullets li .arr { color:var(--accent); font-weight:700; flex-shrink:0; margin-top:1px; }
+.bullets li strong { color:var(--text); font-weight:600; }
 
-/* ─── Code block ─── */
-.code {
-  background: rgba(0,0,0,0.4);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 0.9rem 1.1rem;
-  font-family: "SF Mono","Fira Code","Cascadia Code",monospace;
-  font-size: 0.75rem; color: var(--accent-hi); line-height: 1.85;
-  white-space: pre; overflow-x: auto;
-}
-.code .cm { color: var(--text-3); }
-.code .kw { color: var(--text-2); }
-.code .hl { color: var(--accent-hi); }
-.mono { font-family: "SF Mono","Fira Code",monospace; font-size: 0.78rem; color: var(--accent-hi); }
+/* ── Code ── */
+.code { background:rgba(0,0,0,0.45); border:1px solid var(--border); border-radius:9px; padding:0.85rem 1.1rem; font-family:"SF Mono","Fira Code","Cascadia Code",monospace; font-size:0.73rem; color:var(--accent-hi); line-height:1.9; white-space:pre; }
+.code .cm { color:var(--text-3); }
+.code .kw { color:var(--text-2); }
+.mono { font-family:"SF Mono","Fira Code",monospace; font-size:0.76rem; color:var(--accent-hi); }
 
-/* ─── Stat ─── */
-.stat .num {
-  font-size: clamp(2rem, 4vw, 3.2rem); font-weight: 800;
-  color: var(--accent); letter-spacing: -0.04em; line-height: 1;
-}
-.stat .label {
-  font-size: 0.68rem; color: var(--text-2);
-  text-transform: uppercase; letter-spacing: 0.09em; margin-top: 0.2rem;
-}
-.stats-row { display: flex; gap: 2.5rem; flex-wrap: wrap; }
+/* ── Stats ── */
+.stat .num { font-size:clamp(2rem,4vw,3.2rem); font-weight:800; color:var(--accent); letter-spacing:-0.04em; line-height:1; }
+.stat .label { font-size:0.66rem; color:var(--text-2); text-transform:uppercase; letter-spacing:0.09em; margin-top:0.2rem; }
+.stat-grid { display:grid; grid-template-columns:1fr 1fr; gap:1rem; }
+.stat-card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:1.5rem; text-align:center; }
+.stat-card .num { font-size:clamp(2.2rem,4.5vw,3.5rem); font-weight:800; color:var(--accent); letter-spacing:-0.04em; line-height:1; display:block; }
+.stat-card .label { font-size:0.72rem; color:var(--text-2); margin-top:0.5rem; display:block; line-height:1.4; }
 
 /* ── Divider ── */
-.divider { width: 44px; height: 3px; background: var(--accent); border-radius: 2px; margin: 1.6rem 0; }
-.divider.center { margin-left: auto; margin-right: auto; }
+.divider { width:40px; height:3px; background:var(--accent); border-radius:2px; margin:1.4rem 0; }
+.divider.c { margin-left:auto; margin-right:auto; }
 
-/* ══════════════════════════════════
-   SLIDE-SPECIFIC COMPONENTS
-══════════════════════════════════ */
-
-/* ── Cover ── */
-#s-cover { justify-content: center; }
-.brand { display: flex; align-items: center; gap: 0.9rem; margin-bottom: 2rem; }
-.brand-icon {
-  width: 48px; height: 48px; border-radius: 11px;
-  background: linear-gradient(135deg, #1a2535, #131720);
-  border: 1px solid rgba(16,185,129,0.4);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 1.6rem; font-weight: 800; color: var(--accent);
-  box-shadow: 0 0 20px rgba(16,185,129,0.15);
-}
-.brand-name { font-size: 1.1rem; font-weight: 700; letter-spacing: -0.01em; color: var(--text-2); }
-.cover-meta { font-size: 0.75rem; color: var(--text-3); margin-top: 2.5rem; }
-.cover-meta span { color: var(--text-2); font-weight: 600; }
-.cover-tags { display: flex; gap: 0.6rem; margin-top: 1.8rem; flex-wrap: wrap; }
-
-/* ── Output grid ── */
-.output-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.65rem; }
-.output-item {
-  display: flex; align-items: flex-start; gap: 0.85rem;
-  background: var(--surface); border: 1px solid var(--border);
-  border-radius: 10px; padding: 0.8rem 1rem;
-  transition: border-color 0.2s;
-}
-.output-item:hover { border-color: rgba(16,185,129,0.25); }
-.output-dot {
-  width: 7px; height: 7px; border-radius: 50%;
-  background: var(--accent); flex-shrink: 0; margin-top: 4px;
-}
-.output-name { font-family: "SF Mono","Fira Code",monospace; font-size: 0.7rem; color: var(--accent); display: block; margin-bottom: 2px; }
-.output-desc { font-size: 0.76rem; color: var(--text-2); line-height: 1.4; }
-
-/* ── Pipeline ── */
-.pipeline-visual {
-  display: flex; align-items: center; gap: 0; margin-bottom: 1.8rem;
-  background: var(--surface); border: 1px solid var(--border);
-  border-radius: 12px; padding: 0.7rem 1rem; width: fit-content;
-}
-.pipeline-step {
-  background: var(--accent-bg); border: 1px solid rgba(16,185,129,0.25);
-  border-radius: 7px; padding: 0.45rem 0.9rem;
-  font-size: 0.75rem; font-weight: 700; color: var(--accent);
-  white-space: nowrap;
-}
-.pipeline-arrow { color: var(--text-3); font-size: 0.85rem; padding: 0 0.45rem; flex-shrink: 0; }
+/* ── Callout ── */
+.callout { background:var(--accent-bg); border:1px solid rgba(16,185,129,0.2); border-radius:9px; padding:0.8rem 1rem; }
+.callout p { font-size:0.8rem; margin:0; }
+.callout.blue { background:var(--blue-bg); border-color:rgba(96,165,250,0.2); }
+.callout.strong { background:rgba(16,185,129,0.15); border-color:rgba(16,185,129,0.35); }
+.callout.strong p { color:var(--accent-hi); font-weight:600; font-size:0.82rem; text-align:center; }
 
 /* ── Left accent block ── */
-.accent-block {
-  border-left: 2.5px solid var(--accent);
-  padding-left: 1rem; margin-bottom: 1.1rem;
-}
-.accent-block h3 { font-size: 0.85rem; font-weight: 700; color: var(--text); margin-bottom: 0.3rem; }
-.accent-block p  { font-size: 0.8rem; margin: 0; }
+.ablock { border-left:2.5px solid var(--accent); padding-left:1rem; margin-bottom:1rem; }
+.ablock.blue { border-color:var(--blue); }
+.ablock.ora  { border-color:var(--orange); }
+.ablock.yel  { border-color:var(--yellow); }
+.ablock h3 { font-size:0.82rem; font-weight:700; color:var(--text); margin-bottom:0.28rem; }
+.ablock h3.g { color:var(--accent); }
+.ablock h3.b { color:var(--blue); }
+.ablock h3.o { color:var(--orange); }
+.ablock h3.y { color:var(--yellow); }
+.ablock p { font-size:0.78rem; margin:0; }
 
-/* ── Infra grid ── */
-.infra-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.9rem; }
-.infra-card {
-  background: var(--surface); border: 1px solid var(--border);
-  border-radius: 12px; padding: 1.1rem; text-align: center;
-}
-.infra-icon { font-size: 1.5rem; display: block; margin-bottom: 0.5rem; }
-.infra-label { font-size: 0.75rem; font-weight: 700; color: var(--text); display: block; margin-bottom: 0.25rem; }
-.infra-detail { font-size: 0.68rem; color: var(--text-2); line-height: 1.45; }
+/* ── Fragment table (competitor) ── */
+.frag-table { border-radius:11px; overflow:hidden; border:1px solid var(--border); }
+.frag-row { display:grid; grid-template-columns:1.3fr 2.5fr; }
+.frag-row + .frag-row { border-top:1px solid var(--border); }
+.frag-row > div { padding:0.65rem 1rem; font-size:0.8rem; }
+.frag-row.head > div { background:rgba(16,185,129,0.07); font-size:0.62rem; font-weight:700; text-transform:uppercase; letter-spacing:0.1em; color:var(--text-3); }
+.frag-row:not(.head) > div:first-child { color:var(--accent); font-weight:700; }
+.frag-row:not(.head) > div:last-child { color:var(--text-2); }
+.frag-row:nth-child(even):not(.head) > div { background:rgba(255,255,255,0.018); }
 
-/* ── Quality cards ── */
-.qm-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.9rem; }
-.qm-card {
-  background: var(--surface); border: 1px solid var(--border);
-  border-radius: 12px; padding: 1.1rem 1.2rem;
-}
-.qm-label {
-  font-size: 0.68rem; font-weight: 700; color: var(--accent);
-  text-transform: uppercase; letter-spacing: 0.09em; margin-bottom: 0.45rem;
-}
+/* ── Cost table ── */
+.cost-table { border-radius:11px; overflow:hidden; border:1px solid var(--border); }
+.cost-row { display:grid; grid-template-columns:1.4fr 1fr; }
+.cost-row + .cost-row { border-top:1px solid var(--border); }
+.cost-row > div { padding:0.6rem 0.9rem; font-size:0.8rem; }
+.cost-row.head > div { background:rgba(16,185,129,0.07); font-size:0.62rem; font-weight:700; text-transform:uppercase; letter-spacing:0.1em; color:var(--text-3); }
+.cost-row:not(.head) > div:first-child { color:var(--text); font-weight:600; }
+.cost-row:not(.head) > div:last-child { color:var(--accent); font-weight:700; }
+.cost-row:nth-child(even):not(.head) > div { background:rgba(255,255,255,0.018); }
+.cost-row.bad > div:last-child { color:var(--red) !important; }
 
-/* ── Tier table ── */
-.tier-table { border-radius: 12px; overflow: hidden; border: 1px solid var(--border); }
-.tier-row { display: grid; grid-template-columns: 1.1fr 0.9fr 2fr; }
-.tier-row + .tier-row { border-top: 1px solid var(--border); }
-.tier-row > div { padding: 0.65rem 0.9rem; font-size: 0.8rem; }
-.tier-head > div { background: rgba(16,185,129,0.07); font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.09em; color: var(--text-3); }
-.tier-body > div:first-child { color: var(--text); font-weight: 600; }
-.tier-body > div:nth-child(2){ color: var(--accent); font-weight: 700; }
-.tier-body > div:last-child   { color: var(--text-2); }
-.tier-body:nth-child(even) > div { background: rgba(255,255,255,0.02); }
+/* ── Pipeline visual ── */
+.pipeline { display:flex; align-items:stretch; gap:0; border-radius:11px; overflow:hidden; border:1px solid var(--border); margin-bottom:1.4rem; }
+.pipeline-step { flex:1; padding:0.65rem 0.5rem; text-align:center; border-right:1px solid var(--border); }
+.pipeline-step:last-child { border-right:none; }
+.pipeline-step .ps-label { font-size:0.8rem; font-weight:700; display:block; margin-bottom:0.3rem; }
+.pipeline-step .ps-detail { font-size:0.65rem; color:var(--text-2); line-height:1.5; display:block; }
+.ps-det { background:rgba(16,185,129,0.08); }
+.ps-det .ps-label { color:var(--accent); }
+.ps-llm { background:rgba(251,146,60,0.06); }
+.ps-llm .ps-label { color:var(--orange); }
+.ps-out { background:rgba(96,165,250,0.06); }
+.ps-out .ps-label { color:var(--blue); }
 
-/* ── Competitor table ── */
-.comp-table { border-radius: 12px; overflow: hidden; border: 1px solid var(--border); }
-.comp-row { display: grid; grid-template-columns: 1.1fr 1.8fr 1.8fr; }
-.comp-row + .comp-row { border-top: 1px solid var(--border); }
-.comp-row > div { padding: 0.6rem 0.85rem; font-size: 0.76rem; line-height: 1.4; color: var(--text-2); }
-.comp-row.comp-head > div { background: rgba(16,185,129,0.07); font-size: 0.63rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.09em; color: var(--text-3); }
-.comp-row:not(.comp-head) > div:first-child { color: var(--text); font-weight: 600; }
-.comp-row:nth-child(even):not(.comp-head) > div { background: rgba(255,255,255,0.018); }
+/* ── Tier columns ── */
+.tier-cols { display:grid; grid-template-columns:repeat(6,1fr); gap:0.5rem; }
+.tier-col { border-radius:10px; overflow:hidden; border:1px solid var(--border); }
+.tier-head-cell { padding:0.6rem 0.4rem; text-align:center; font-size:0.72rem; font-weight:700; }
+.tier-head-cell .tnum { display:block; font-size:0.62rem; font-weight:600; margin-bottom:0.1rem; }
+.tier-body-cell { padding:0.5rem 0.45rem; text-align:center; }
+.tier-model { font-size:0.62rem; color:var(--text-2); line-height:1.6; display:block; }
+.tier-model:first-child { color:var(--accent); font-weight:600; }
+.tc0 .tier-head-cell { background:rgba(100,100,100,0.2); color:#aaa; }
+.tc1 .tier-head-cell { background:rgba(16,185,129,0.2); color:var(--accent); }
+.tc2 .tier-head-cell { background:rgba(16,185,129,0.3); color:var(--accent-hi); }
+.tc3 .tier-head-cell { background:rgba(251,146,60,0.2); color:var(--orange); }
+.tc4 .tier-head-cell { background:rgba(251,146,60,0.3); color:var(--orange); }
+.tch .tier-head-cell { background:rgba(248,113,113,0.2); color:var(--red); }
+.tier-footer { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:0.55rem 0.9rem; margin-top:0.7rem; }
+.tier-footer p { font-size:0.72rem; margin:0; text-align:center; color:var(--text-2); font-style:italic; }
 
-/* ── Highlight callout ── */
-.callout {
-  background: var(--accent-bg); border: 1px solid rgba(16,185,129,0.22);
-  border-radius: 10px; padding: 0.85rem 1.1rem;
-}
-.callout p { font-size: 0.82rem; margin: 0; color: var(--text-2); }
-.callout p strong { color: var(--text); }
+/* ── Output grid ── */
+.output-grid { display:grid; grid-template-columns:1fr 1fr; gap:0.6rem; }
+.output-item { display:flex; align-items:flex-start; gap:0.8rem; background:var(--surface); border:1px solid var(--border); border-radius:9px; padding:0.75rem 0.9rem; }
+.output-dot { width:6px; height:6px; border-radius:50%; background:var(--accent); flex-shrink:0; margin-top:4px; }
+.output-name { font-family:"SF Mono","Fira Code",monospace; font-size:0.68rem; color:var(--accent); display:block; margin-bottom:2px; }
+.output-desc { font-size:0.74rem; color:var(--text-2); line-height:1.4; }
 
-/* ── Closing slide ── */
-#s-close { align-items: center; text-align: center; }
-#s-close h1 { font-size: clamp(3rem, 7vw, 5.5rem); }
-#s-close .tagline { font-size: clamp(1rem, 2.2vw, 1.4rem); color: var(--text-2); margin-top: 0.9rem; font-style: italic; }
-.close-stats { display: flex; gap: 3.5rem; justify-content: center; margin-top: 2.5rem; flex-wrap: wrap; }
+/* ── Feature two-col ── */
+.feature-grid { display:grid; grid-template-columns:1fr 1fr; gap:1.5rem; height:calc(100% - 6rem); }
+.feature-col { display:flex; flex-direction:column; gap:0.85rem; }
+.feature-col h3 { font-size:0.88rem; font-weight:700; color:var(--text); margin-bottom:0.5rem; padding-bottom:0.5rem; border-bottom:1px solid var(--border); }
+.feature-col h3.g { color:var(--accent); }
 
-/* ══════════════════════════════════
-   PRINT → PDF EXPORT
-   Ctrl/Cmd + P → Save as PDF
-   Each .slide becomes one page (16:9)
-══════════════════════════════════ */
+/* ── Infra diagram ── */
+.infra-flow { display:grid; grid-template-columns:0.9fr 1.2fr 1fr 0.8fr; gap:0.7rem; align-items:start; }
+.infra-node { background:var(--bg3); border:1px solid var(--border); border-radius:9px; padding:0.75rem 0.85rem; }
+.infra-node h4 { font-size:0.78rem; font-weight:700; margin-bottom:0.3rem; }
+.infra-node h4.g { color:var(--accent); }
+.infra-node h4.b { color:var(--blue); }
+.infra-node h4.o { color:var(--orange); }
+.infra-node p { font-size:0.68rem; margin:0; line-height:1.5; }
+.infra-arrow { display:flex; align-items:center; justify-content:center; color:var(--accent); font-size:0.75rem; font-weight:700; padding:0.3rem; }
+.infra-cost-row { display:grid; grid-template-columns:1.2fr repeat(5,1fr) 1fr; gap:0; border-radius:9px; overflow:hidden; border:1px solid var(--border); margin-top:0.9rem; }
+.infra-cost-row > div { padding:0.5rem 0.6rem; font-size:0.7rem; border-right:1px solid var(--border); }
+.infra-cost-row > div:last-child { border-right:none; }
+.infra-cost-row > div:first-child { color:var(--text); font-weight:700; background:rgba(255,255,255,0.03); }
+.infra-cost-row > div:not(:first-child) { color:var(--accent); font-weight:600; text-align:center; }
+.infra-cost-row.head > div { background:rgba(16,185,129,0.07); color:var(--text-3) !important; font-size:0.6rem; font-weight:700; text-transform:uppercase; letter-spacing:0.08em; }
+
+/* ── Delivery channels ── */
+.delivery-cols { display:grid; grid-template-columns:1fr 1fr; gap:1.2rem; }
+.delivery-col { border-radius:12px; overflow:hidden; border:1px solid var(--border); }
+.delivery-head { padding:0.75rem 1rem; text-align:center; font-weight:700; font-size:0.9rem; }
+.delivery-head.cli  { background:rgba(100,100,100,0.2); color:#ccc; }
+.delivery-head.web  { background:rgba(16,185,129,0.25); color:var(--accent-hi); }
+.delivery-sub { padding:0.35rem 1rem; text-align:center; font-size:0.75rem; font-weight:700; border-bottom:1px solid var(--border); }
+.delivery-sub.cli  { color:var(--accent); background:rgba(16,185,129,0.06); }
+.delivery-sub.web  { color:var(--text); background:rgba(255,255,255,0.04); }
+.delivery-items { padding:0.8rem 1rem; display:flex; flex-direction:column; gap:0.4rem; }
+.ditem { display:flex; align-items:flex-start; gap:0.5rem; font-size:0.78rem; color:var(--text-2); }
+.ditem .chk { color:var(--accent); font-weight:700; flex-shrink:0; }
+
+/* ── Tier table (pricing) ── */
+.tier-table { border-radius:11px; overflow:hidden; border:1px solid var(--border); }
+.tier-row-p { display:grid; grid-template-columns:1fr 0.8fr 2fr; }
+.tier-row-p + .tier-row-p { border-top:1px solid var(--border); }
+.tier-row-p > div { padding:0.6rem 0.85rem; font-size:0.78rem; }
+.tier-row-p.head > div { background:rgba(16,185,129,0.07); font-size:0.6rem; font-weight:700; text-transform:uppercase; letter-spacing:0.09em; color:var(--text-3); }
+.tier-row-p:not(.head) > div:first-child { color:var(--text); font-weight:600; }
+.tier-row-p:not(.head) > div:nth-child(2) { color:var(--accent); font-weight:700; }
+.tier-row-p:not(.head) > div:last-child { color:var(--text-2); }
+.tier-row-p:nth-child(even):not(.head) > div { background:rgba(255,255,255,0.018); }
+
+/* ── Comp table ── */
+.comp-table { border-radius:11px; overflow:hidden; border:1px solid var(--border); }
+.comp-row { display:grid; grid-template-columns:1.1fr 1.8fr 1.8fr; }
+.comp-row + .comp-row { border-top:1px solid var(--border); }
+.comp-row > div { padding:0.55rem 0.85rem; font-size:0.75rem; line-height:1.4; color:var(--text-2); }
+.comp-row.ch > div { background:rgba(16,185,129,0.07); font-size:0.6rem; font-weight:700; text-transform:uppercase; letter-spacing:0.09em; color:var(--text-3); }
+.comp-row:not(.ch) > div:first-child { color:var(--text); font-weight:600; }
+.comp-row:nth-child(even):not(.ch) > div { background:rgba(255,255,255,0.018); }
+
+/* ── Cover ── */
+#s-cover { justify-content:center; }
+.cover-left { border-left:4px solid var(--accent); padding-left:1.8rem; }
+.cover-meta { font-size:0.73rem; color:var(--text-3); margin-top:2rem; }
+.cover-meta span { color:var(--text-2); font-weight:600; }
+
+/* ── Close ── */
+#s-close { align-items:center; text-align:center; }
+#s-close h1 { font-size:clamp(3rem,7vw,5.5rem); }
+.close-stats { display:flex; gap:3rem; justify-content:center; margin-top:2rem; flex-wrap:wrap; }
+
+/* ── Print ── */
 @media print {
-  @page { size: 1280px 720px; margin: 0; }
-
-  html, body {
-    overflow: visible !important;
-    width: 1280px; height: auto !important;
-    background: #131720 !important;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-  }
-
-  #controls, #hint, #progress, #slide-num { display: none !important; }
-  .orb { display: none !important; }
-
-  #deck {
-    position: static !important;
-    width: 1280px; height: auto !important;
-    overflow: visible !important;
-  }
-
-  .slide {
-    position: relative !important;
-    opacity: 1 !important;
-    transform: none !important;
-    pointer-events: all !important;
-    width: 1280px; height: 720px;
-    page-break-after: always;
-    page-break-inside: avoid;
-    display: flex !important;
-    overflow: hidden;
-  }
+  @page { size:1280px 720px; margin:0; }
+  html, body { overflow:visible !important; width:1280px; height:auto !important; background:#0d1117 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  #controls, #hint, #progress, #slide-num { display:none !important; }
+  .orb { display:none !important; }
+  #deck { position:static !important; width:1280px; height:auto !important; overflow:visible !important; }
+  .slide { position:relative !important; opacity:1 !important; transform:none !important; pointer-events:all !important; width:1280px; height:720px; page-break-after:always; page-break-inside:avoid; display:flex !important; overflow:hidden; }
 }
 </style>
 </head>
 <body>
-
 <div class="orb orb-1"></div>
 <div class="orb orb-2"></div>
-<div class="orb orb-3"></div>
-
 <div id="progress"></div>
 <div id="slide-num"></div>
 <div id="hint">← → to navigate &nbsp;·&nbsp; P to export PDF</div>
 
 <div id="deck">
 
-<!-- ══ 1. COVER ══════════════════════════════════════════════ -->
+<!-- ══ 1. COVER ══════════════════════════════ -->
 <section class="slide" id="s-cover">
-  <div class="brand">
-    <div class="brand-icon">A</div>
-    <span class="brand-name">Arkhe</span>
+  <div class="cover-left">
+    <h1>Arkhe<span class="dot">.</span></h1>
+    <div style="color:var(--accent); font-size:clamp(1rem,2.2vw,1.4rem); font-weight:600; margin-top:0.7rem;">Autonomous Codebase Intelligence</div>
+    <div class="subtitle" style="margin-top:0.6rem;">Understand any codebase instantly.<br>No manual docs. No onboarding debt.</div>
+    <div class="cover-meta" style="margin-top:1.8rem;"><span>Shreeyut Neupane &amp; Om Arvadia</span> &nbsp;·&nbsp; April 2026</div>
   </div>
-  <h1>Autonomous<br>Codebase <em>Intelligence</em></h1>
-  <div class="subtitle">
-    Point it at any repository — GitHub or local — and get AI-generated<br>
-    architecture documentation, a live dependency graph, and deep codebase<br>
-    analysis in minutes. Always current. Zero manual work.
-  </div>
-  <div class="divider"></div>
-  <div class="cover-tags">
-    <span class="tag">CLI Tool</span>
-    <span class="tag blue">Web Platform</span>
-    <span class="tag purple">Live on AWS</span>
-    <span class="tag">BYOK</span>
-    <span class="tag blue">7 Languages</span>
-  </div>
-  <div class="cover-meta"><span>Shreeyut Neupane &amp; Om Arvadia</span> &nbsp;·&nbsp; April 2026</div>
 </section>
 
-<!-- ══ 2. PROBLEM ═════════════════════════════════════════════ -->
+<!-- ══ 2. PROBLEM: Tools are fragmented ══════ -->
 <section class="slide">
+  <div class="slide-topbar"></div>
   <div class="eyebrow">The Problem</div>
-  <h2>Codebases grow.<br>Documentation <em>doesn't</em>.</h2>
-  <div class="cols-2" style="gap:2rem;">
-    <div>
-      <ul class="bullets">
-        <li><span class="arr">→</span><span><strong>New developers take 2–4 weeks to onboard</strong> to an unfamiliar codebase — reading files, tracing imports, asking the one person who remembers how it works</span></li>
-        <li><span class="arr">→</span><span><strong>Documentation is written once</strong> and becomes wrong the moment the next PR lands</span></li>
-        <li><span class="arr">→</span><span><strong>Architectural knowledge lives in people's heads</strong> — there is no artifact the team can reference when that person leaves</span></li>
-        <li><span class="arr">→</span><span><strong>CodeSee tried to solve this and shut down in 2024</strong> — validating both the size of the problem and the difficulty of doing it right</span></li>
+  <h2>AI codebase tools are<br><em>fragmented</em></h2>
+  <div class="frag-table">
+    <div class="frag-row head"><div>Tool</div><div>What it actually does</div></div>
+    <div class="frag-row"><div>GitHub Copilot</div><div>Autocomplete in the editor. Cannot explain repo architecture or produce docs.</div></div>
+    <div class="frag-row"><div>ChatGPT / Claude</div><div>Paste-and-pray. No full repo context. Token limits kill analysis above ~20 files.</div></div>
+    <div class="frag-row"><div>Sourcegraph Cody</div><div>Search and inline chat. No structured output. No architecture map.</div></div>
+    <div class="frag-row"><div>Tabnine / Continue</div><div>IDE completions only. No codebase-level understanding.</div></div>
+    <div class="frag-row"><div>Manual documentation</div><div>Stale the moment it's written. No one updates it. Devs stop trusting it.</div></div>
+  </div>
+  <div class="callout strong" style="margin-top:1rem;">
+    <p>No single tool produces a complete, structured, always-current picture of a codebase.</p>
+  </div>
+</section>
+
+<!-- ══ 3. PROBLEM: AI analysis is expensive ══ -->
+<section class="slide">
+  <div class="slide-topbar"></div>
+  <div class="eyebrow">The Problem</div>
+  <h2>Using powerful AI on codebases<br>is <em>expensive</em></h2>
+  <div class="cols-2" style="gap:1.5rem;">
+    <div class="card">
+      <h3>The naive approach</h3>
+      <ul class="bullets" style="margin-top:0.5rem;">
+        <li><span class="arr">→</span><span>Send every file to GPT-4o or Claude Sonnet</span></li>
+        <li><span class="arr">→</span><span>Frontier models process config files, CI scripts, docs</span></li>
+        <li><span class="arr">→</span><span>Same expensive model for a 10-line util as a 2K-line core module</span></li>
+        <li><span class="arr">→</span><span>Rate limits hit before analysis finishes on any real repo</span></li>
+        <li><span class="arr">→</span><span>Token costs scale linearly — 500 files = 500× the cost</span></li>
       </ul>
     </div>
-    <div style="display:flex; flex-direction:column; gap:1rem;">
-      <div class="card accent-border">
-        <h3>The onboarding tax</h3>
-        <p>A developer joining a 50k-line repo spends an estimated <strong>2–4 weeks</strong> building a mental model before they're productive. Most of that time is reading code that already has an explanation — it's just not written down anywhere.</p>
+    <div>
+      <div class="cost-table" style="margin-bottom:0.9rem;">
+        <div class="cost-row head"><div>Real token pricing (2026)</div><div>Cost</div></div>
+        <div class="cost-row"><div>GPT-4o</div><div>$15 / 1M tokens</div></div>
+        <div class="cost-row"><div>Claude Sonnet 4.6</div><div>$3 / 1M tokens</div></div>
+        <div class="cost-row"><div>500-file repo</div><div>~2M tokens</div></div>
+        <div class="cost-row"><div>Naive cost per run</div><div>$6 – $30</div></div>
+        <div class="cost-row bad"><div>At startup scale</div><div>Unsustainable</div></div>
       </div>
-      <div class="card">
-        <h3>The documentation paradox</h3>
-        <p>The teams that most need documentation — moving fast, shipping constantly — are the ones with the least time to write it. Docs fall behind from day one and never catch up.</p>
+      <div class="callout">
+        <p><strong>Arkhe's answer:</strong> expensive models are overkill for 80% of analysis work. Arkhe routes each task to the cheapest capable model — and uses free tiers by default.</p>
       </div>
     </div>
   </div>
 </section>
 
-<!-- ══ 3. WHAT ARKHE PRODUCES ════════════════════════════════ -->
+<!-- ══ 4. PROBLEM: Developer stats ═══════════ -->
 <section class="slide">
+  <div class="slide-topbar"></div>
+  <div class="eyebrow">The Problem</div>
+  <h2>Developers are <em>stuck</em></h2>
+  <div class="stat-grid">
+    <div class="stat-card">
+      <span class="num">4–8 hrs</span>
+      <span class="label">Average onboarding time to an unfamiliar codebase</span>
+    </div>
+    <div class="stat-card">
+      <span class="num">$6–$30</span>
+      <span class="label">Cost per full-repo AI analysis with frontier models (naive approach)</span>
+    </div>
+    <div class="stat-card">
+      <span class="num">0 tools</span>
+      <span class="label">Offer a complete structured map that auto-updates on every commit</span>
+    </div>
+    <div class="stat-card">
+      <span class="num">100%</span>
+      <span class="label">Of manually-written docs go stale within weeks of being written</span>
+    </div>
+  </div>
+</section>
+
+<!-- ══ 5. WHAT ARKHE PRODUCES ════════════════ -->
+<section class="slide">
+  <div class="slide-topbar"></div>
   <div class="eyebrow">The Product</div>
   <h2>Seven outputs.<br><em>Zero</em> manual work.</h2>
   <div class="output-grid">
-    <div class="output-item">
-      <div class="output-dot"></div>
-      <div><span class="output-name">CODEBASE_MAP.md</span><span class="output-desc">Narrative architecture doc — why the system is shaped the way it is, not just what exists</span></div>
-    </div>
-    <div class="output-item">
-      <div class="output-dot"></div>
-      <div><span class="output-name">DEPENDENCY_MAP.html</span><span class="output-desc">Interactive D3.js graph — every file, every dependency, complexity heatmap</span></div>
-    </div>
-    <div class="output-item">
-      <div class="output-dot"></div>
-      <div><span class="output-name">SECURITY_REPORT.md</span><span class="output-desc">OWASP Top 10 scan — three-pass: Bandit → Semgrep → LLM semantic analysis</span></div>
-    </div>
-    <div class="output-item">
-      <div class="output-dot"></div>
-      <div><span class="output-name">DEAD_CODE_REPORT.md</span><span class="output-desc">Functions and classes defined but never referenced — call graph aware, zero false positives on framework routes</span></div>
-    </div>
-    <div class="output-item">
-      <div class="output-dot"></div>
-      <div><span class="output-name">TEST_GAP_REPORT.md</span><span class="output-desc">Every public function with no test coverage, including indirect coverage via call graph</span></div>
-    </div>
-    <div class="output-item">
-      <div class="output-dot"></div>
-      <div><span class="output-name">PR_IMPACT.md</span><span class="output-desc">Full transitive blast radius of any changed file — powered by NetworkX graph traversal</span></div>
-    </div>
-    <div class="output-item">
-      <div class="output-dot"></div>
-      <div><span class="output-name">EXECUTIVE_REPORT.docx</span><span class="output-desc">Stakeholder-ready Word report — architecture summary, strengths, risks, recommendations</span></div>
-    </div>
-    <div class="output-item">
-      <div class="output-dot"></div>
-      <div><span class="output-name">tests_generated/</span><span class="output-desc">pytest scaffold stubs for every uncovered public function — ready to fill in</span></div>
-    </div>
+    <div class="output-item"><div class="output-dot"></div><div><span class="output-name">CODEBASE_MAP.md</span><span class="output-desc">Narrative architecture — why the system is shaped the way it is, not just what exists</span></div></div>
+    <div class="output-item"><div class="output-dot"></div><div><span class="output-name">DEPENDENCY_MAP.html</span><span class="output-desc">Interactive D3.js graph — every file, every dependency, complexity heatmap</span></div></div>
+    <div class="output-item"><div class="output-dot"></div><div><span class="output-name">SECURITY_REPORT.md</span><span class="output-desc">OWASP Top 10 — three-pass: Bandit → Semgrep → LLM semantic analysis</span></div></div>
+    <div class="output-item"><div class="output-dot"></div><div><span class="output-name">DEAD_CODE_REPORT.md</span><span class="output-desc">Functions defined but never referenced — call graph aware, zero LLM cost</span></div></div>
+    <div class="output-item"><div class="output-dot"></div><div><span class="output-name">TEST_GAP_REPORT.md</span><span class="output-desc">Every public function with no coverage, including indirect via call graph BFS</span></div></div>
+    <div class="output-item"><div class="output-dot"></div><div><span class="output-name">PR_IMPACT.md</span><span class="output-desc">Transitive blast radius of any changed file — NetworkX reverse graph walk</span></div></div>
+    <div class="output-item"><div class="output-dot"></div><div><span class="output-name">EXECUTIVE_REPORT.docx</span><span class="output-desc">Word report — architecture, strengths, risks, recommendations for stakeholders</span></div></div>
+    <div class="output-item"><div class="output-dot"></div><div><span class="output-name">tests_generated/</span><span class="output-desc">pytest scaffold stubs per uncovered function, correct imports, TODO placeholders</span></div></div>
   </div>
 </section>
 
-<!-- ══ 4. PIPELINE ════════════════════════════════════════════ -->
+<!-- ══ 6. PIPELINE ════════════════════════════ -->
 <section class="slide">
-  <div class="eyebrow">Architecture</div>
-  <h2>A five-stage<br><em>async pipeline</em></h2>
-  <div class="pipeline-visual">
-    <div class="pipeline-step">scan</div><div class="pipeline-arrow">→</div>
-    <div class="pipeline-step">parse</div><div class="pipeline-arrow">→</div>
-    <div class="pipeline-step">analyze</div><div class="pipeline-arrow">→</div>
-    <div class="pipeline-step">synthesize</div><div class="pipeline-arrow">→</div>
-    <div class="pipeline-step">visualize</div>
+  <div class="slide-topbar"></div>
+  <div class="eyebrow">How Arkhe Works</div>
+  <h2>Right model for <em>every job</em></h2>
+  <div class="pipeline">
+    <div class="pipeline-step ps-det"><span class="ps-label">Scan</span><span class="ps-detail">Walk repo<br>tokenize<br>gitignore</span></div>
+    <div class="pipeline-step ps-det"><span class="ps-label">Parse</span><span class="ps-detail">tree-sitter AST<br>functions+imports<br>call graph</span></div>
+    <div class="pipeline-step ps-llm"><span class="ps-label">Analyze</span><span class="ps-detail">Cheap models<br>per-file batches<br>parallel</span></div>
+    <div class="pipeline-step ps-llm"><span class="ps-label">Synthesize</span><span class="ps-detail">Heavy pool<br>final CODEBASE_MAP<br>one call</span></div>
+    <div class="pipeline-step ps-det"><span class="ps-label">Visualize</span><span class="ps-detail">D3.js graph<br>complexity heatmap<br>$0 LLM cost</span></div>
+    <div class="pipeline-step ps-out"><span class="ps-label">Output</span><span class="ps-detail">Markdown + HTML<br>Word doc + JSON<br>browser or disk</span></div>
   </div>
-  <div class="cols-2" style="gap:1.6rem;">
-    <div>
-      <div class="accent-block">
-        <h3>Parse — tree-sitter AST, zero LLM cost</h3>
-        <p>Extracts functions, classes, imports, <code class="mono">__all__</code> exports, and a full call graph from source. 7 languages. All graph structure is derived statically — no model involved.</p>
-      </div>
-      <div class="accent-block">
-        <h3>Analyze — parallel, rate-aware dispatch</h3>
-        <p>Files analyzed concurrently via an <code class="mono">asyncio.Semaphore</code> dispatcher. Results cached by <code class="mono">SHA-256(content)</code> — only changed files hit the LLM on re-runs.</p>
-      </div>
-      <div class="accent-block">
-        <h3>Synthesize — grounded, not guessed</h3>
-        <p>AST-extracted imports injected into every synthesis prompt as ground truth. The model cannot hallucinate dependency names — it can only use names that appear verbatim in the source.</p>
-      </div>
-    </div>
-    <div style="display:flex; flex-direction:column; gap:0.9rem;">
-      <div class="card">
-        <div class="qm-label">Static analysis layer — zero LLM cost</div>
-        <ul class="bullets" style="margin-top:0.3rem;">
-          <li><span class="arr">→</span><span><strong>Bandit</strong> — Python security pre-pass, CWE-tagged findings</span></li>
-          <li><span class="arr">→</span><span><strong>Semgrep</strong> — OWASP patterns across 30+ languages</span></li>
-          <li><span class="arr">→</span><span><strong>Vulture</strong> — dead symbol detection at 80% confidence</span></li>
-          <li><span class="arr">→</span><span><strong>NetworkX</strong> — transitive dependency traversal for blast radius</span></li>
-        </ul>
-      </div>
-      <div class="card">
-        <div class="qm-label">Supported languages</div>
-        <div style="display:flex; flex-wrap:wrap; gap:0.4rem; margin-top:0.5rem;">
-          <span class="tag">Python</span><span class="tag">JavaScript</span><span class="tag">TypeScript</span>
-          <span class="tag">Go</span><span class="tag">Rust</span><span class="tag">Java</span><span class="tag">Ruby</span>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- ══ 5. BYOK ════════════════════════════════════════════════ -->
-<section class="slide">
-  <div class="eyebrow">Core Design Decision</div>
-  <h2>Bring Your Own Key —<br>zero marginal cost <em>by design</em></h2>
-  <div class="cols-2" style="gap:2rem;">
-    <div>
-      <p>Most AI tools pay per inference call — their costs scale with every user. Arkhe is architected to avoid this entirely. Users supply their own LLM API keys. Groq and Gemini both offer free tiers, so the majority of users run Arkhe at <strong>$0 to themselves and $0 to us.</strong></p>
-      <div style="margin-top:1.2rem;">
-        <div class="code"><span class="cm"># User defines their own fallback chain</span>
-<span class="kw">ARKHE_CHAIN=</span><span class="hl">openai:gpt-4o:sk-xxx</span>,\
-  <span class="hl">gemini:gemini-2.5-pro:AIza</span>,\
-  <span class="hl">groq:llama-3.3-70b:gsk</span>
-
-<span class="cm"># Mix any providers, any models, any order</span></div>
-      </div>
-    </div>
-    <div style="display:flex; flex-direction:column; gap:0.9rem;">
-      <div class="card accent-border">
-        <h3>Model Fallback Router</h3>
-        <p>Priority chains per provider. Rate limit hit → model marked cooling for 10 minutes → next in chain takes over. Cooldowns persisted to SQLite across process restarts. Resilient by construction.</p>
-      </div>
-      <div class="card">
-        <h3>Four providers supported</h3>
-        <div style="display:flex; flex-wrap:wrap; gap:0.4rem; margin-top:0.5rem;">
-          <span class="tag">Groq</span>
-          <span class="tag">Gemini</span>
-          <span class="tag blue">Anthropic</span>
-          <span class="tag blue">OpenAI</span>
-          <span class="tag purple">NVIDIA NIM</span>
-        </div>
-        <p style="margin-top:0.7rem;">A single provider going down or rate-limiting does not interrupt an analysis.</p>
-      </div>
-      <div class="callout">
-        <p><strong>Why this matters strategically:</strong> the BYOK model means infrastructure costs are nearly fixed regardless of how many CLI users we have. Growth doesn't create proportional cost.</p>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- ══ 6. CACHING ═════════════════════════════════════════════ -->
-<section class="slide">
-  <div class="eyebrow">Performance</div>
-  <h2>Two-layer caching —<br><em>only new work</em> gets computed</h2>
-  <div class="cols-2" style="gap:2rem;">
-    <div style="display:flex; flex-direction:column; gap:1rem;">
-      <div class="card accent-border">
-        <div style="font-size:0.65rem; font-weight:700; text-transform:uppercase; letter-spacing:0.1em; color:var(--accent); margin-bottom:0.6rem;">Layer 1 — Per-file SQLite cache</div>
-        <p>Every file analysis keyed by <code class="mono">SHA-256(content)</code>. Change one file in a 200-file repo → <strong>1 LLM call, not 200.</strong> Cache lives at <code class="mono">&lt;repo&gt;/.arkhe_cache/arkhe.db</code> and survives process restarts.</p>
-      </div>
-      <div class="card blue-border">
-        <div style="font-size:0.65rem; font-weight:700; text-transform:uppercase; letter-spacing:0.1em; color:var(--blue); margin-bottom:0.6rem;">Layer 2 — Per-job result cache</div>
-        <p>Before cloning, the server queries the GitHub API for the latest commit SHA. Cache key: <code class="mono">SHA-256(repo_url + commit_sha)</code>. Same repo at same commit → results returned <strong>instantly, zero pipeline cost.</strong> This check runs before cloning — no disk or compute cost on a hit.</p>
-      </div>
-    </div>
-    <div class="card" style="height:100%; display:flex; flex-direction:column; gap:0.9rem; justify-content:center;">
-      <div class="qm-label">Why this compounds over time</div>
+  <div class="cols-2" style="gap:1.2rem;">
+    <div class="card ab">
+      <div style="font-size:0.68rem; font-weight:700; color:var(--accent); text-transform:uppercase; letter-spacing:0.09em; margin-bottom:0.6rem;">Deterministic — zero LLM cost</div>
       <ul class="bullets">
-        <li><span class="arr">→</span><span><strong>Daily re-runs cost almost nothing</strong> — only the diff of changed files hits the LLM</span></li>
-        <li><span class="arr">→</span><span><strong>Popular repos amortize fast</strong> — the second person to analyze <code class="mono" style="font-size:0.75rem;">facebook/react</code> at the same commit costs $0</span></li>
-        <li><span class="arr">→</span><span><strong>Quality scoring auto-rescores</strong> — files scoring below 0.35 are re-analyzed with an expanded token budget before synthesis</span></li>
-        <li><span class="arr">→</span><span><strong>Model cooldowns persisted</strong> — fallback state survives server restarts</span></li>
+        <li><span class="arr">→</span><span>Scan — file walk, tokenize, gitignore</span></li>
+        <li><span class="arr">→</span><span>Parse — tree-sitter AST (7 languages)</span></li>
+        <li><span class="arr">→</span><span>Dead code — call graph + regex + Vulture</span></li>
+        <li><span class="arr">→</span><span>Dependency graph — import resolution → D3</span></li>
+        <li><span class="arr">→</span><span>Security pass 1 — Bandit + Semgrep static</span></li>
+        <li><span class="arr">→</span><span>Test gap phase 1 — function cross-reference</span></li>
+        <li><span class="arr">→</span><span>Content cache — SHA-256 hash, skip re-runs</span></li>
       </ul>
-      <div style="margin-top:0.5rem; padding-top:0.9rem; border-top:1px solid var(--border);">
-        <p style="font-size:0.8rem; color:var(--text-2); margin:0;">The combined effect: <strong style="color:var(--text);">a team running Arkhe daily on their active repo pays one-time analysis cost, then incremental cost per PR</strong> — not a full re-run each time.</p>
-      </div>
+    </div>
+    <div class="card ob">
+      <div style="font-size:0.68rem; font-weight:700; color:var(--orange); text-transform:uppercase; letter-spacing:0.09em; margin-bottom:0.6rem;">LLM — routed to cheapest capable model</div>
+      <ul class="bullets">
+        <li><span class="arr" style="color:var(--orange);">→</span><span>Analyst — per-file descriptions (traversal role)</span></li>
+        <li><span class="arr" style="color:var(--orange);">→</span><span>Synthesizer — CODEBASE_MAP.md (heavy pool)</span></li>
+        <li><span class="arr" style="color:var(--orange);">→</span><span>Security pass 2 — semantic / logic flaws</span></li>
+        <li><span class="arr" style="color:var(--orange);">→</span><span>PR Impact — blast radius plain-English summary</span></li>
+        <li><span class="arr" style="color:var(--orange);">→</span><span>Test gap phase 2 — pytest scaffold generation</span></li>
+        <li><span class="arr" style="color:var(--orange);">→</span><span>Executive report — Word doc stakeholder summary</span></li>
+      </ul>
     </div>
   </div>
 </section>
 
-<!-- ══ 7. PRODUCTION ══════════════════════════════════════════ -->
+<!-- ══ 7. TIERED MODEL ROUTING ════════════════ -->
 <section class="slide">
-  <div class="eyebrow">Infrastructure</div>
-  <h2>Production-grade.<br>Live on <em>AWS</em> today.</h2>
-  <div class="infra-grid" style="margin-bottom:1.4rem;">
-    <div class="infra-card">
-      <span class="infra-icon">⚙️</span>
-      <span class="infra-label">EC2 t3.micro</span>
-      <span class="infra-detail">FastAPI + uvicorn<br>Ubuntu 24.04</span>
+  <div class="slide-topbar"></div>
+  <div class="eyebrow">How Arkhe Works</div>
+  <h2>Tiered model routing —<br><em>actual tiers from code</em></h2>
+  <div class="tier-cols">
+    <div class="tier-col tc0">
+      <div class="tier-head-cell"><span class="tnum">Tier 0</span>Config/docs</div>
+      <div class="tier-body-cell">
+        <span class="tier-model" style="color:#aaa; font-size:0.58rem; font-style:italic;">non-code files<br>.yml .md .json<br>.env .sh .html</span>
+        <span class="tier-model" style="margin-top:0.4rem;">Nemotron-253B</span>
+        <span class="tier-model">Gemma-3-4B</span>
+        <span class="tier-model">Gemma-3-27B</span>
+        <span class="tier-model">Llama-3.1-8B</span>
+      </div>
     </div>
-    <div class="infra-card">
-      <span class="infra-icon">🗄</span>
-      <span class="infra-label">RDS PostgreSQL</span>
-      <span class="infra-detail">Job records<br>User accounts &amp; cache keys</span>
+    <div class="tier-col tc1">
+      <div class="tier-head-cell"><span class="tnum">Tier 1</span>&lt; 500 tok</div>
+      <div class="tier-body-cell">
+        <span class="tier-model" style="color:var(--text-2); font-size:0.58rem; font-style:italic;">tiny files<br>short utils<br>small configs</span>
+        <span class="tier-model" style="margin-top:0.4rem;">Nemotron-253B</span>
+        <span class="tier-model">Qwen3-32B</span>
+        <span class="tier-model">GPT-OSS-20B</span>
+        <span class="tier-model">Gemma-3-4B</span>
+      </div>
     </div>
-    <div class="infra-card">
-      <span class="infra-icon">🪣</span>
-      <span class="infra-label">S3</span>
-      <span class="infra-detail">All output files<br>Per-job, served on demand</span>
+    <div class="tier-col tc2">
+      <div class="tier-head-cell"><span class="tnum">Tier 2</span>500–3K tok</div>
+      <div class="tier-body-cell">
+        <span class="tier-model" style="color:var(--text-2); font-size:0.58rem; font-style:italic;">standard files<br>most modules<br>avg. functions</span>
+        <span class="tier-model" style="margin-top:0.4rem;">Nemotron-253B</span>
+        <span class="tier-model">Kimi-K2</span>
+        <span class="tier-model">GPT-OSS-120B</span>
+        <span class="tier-model">Llama-3.3-70B</span>
+      </div>
     </div>
-    <div class="infra-card">
-      <span class="infra-icon">🤖</span>
-      <span class="infra-label">NVIDIA NIM</span>
-      <span class="infra-detail">Nemotron-253B<br>Primary synthesis model</span>
+    <div class="tier-col tc3">
+      <div class="tier-head-cell"><span class="tnum">Tier 3</span>3K–8K tok</div>
+      <div class="tier-body-cell">
+        <span class="tier-model" style="color:var(--text-2); font-size:0.58rem; font-style:italic;">large files<br>long modules<br>complex agents</span>
+        <span class="tier-model" style="margin-top:0.4rem;">Nemotron-253B</span>
+        <span class="tier-model">Llama-4-Scout</span>
+        <span class="tier-model">Groq Compound</span>
+        <span class="tier-model">Gemini-2.5-Flash</span>
+      </div>
+    </div>
+    <div class="tier-col tc4">
+      <div class="tier-head-cell"><span class="tnum">Tier 4</span>≥ 8K tok</div>
+      <div class="tier-body-cell">
+        <span class="tier-model" style="color:var(--text-2); font-size:0.58rem; font-style:italic;">very large files<br>monolithic mods<br>big configs</span>
+        <span class="tier-model" style="margin-top:0.4rem;">Nemotron-253B</span>
+        <span class="tier-model">Gemini-2.5-Flash</span>
+        <span class="tier-model">Gemini-3-Flash</span>
+        <span class="tier-model">Groq Compound</span>
+      </div>
+    </div>
+    <div class="tier-col tch">
+      <div class="tier-head-cell"><span class="tnum">Heavy</span>Synthesis</div>
+      <div class="tier-body-cell">
+        <span class="tier-model" style="color:var(--text-2); font-size:0.58rem; font-style:italic;">CODEBASE_MAP<br>exec. report<br>final output</span>
+        <span class="tier-model" style="margin-top:0.4rem;">Nemotron-253B</span>
+        <span class="tier-model">Gemini-3-Flash</span>
+        <span class="tier-model">Gemini-2.5-Flash</span>
+        <span class="tier-model">Kimi-K2</span>
+      </div>
     </div>
   </div>
+  <div class="tier-footer">
+    <p>Auto-cascade: if the primary tier is rate-limited, Arkhe immediately falls through to the next model — no waiting, no manual config. Cooldowns persist across restarts via SQLite.</p>
+  </div>
+</section>
+
+<!-- ══ 8. NEAR-DETERMINISTIC RESULTS ══════════ -->
+<section class="slide">
+  <div class="slide-topbar"></div>
+  <div class="eyebrow">How Arkhe Works</div>
+  <h2>Near-deterministic results —<br><em>how and why</em></h2>
   <div class="cols-2" style="gap:1.5rem;">
     <div>
-      <div class="qm-label" style="margin-bottom:0.6rem;">Server hardening</div>
-      <ul class="bullets">
-        <li><span class="arr">→</span><span><strong>Rate limiting</strong> — 5 analyses/hour per IP</span></li>
-        <li><span class="arr">→</span><span><strong>Concurrent job cap</strong> — Semaphore(3), returns 503 + Retry-After when full</span></li>
-        <li><span class="arr">→</span><span><strong>Disk space guard</strong> — rejects new jobs below 500MB free</span></li>
-        <li><span class="arr">→</span><span><strong>SSE streaming</strong> — real-time progress, no polling overhead</span></li>
-      </ul>
+      <div class="ablock">
+        <h3 class="g">AST first, LLM second</h3>
+        <p>tree-sitter extracts every function, class, import, export, and call edge before any LLM call. The analyst prompt includes the exact AST-extracted names and is instructed: "Only use names that appear verbatim. Never invent." The LLM annotates ground-truth structure — it cannot hallucinate what tree-sitter already found.</p>
+      </div>
+      <div class="ablock">
+        <h3 class="g">Deterministic pre-passes replace LLM guesswork</h3>
+        <p>Dead code: call graph → regex cross-file → Vulture, zero LLM. Security pass 1: Bandit (CWE-tagged) + Semgrep (30+ languages) run before the LLM. Test gap phase 1: static function→test cross-reference. The LLM only handles what static analysis genuinely cannot: semantic logic and narrative.</p>
+      </div>
     </div>
     <div>
-      <div class="qm-label" style="margin-bottom:0.6rem;">Platform features</div>
+      <div class="ablock ora">
+        <h3 class="o">Quality scoring + auto-rescore</h3>
+        <p>Every per-file analysis scored 0–1: AST name coverage (50%) + length vs file size (30%) + structural keywords (20%). Files scoring below 0.35 are automatically re-sent to the LLM with +256 extra output tokens. Prevents garbage-in-garbage-out before synthesis.</p>
+      </div>
+      <div class="ablock yel">
+        <h3 class="y">SHA-256 content cache — 1 changed file = 1 LLM call</h3>
+        <p>Every file is cached by SHA-256 of its content. Re-run Arkhe on a 200-file repo after touching 1 file: 199 files served from SQLite instantly, 1 file hits the LLM. Cooldowns also persist to SQLite — a rate-limited model stays cooling across process restarts.</p>
+      </div>
+      <div class="callout strong" style="margin-top:0.7rem;">
+        <p>Result: consistent, hallucination-resistant output even when cheap models handle 80% of the work.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══ 9. FEATURE: CODEBASE MAP ═══════════════ -->
+<section class="slide">
+  <div class="slide-topbar"></div>
+  <div class="eyebrow">Feature</div>
+  <h2>Architecture Map —<br><em>CODEBASE_MAP.md</em></h2>
+  <div class="feature-grid">
+    <div class="feature-col">
+      <div>
+        <h3 class="g">What it is</h3>
+        <p>A narrative architecture document generated automatically for any repo. Explains the codebase to a developer who has never seen it — covering architecture, data flows, module responsibilities, key abstractions, and hidden gotchas.</p>
+      </div>
+      <div>
+        <div style="font-size:0.72rem; font-weight:700; color:var(--accent); text-transform:uppercase; letter-spacing:0.09em; margin-bottom:0.6rem;">Sections generated</div>
+        <ul class="bullets">
+          <li><span class="arr">→</span><span>System architecture overview</span></li>
+          <li><span class="arr">→</span><span>Module-by-module breakdown</span></li>
+          <li><span class="arr">→</span><span>Data flow diagrams (narrative)</span></li>
+          <li><span class="arr">→</span><span>Key classes and functions</span></li>
+          <li><span class="arr">→</span><span>External dependencies and their roles</span></li>
+          <li><span class="arr">→</span><span>Gotchas, quirks, and non-obvious invariants</span></li>
+        </ul>
+      </div>
+    </div>
+    <div class="feature-col">
+      <h3 class="g">How it works</h3>
+      <div class="ablock"><h3>1. Scan</h3><p>Walk repo, tokenize every file</p></div>
+      <div class="ablock"><h3>2. Parse</h3><p>tree-sitter: extract all functions, classes, imports, call graph</p></div>
+      <div class="ablock ora"><h3 class="o">3. Analyze</h3><p>Cheap models describe each file in parallel batches</p></div>
+      <div class="ablock ora"><h3 class="o">4. Synthesize</h3><p>Heavy pool (NVIDIA Nemotron-253B first) reads all batch reports and AST-grounded imports to write the final map — one call, never per-file</p></div>
+      <div class="ablock"><h3>5. Write</h3><p>CODEBASE_MAP.md saved to docs/ and S3</p></div>
+    </div>
+  </div>
+  <div class="callout" style="margin-top:0.8rem;">
+    <p>Why it matters: onboarding a new dev to a large repo takes hours — this doc takes seconds to generate and <strong>never goes stale.</strong></p>
+  </div>
+</section>
+
+<!-- ══ 10. FEATURE: DEPENDENCY MAP ══════════ -->
+<section class="slide">
+  <div class="slide-topbar"></div>
+  <div class="eyebrow">Feature</div>
+  <h2>Interactive Dependency Map —<br><em>DEPENDENCY_MAP.html</em></h2>
+  <div class="feature-grid">
+    <div class="feature-col">
+      <div>
+        <h3 class="g">What it is</h3>
+        <p>A force-directed D3.js graph rendered as a self-contained HTML file. Every file in the repo is a node. Every import is a directed edge. Fully interactive — click any node to see what it imports and what imports it.</p>
+      </div>
+      <div>
+        <div style="font-size:0.72rem; font-weight:700; color:var(--accent); text-transform:uppercase; letter-spacing:0.09em; margin-bottom:0.6rem;">What you can see</div>
+        <ul class="bullets">
+          <li><span class="arr">→</span><span>Complexity heatmap (radon CC for Python, heuristic for others)</span></li>
+          <li><span class="arr">→</span><span>Hub files — highest in-degree, most depended-upon</span></li>
+          <li><span class="arr">→</span><span>Circular dependencies — instantly visible as cycles</span></li>
+          <li><span class="arr">→</span><span>Isolated and leaf nodes — files with no connections</span></li>
+          <li><span class="arr">→</span><span>Clickable info panel: defines, imports, imported-by</span></li>
+          <li><span class="arr">→</span><span>Mutual dependency paths drawn separately (no overlap)</span></li>
+        </ul>
+      </div>
+    </div>
+    <div class="feature-col">
+      <h3 class="g">How it works (zero LLM cost)</h3>
+      <div class="ablock"><h3>Parse</h3><p>tree-sitter AST extracts every import statement from source</p></div>
+      <div class="ablock"><h3>Resolve</h3><p>Dotted module → file path (Python); relative path strings for JS/TS via <span class="mono">_resolve_import_js</span></p></div>
+      <div class="ablock"><h3>Score</h3><p>radon cyclomatic complexity for Python; token+import+function heuristic for all other languages</p></div>
+      <div class="ablock"><h3>Render</h3><p>Nodes/links JSON injected into D3.js template; self-contained HTML, no server needed to view</p></div>
+      <div class="callout strong" style="margin-top:0.5rem;">
+        <p>Entirely deterministic — no LLM involved at any step.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══ 11. FEATURE: SECURITY REPORT ══════════ -->
+<section class="slide">
+  <div class="slide-topbar"></div>
+  <div class="eyebrow">Feature</div>
+  <h2>OWASP Security Report —<br><em>SECURITY_REPORT.md</em></h2>
+  <div class="feature-grid">
+    <div class="feature-col">
+      <h3 class="g">What it covers</h3>
       <ul class="bullets">
-        <li><span class="arr">→</span><span><strong>User auth</strong> — accounts with BYOK key management</span></li>
-        <li><span class="arr">→</span><span><strong>Export ZIP</strong> — all outputs in one archive download</span></li>
-        <li><span class="arr">→</span><span><strong>Debug inspector</strong> — inline output viewer, graph node browser, server log tail</span></li>
-        <li><span class="arr">→</span><span><strong>Structured logging</strong> — JSON in production, readable in dev</span></li>
+        <li><span class="arr">→</span><span>Hardcoded credentials (literal secrets in source)</span></li>
+        <li><span class="arr">→</span><span>SQL / command injection (f-strings in queries, shell=True)</span></li>
+        <li><span class="arr">→</span><span>Path traversal (user-supplied paths to open/os.path)</span></li>
+        <li><span class="arr">→</span><span>Unvalidated inputs reaching dangerous sinks</span></li>
+        <li><span class="arr">→</span><span>Missing auth on sensitive HTTP routes</span></li>
+        <li><span class="arr">→</span><span>Insecure deserialization (pickle.loads, yaml.load)</span></li>
+        <li><span class="arr">→</span><span>Sensitive data in logs or error messages</span></li>
+        <li><span class="arr">→</span><span>Weak crypto (MD5/SHA1 for passwords, hardcoded IV)</span></li>
+        <li><span class="arr">→</span><span>SSRF (user-controlled URLs to requests without allow-list)</span></li>
       </ul>
     </div>
+    <div class="feature-col">
+      <h3 class="g">Three-pass approach</h3>
+      <div class="ablock">
+        <h3 class="g">Pass 1 — Bandit</h3>
+        <p>Python static analysis. CWE-tagged findings. Full-file coverage (no truncation). Zero LLM cost. Skips B404/B603/B607 (subprocess noise) — only real issues.</p>
+      </div>
+      <div class="ablock blue">
+        <h3 class="b">Pass 2 — Semgrep</h3>
+        <p>Multi-language AST-based scan (30+ languages). OWASP Top 10 rules. Runs on full repo root. Zero LLM cost. Gracefully skips if binary not installed.</p>
+      </div>
+      <div class="ablock ora">
+        <h3 class="o">Pass 3 — LLM semantic</h3>
+        <p>Catches logic flaws, auth issues, and SSRF that static tools miss. Context-aware prompt prevents false positives on tool design. Uses traversal-role model — no expensive synthesis model needed.</p>
+      </div>
+      <div class="callout" style="margin-top:0.5rem;">
+        <p>Output: <span class="mono">FILE / SEVERITY / ISSUE / CODE / FIX</span> for every finding — structured for automated parsing.</p>
+      </div>
+    </div>
   </div>
 </section>
 
-<!-- ══ 8. OUTPUT QUALITY ══════════════════════════════════════ -->
+<!-- ══ 12. FEATURE: DEAD CODE + BLAST RADIUS ═ -->
 <section class="slide">
-  <div class="eyebrow">Engineering Detail</div>
-  <h2>Built to be<br><em>trustworthy</em>, not just fast</h2>
-  <div class="qm-grid" style="margin-bottom:1rem;">
-    <div class="qm-card">
-      <div class="qm-label">Hallucination suppression</div>
-      <p>AST-extracted imports injected into every synthesis prompt as ground truth. The model can only use names that appear verbatim in the source — it cannot invent or guess dependency names.</p>
+  <div class="slide-topbar"></div>
+  <div class="eyebrow">Feature</div>
+  <h2>Dead Code &amp; Blast Radius —<br><em>precision static analysis</em></h2>
+  <div class="cols-2" style="gap:1.5rem;">
+    <div>
+      <div style="font-size:0.72rem; font-weight:700; color:var(--accent); text-transform:uppercase; letter-spacing:0.09em; margin-bottom:0.7rem;">Dead Code — DEAD_CODE_REPORT.md</div>
+      <p style="margin-bottom:0.8rem;">Functions and classes defined but never called outside their own file. Across all 7 languages. Skips dunders, framework-decorated symbols (<span class="mono">@app.route</span>, <span class="mono">@router.get</span>, <span class="mono">@pytest.fixture</span>), and exported symbols in <span class="mono">__all__</span>.</p>
+      <div class="ablock"><h3 class="g">Pass 1 — Call graph</h3><p>tree-sitter extracts function→callee relationships. Any function appearing as a callee is immediately marked live. Zero false positives across module boundaries.</p></div>
+      <div class="ablock"><h3 class="g">Pass 2 — Regex cross-file</h3><p>For every defined symbol, scan all other files for name occurrences. Decorator-aware: checks 3 preceding lines for @app. @router. @pytest. etc.</p></div>
+      <div class="ablock"><h3 class="g">Pass 3 — Vulture (Python)</h3><p>AST-based analysis at 80% confidence. Used to remove false positives from pass 2 — conservative filter, not a primary detector.</p></div>
+      <div class="callout strong" style="margin-top:0.7rem;">
+        <p>194 symbols scanned → 4 genuine findings (28 before false-positive reduction)</p>
+      </div>
     </div>
-    <div class="qm-card">
-      <div class="qm-label">Output quality scoring</div>
-      <p>Every file analysis scored 0–1 on AST name-mention ratio, length relative to file size, and structural keyword presence. Files scoring below 0.35 are automatically re-analyzed with an expanded token budget before synthesis runs.</p>
+    <div>
+      <div style="font-size:0.72rem; font-weight:700; color:var(--blue); text-transform:uppercase; letter-spacing:0.09em; margin-bottom:0.7rem;">Blast Radius — PR_IMPACT.md</div>
+      <p style="margin-bottom:0.8rem;">Given a PR, Arkhe diffs HEAD against a base branch, then walks the dependency graph in reverse using NetworkX to find every file that directly or transitively imports the changed files.</p>
+      <div class="ablock blue"><h3 class="b">git diff</h3><p>Get list of changed files: HEAD vs base branch</p></div>
+      <div class="ablock blue"><h3 class="b">Reverse graph</h3><p>Build NetworkX DiGraph; walk <span class="mono">ancestors()</span> to get full transitive dependents — not just direct importers</p></div>
+      <div class="ablock blue"><h3 class="b">LLM summary</h3><p>Heavy pool writes plain-English impact: What changed / Downstream impact / Risk level (LOW / MEDIUM / HIGH)</p></div>
+      <div class="callout blue" style="margin-top:0.7rem;">
+        <p>Without this: devs merge a shared utility change not knowing it breaks 12 downstream modules.</p>
+      </div>
     </div>
-    <div class="qm-card">
-      <div class="qm-label">Dead code precision</div>
-      <p>Decorator-aware: <code class="mono">@app.route</code>, <code class="mono">@router.get</code>, pytest fixtures — framework-registered functions are never flagged. Call graph propagation marks any callee live before static analysis, eliminating callback false positives.</p>
-    </div>
-    <div class="qm-card">
-      <div class="qm-label">Reasoning trace stripping</div>
-      <p>NVIDIA Nemotron-253B emits <code class="mono">&lt;think&gt;</code> blocks during generation. A regex pass (DOTALL, handles unclosed tags) strips all chain-of-thought traces before any caller sees the result — preventing leakage into output reports.</p>
-    </div>
-  </div>
-  <div class="callout">
-    <p><strong>Self-tested on its own codebase.</strong> <code class="mono">arkhe .</code> analyzes Arkhe itself — a 60-file, multi-language codebase. All seven outputs are accurate and pass manual review. The pipeline is its own integration test.</p>
   </div>
 </section>
 
-<!-- ══ 9. BUSINESS MODEL ══════════════════════════════════════ -->
+<!-- ══ 13. AWS ARCHITECTURE ═══════════════════ -->
 <section class="slide">
+  <div class="slide-topbar"></div>
+  <div class="eyebrow">Infrastructure</div>
+  <h2>AWS architecture —<br><em>how the web platform is deployed</em></h2>
+  <div style="display:grid; grid-template-columns:0.8fr 0.3fr 1fr 0.3fr 1fr; gap:0; align-items:center; margin-bottom:0.9rem;">
+    <div class="infra-node">
+      <h4 class="g">Browser</h4>
+      <p style="color:var(--text-2);">User submits GitHub repo URL</p>
+    </div>
+    <div class="infra-arrow">→<br><span style="font-size:0.6rem; color:var(--accent);">HTTPS</span></div>
+    <div style="display:flex; flex-direction:column; gap:0.6rem;">
+      <div class="infra-node">
+        <h4 class="g">EC2 t3.micro</h4>
+        <p>Ubuntu 24.04 · FastAPI + uvicorn<br>systemd managed · Docker Compose</p>
+      </div>
+      <div class="infra-node" style="border-color:rgba(96,165,250,0.2);">
+        <h4 class="b">Nginx</h4>
+        <p>SSL termination · Let's Encrypt · reverse proxy</p>
+      </div>
+    </div>
+    <div style="display:flex; flex-direction:column; align-items:center; gap:1rem;">
+      <div class="infra-arrow" style="flex-direction:column;">→<br><span style="font-size:0.58rem; color:var(--text-3);">SQL</span></div>
+      <div class="infra-arrow" style="flex-direction:column;">→<br><span style="font-size:0.58rem; color:var(--text-3);">S3 API</span></div>
+    </div>
+    <div style="display:flex; flex-direction:column; gap:0.6rem;">
+      <div class="infra-node">
+        <h4 class="g">RDS PostgreSQL</h4>
+        <p>t4g.micro · users + analyses<br>cache_key lookup · job status</p>
+      </div>
+      <div class="infra-node">
+        <h4 style="color:var(--orange);">S3 Bucket</h4>
+        <p>per-job folder · result files<br>served on demand</p>
+      </div>
+    </div>
+  </div>
+  <div class="infra-cost-row head">
+    <div>Year 1 cost</div><div>EC2 t3.micro</div><div>RDS t4g.micro</div><div>S3 (5GB)</div><div>GitHub Actions CI</div><div>Domain</div><div>Total</div>
+  </div>
+  <div class="infra-cost-row">
+    <div>Maximising free tiers</div><div>$0 (12mo free)</div><div>$0 (12mo free)</div><div>$0 (free tier)</div><div>$0 (public repo)</div><div>~$12/yr</div><div>~$12/year</div>
+  </div>
+</section>
+
+<!-- ══ 14. DELIVERY CHANNELS ═════════════════ -->
+<section class="slide">
+  <div class="slide-topbar"></div>
+  <div class="eyebrow">Arkhe's Offerings</div>
+  <h2>Two delivery channels —<br><em>one codebase intelligence engine</em></h2>
+  <div class="delivery-cols">
+    <div class="delivery-col">
+      <div class="delivery-head cli">CLI</div>
+      <div class="delivery-sub cli">Free forever · BYOK</div>
+      <div class="delivery-items">
+        <div class="ditem"><span class="chk">✓</span><span>Runs fully local on your machine</span></div>
+        <div class="ditem"><span class="chk">✓</span><span>All 7 output types</span></div>
+        <div class="ditem"><span class="chk">✓</span><span>BYOK — your own API keys, your own rate limits</span></div>
+        <div class="ditem"><span class="chk">✓</span><span>No rate limits imposed by us</span></div>
+        <div class="ditem"><span class="chk">✓</span><span>Private repos supported — nothing leaves your machine</span></div>
+        <div class="ditem"><span class="chk">✓</span><span><span class="mono" style="font-size:0.75rem;">arkhe watch</span> + <span class="mono" style="font-size:0.75rem;">arkhe diff</span> commands</span></div>
+        <div class="ditem"><span class="chk">✓</span><span>Offline-capable after first parse</span></div>
+        <div class="ditem"><span class="chk">✓</span><span>SQLite cache per repo — re-runs are near-instant</span></div>
+      </div>
+    </div>
+    <div class="delivery-col">
+      <div class="delivery-head web">Web Platform</div>
+      <div class="delivery-sub web">Free + $15/mo Pro</div>
+      <div class="delivery-items">
+        <div class="ditem"><span class="chk">✓</span><span>Paste a GitHub URL — no install, no setup</span></div>
+        <div class="ditem"><span class="chk">✓</span><span>Public repos on Free tier</span></div>
+        <div class="ditem"><span class="chk">✓</span><span>Private repos on Pro</span></div>
+        <div class="ditem"><span class="chk">✓</span><span>Our API keys, fully managed</span></div>
+        <div class="ditem"><span class="chk">✓</span><span>SSE real-time progress streaming</span></div>
+        <div class="ditem"><span class="chk">✓</span><span>Result cache — same repo+commit returns instantly</span></div>
+        <div class="ditem"><span class="chk">✓</span><span>Blast Radius Explorer UI</span></div>
+        <div class="ditem"><span class="chk">✓</span><span>Smart Context Picker — ranked file relevance by task</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="callout strong" style="margin-top:1rem;">
+    <p>Understand any codebase — instantly, cheaply, and accurately.</p>
+  </div>
+</section>
+
+<!-- ══ 15. BUSINESS MODEL ════════════════════ -->
+<section class="slide">
+  <div class="slide-topbar"></div>
   <div class="eyebrow">Business Model</div>
   <h2>Near-zero marginal cost.<br><em>Strong</em> unit economics.</h2>
   <div class="cols-2" style="gap:2rem;">
     <div>
       <div class="tier-table">
-        <div class="tier-row tier-head">
-          <div>Tier</div><div>Price</div><div>What</div>
-        </div>
-        <div class="tier-row tier-body">
-          <div>Free CLI</div><div>$0</div><div>Unlimited, BYOK — $0 cost to us</div>
-        </div>
-        <div class="tier-row tier-body">
-          <div>Free Web</div><div>$0</div><div>Rate-limited, Groq + Gemini (free tier LLMs)</div>
-        </div>
-        <div class="tier-row tier-body">
-          <div>Pro</div><div>$15/mo</div><div>Unlimited, Anthropic + OpenAI models</div>
-        </div>
-        <div class="tier-row tier-body">
-          <div>Team</div><div>$49/mo</div><div>10 seats, org dashboard, shared history</div>
-        </div>
-        <div class="tier-row tier-body">
-          <div>Enterprise</div><div>Custom</div><div>Self-hosted, SSO/SAML, SLA</div>
-        </div>
+        <div class="tier-row-p head"><div>Tier</div><div>Price</div><div>What</div></div>
+        <div class="tier-row-p"><div>Free CLI</div><div>$0</div><div>Unlimited, BYOK — $0 cost to us</div></div>
+        <div class="tier-row-p"><div>Free Web</div><div>$0</div><div>Rate-limited, Groq + Gemini (free tier LLMs)</div></div>
+        <div class="tier-row-p"><div>Pro</div><div>$15/mo</div><div>Unlimited, Anthropic + OpenAI models, private repos</div></div>
+        <div class="tier-row-p"><div>Team</div><div>$49/mo</div><div>10 seats, org dashboard, shared analysis history</div></div>
+        <div class="tier-row-p"><div>Enterprise</div><div>Custom</div><div>Self-hosted, SSO/SAML, SLA</div></div>
       </div>
-      <div class="callout" style="margin-top:1rem;">
-        <p><strong>YC pitch:</strong> "CodeSee shut down. Sourcegraph is $49/user. Greptile answers questions but produces no artifacts. We auto-generate what all three tried to sell — at zero marginal cost via BYOK, integrated into CI."</p>
+      <div class="callout" style="margin-top:0.9rem;">
+        <p><strong>Pitch:</strong> "CodeSee shut down. Sourcegraph is $49/user. Greptile answers questions but produces no artifacts. We auto-generate what all three tried to sell — at zero marginal cost via BYOK."</p>
       </div>
     </div>
     <div style="display:flex; flex-direction:column; gap:1rem;">
-      <div class="card accent-border">
-        <h3>Unit economics at scale</h3>
-        <p style="margin-top:0.4rem;">Infrastructure cost is nearly fixed regardless of CLI usage. At <strong>1,000 Pro subscribers:</strong></p>
+      <div class="card ab">
+        <h3>Unit economics at 1,000 Pro users</h3>
         <div style="display:flex; gap:2rem; margin-top:0.9rem; align-items:center;">
           <div class="stat"><div class="num">$15k</div><div class="label">MRR</div></div>
-          <div style="color:var(--text-3); font-size:1.4rem;">vs</div>
+          <div style="color:var(--text-3); font-size:1.3rem;">vs</div>
           <div class="stat"><div class="num" style="color:var(--text-2);">~$40</div><div class="label">Infra / mo</div></div>
         </div>
       </div>
       <div class="card">
         <h3>Infrastructure cost today</h3>
         <ul class="bullets" style="margin-top:0.3rem;">
-          <li><span class="arr">→</span><span>EC2, RDS, S3 — <strong>$0</strong> (AWS free tier until Dec 2026)</span></li>
+          <li><span class="arr">→</span><span>EC2, RDS, S3 — <strong>$0</strong> (AWS free tier through Dec 2026)</span></li>
           <li><span class="arr">→</span><span>NVIDIA NIM — <strong>$0</strong> (dev tier)</span></li>
-          <li><span class="arr">→</span><span>Domain — <strong>~$2/mo</strong>, only hard cost</span></li>
+          <li><span class="arr">→</span><span>GitHub Actions CI — <strong>$0</strong> (public repo)</span></li>
+          <li><span class="arr">→</span><span>Domain — <strong>~$12/year</strong>, only hard cost</span></li>
         </ul>
       </div>
     </div>
   </div>
 </section>
 
-<!-- ══ 10. COMPETITIVE ════════════════════════════════════════ -->
+<!-- ══ 16. COMPETITIVE ════════════════════════ -->
 <section class="slide">
+  <div class="slide-topbar"></div>
   <div class="eyebrow">Market</div>
   <h2>A clear gap in the<br><em>developer tools</em> landscape</h2>
   <div class="comp-table" style="margin-bottom:1rem;">
-    <div class="comp-row comp-head">
-      <div>Competitor</div><div>Their Limitation</div><div>Arkhe's Position</div>
-    </div>
-    <div class="comp-row">
-      <div>CodeSee <span class="tag red" style="margin-left:4px; font-size:0.6rem;">shut down</span></div>
-      <div>Visualization only — no narrative docs, no CI integration, no analysis</div>
-      <div>Market vacuum. Their users are actively looking for a replacement today</div>
-    </div>
-    <div class="comp-row">
-      <div>Sourcegraph</div>
-      <div>$49/user, enterprise-only — inaccessible to SMBs and indie devs</div>
-      <div>Free to start, $15 Pro — accessible to every team size</div>
-    </div>
-    <div class="comp-row">
-      <div>Greptile <span class="tag blue" style="margin-left:4px; font-size:0.6rem;">YC S23</span></div>
-      <div>Query-only — answers questions but produces no persistent artifacts</div>
-      <div>7 output files per analysis — shareable, versionable, CI-friendly</div>
-    </div>
-    <div class="comp-row">
-      <div>Swimm <span class="tag purple" style="margin-left:4px; font-size:0.6rem;">$25M raised</span></div>
-      <div>Closest competitor — but requires manual setup and coupling</div>
-      <div>Fully automatic. Includes security, dead code, dependency graph — no setup</div>
-    </div>
-    <div class="comp-row">
-      <div>GitHub Copilot</div>
-      <div>Code generation focused — not architecture, docs, or codebase-level analysis</div>
-      <div>Different product. Arkhe runs in CI — outputs persist beyond the editor session</div>
-    </div>
+    <div class="comp-row ch"><div>Competitor</div><div>Their Limitation</div><div>Arkhe's Position</div></div>
+    <div class="comp-row"><div>CodeSee <span class="tag red" style="margin-left:4px;font-size:0.58rem;">shut down</span></div><div>Visualization only — no narrative docs, no static analysis, no CI integration</div><div>Market vacuum — their users are actively looking for a replacement</div></div>
+    <div class="comp-row"><div>Sourcegraph</div><div>$49/user, enterprise-only — inaccessible to SMBs and indie devs</div><div>Free to start, $15 Pro — accessible to every team size</div></div>
+    <div class="comp-row"><div>Greptile <span class="tag blue" style="margin-left:4px;font-size:0.58rem;">YC S23</span></div><div>Query-only — answers questions but produces no persistent artifacts</div><div>7 output files per analysis — shareable, versionable, CI-friendly</div></div>
+    <div class="comp-row"><div>Swimm <span class="tag pur" style="margin-left:4px;font-size:0.58rem;">$25M raised</span></div><div>Closest competitor — requires manual setup and doc coupling</div><div>Fully automatic. Includes security, dead code, dep graph — zero setup</div></div>
+    <div class="comp-row"><div>GitHub Copilot</div><div>Code generation in-editor — not architecture, docs, or codebase analysis</div><div>Different product. Arkhe runs in CI — outputs persist beyond the session</div></div>
   </div>
-  <div class="callout">
-    <p><strong>Key differentiator:</strong> Arkhe generates <em>narrative</em> documentation — prose that explains <em>why</em> the architecture is shaped the way it is, not just a graph of what exists. It runs automatically. Zero prompting required.</p>
+  <div class="callout strong">
+    <p>Arkhe generates narrative documentation — prose explaining why the architecture is shaped the way it is. Runs automatically. Zero prompting required.</p>
   </div>
 </section>
 
-<!-- ══ 11. CLOSING ════════════════════════════════════════════ -->
+<!-- ══ 17. CLOSING ════════════════════════════ -->
 <section class="slide" id="s-close">
-  <h1><em>Arkhe</em></h1>
-  <div class="tagline">"The architecture docs that write themselves."</div>
+  <h1>Arkhe<span class="dot">.</span></h1>
+  <div style="color:var(--accent); font-size:clamp(1rem,2vw,1.3rem); font-weight:600; margin-top:0.6rem;">Understand any codebase — instantly, cheaply, and accurately.</div>
   <div class="close-stats">
     <div class="stat"><div class="num">7</div><div class="label">Output artifacts</div></div>
     <div class="stat"><div class="num">7</div><div class="label">Languages</div></div>
+    <div class="stat"><div class="num">5</div><div class="label">Model tiers</div></div>
     <div class="stat"><div class="num">55</div><div class="label">Tests passing</div></div>
-    <div class="stat"><div class="num">$0</div><div class="label">Infra cost today</div></div>
+    <div class="stat"><div class="num">$12</div><div class="label">Infra / year</div></div>
     <div class="stat"><div class="num">Live</div><div class="label">on AWS</div></div>
   </div>
-  <div style="display:flex; gap:0.6rem; justify-content:center; flex-wrap:wrap; margin-top:2rem;">
+  <div style="display:flex; gap:0.55rem; justify-content:center; flex-wrap:wrap; margin-top:1.8rem;">
     <span class="tag">pip install arkhe</span>
-    <span class="tag blue">4 LLM providers</span>
+    <span class="tag blue">5 model tiers</span>
     <span class="tag blue">BYOK</span>
-    <span class="tag purple">FastAPI web platform</span>
-    <span class="tag purple">EC2 + RDS + S3</span>
+    <span class="tag pur">FastAPI + AWS</span>
+    <span class="tag pur">EC2 + RDS + S3</span>
     <span class="tag">55 tests · CI/CD</span>
   </div>
 </section>
@@ -788,7 +852,7 @@ p strong { color: var(--text); font-weight: 600; }
 
 <div id="controls">
   <button class="nav-btn" id="btn-prev" onclick="nav(-1)" disabled>←</button>
-  <span id="slide-counter">1 / 11</span>
+  <span id="slide-counter">1 / 17</span>
   <button class="nav-btn" id="btn-next" onclick="nav(1)">→</button>
 </div>
 
@@ -801,39 +865,32 @@ function show(n) {
   slides[cur].classList.remove('active');
   slides[cur].classList.add('exit');
   const prev = cur;
-  setTimeout(() => slides[prev].classList.remove('exit'), 550);
+  setTimeout(() => slides[prev].classList.remove('exit'), 500);
   cur = Math.max(0, Math.min(n, total - 1));
   slides[cur].classList.add('active');
-  document.getElementById('slide-counter').textContent = (cur + 1) + ' / ' + total;
-  document.getElementById('slide-num').textContent     = (cur + 1) + ' / ' + total;
-  document.getElementById('progress').style.width      = ((cur + 1) / total * 100) + '%';
+  document.getElementById('slide-counter').textContent = (cur+1) + ' / ' + total;
+  document.getElementById('slide-num').textContent     = (cur+1) + ' / ' + total;
+  document.getElementById('progress').style.width      = ((cur+1)/total*100) + '%';
   document.getElementById('btn-prev').disabled = cur === 0;
-  document.getElementById('btn-next').disabled = cur === total - 1;
-  // hide hint after first nav
+  document.getElementById('btn-next').disabled = cur === total-1;
   document.getElementById('hint').classList.add('gone');
 }
-
-function nav(dir) { show(cur + dir); }
+function nav(dir) { show(cur+dir); }
 
 document.addEventListener('keydown', e => {
-  if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === ' ') { e.preventDefault(); nav(1); }
-  if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')                    { e.preventDefault(); nav(-1); }
-  if (e.key === 'p' || e.key === 'P') window.print();
-  if (e.key === 'Home') show(0);
-  if (e.key === 'End')  show(total - 1);
+  if (e.key==='ArrowRight'||e.key==='ArrowDown'||e.key===' ') { e.preventDefault(); nav(1); }
+  if (e.key==='ArrowLeft' ||e.key==='ArrowUp')                { e.preventDefault(); nav(-1); }
+  if (e.key==='p'||e.key==='P') window.print();
+  if (e.key==='Home') show(0);
+  if (e.key==='End')  show(total-1);
 });
 
-// Touch swipe
-let tx = 0;
-document.addEventListener('touchstart', e => { tx = e.touches[0].clientX; });
-document.addEventListener('touchend',   e => {
-  const dx = e.changedTouches[0].clientX - tx;
-  if (Math.abs(dx) > 45) nav(dx < 0 ? 1 : -1);
-});
+let tx=0;
+document.addEventListener('touchstart', e => { tx=e.touches[0].clientX; });
+document.addEventListener('touchend',   e => { const dx=e.changedTouches[0].clientX-tx; if(Math.abs(dx)>45) nav(dx<0?1:-1); });
 
-// Init
 show(0);
-setTimeout(() => document.body.classList.add('loaded'), 100);
+setTimeout(() => document.body.classList.add('loaded'), 80);
 </script>
 </body>
 </html>
