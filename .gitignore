@@ -28,6 +28,10 @@ server/error.log
 # macOS
 .DS_Store
 
+# Local assistant/tooling artifacts
+.claude/
+images for report/
+
 # VSCode
 .vscode/settings.json
 .vscode/launch.json
